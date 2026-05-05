@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Dev (sibling fooyin build tree)",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FOOYIN_SRC_DIR": "${sourceDir}/../fooyin",
+        "FOOYIN_BUILD_DIR": "${sourceDir}/../fooyin/build"
+      }
+    },
+    {
+      "name": "dev-release",
+      "displayName": "Dev Release",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "dev-release",
+      "configurePreset": "dev-release"
+    }
+  ]
+}
