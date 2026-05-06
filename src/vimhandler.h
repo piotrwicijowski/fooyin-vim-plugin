@@ -56,6 +56,8 @@ private:
     void pasteAfter();
     void pasteBefore();
     void updateVisualSelection();
+    void moveRows(int delta);
+    void moveVisualSelection(int delta);
 
     Mode  m_mode{Mode::Normal};
     int   m_count{0};

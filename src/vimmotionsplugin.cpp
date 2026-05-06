@@ -55,6 +55,8 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
     reg("Focus Up",       "VimMotions.FocusUp",      QKeySequence{"Ctrl+K"});
     reg("Focus Left",     "VimMotions.FocusLeft",    QKeySequence{"Ctrl+H"});
     reg("Focus Right",    "VimMotions.FocusRight",   QKeySequence{"Ctrl+L"});
+    reg("Move Down",      "VimMotions.MoveDown",     QKeySequence{"Alt+J"});
+    reg("Move Up",        "VimMotions.MoveUp",       QKeySequence{"Alt+K"});
 }
 
 void VimMotionsPlugin::shutdown()

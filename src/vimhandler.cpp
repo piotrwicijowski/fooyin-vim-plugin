@@ -53,8 +53,10 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
 {
     const Qt::KeyboardModifiers mods = ev->modifiers();
     const int qtKey = ev->key();
+    const QString text = ev->text();
+    const QChar ch = text.isEmpty() ? QChar{} : text.front();
 
-    // Ctrl combinations handled first
+    // Ctrl combinations — consumed before count accumulation
     if (mods & Qt::ControlModifier) {
         switch (qtKey) {
             case Qt::Key_J: m_spatialNavigator->moveFocus(Direction::Down);  return true;
@@ -73,19 +75,14 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         return true;
     }
 
-    const QString text = ev->text();
-    if (text.isEmpty())
-        return true;
-    const QChar ch = text.front();
-
-    // Enter Insert mode
+    // Insert mode (before digit check so 'i' isn't swallowed as a count)
     if (ch == u'i') {
         enterInsert();
         return true;
     }
 
-    // Count accumulation: digits except leading zero
-    if (ch.isDigit()) {
+    // Count accumulation: bare digits only (no modifier other than Keypad)
+    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) {
         const int digit = ch.digitValue();
         if (m_count > 0 || digit != 0)
             m_count = m_count * 10 + digit;
@@ -96,6 +93,17 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     const int count = m_count > 0 ? m_count : 1;
     m_count = 0;
 
+    // Alt combinations — checked after count so prefix works (Alt+text is empty on X11)
+    if (mods & Qt::AltModifier) {
+        switch (qtKey) {
+            case Qt::Key_J: moveRows(+count); return true;
+            case Qt::Key_K: moveRows(-count); return true;
+            default: return true;
+        }
+    }
+
+    if (ch.isNull()) return true;
+
     // Two-key sequence completion
     if (!m_pendingKey.isNull()) {
         const QChar pending = m_pendingKey;
@@ -104,35 +112,36 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         if (pending == u'g' && ch == u'g') { jumpToFirst();      return true; }
         if (pending == u'd' && ch == u'd') { deleteRows(count);  return true; }
         if (pending == u'y' && ch == u'y') { yankRows(count);    return true; }
-        // Incomplete sequence — fall through and process the current key normally
     }
 
-    // Start of two-key sequences (g/d/y all lowercase)
+    // Start of two-key sequences
     if (ch == u'g' || ch == u'd' || ch == u'y') {
         m_pendingKey = ch;
         return true;
     }
 
     // Single-key commands
-    if (ch == u'j') { moveCursor(+count);                                         return true; }
-    if (ch == u'k') { moveCursor(-count);                                         return true; }
-    if (ch == u'G') { hadCount ? jumpToRow(count - 1) : jumpToLast();            return true; }
-    if (ch == u'v') { enterVisual();                                              return true; }
-    if (ch == u'p') { pasteAfter();                                               return true; }
-    if (ch == u'P') { pasteBefore();                                              return true; }
+    if (ch == u'j') { moveCursor(+count);                                        return true; }
+    if (ch == u'k') { moveCursor(-count);                                        return true; }
+    if (ch == u'G') { hadCount ? jumpToRow(count - 1) : jumpToLast();           return true; }
+    if (ch == u'v') { enterVisual();                                             return true; }
+    if (ch == u'p') { pasteAfter();                                              return true; }
+    if (ch == u'P') { pasteBefore();                                             return true; }
 
     if (qtKey == Qt::Key_Return || qtKey == Qt::Key_Enter || ch == u'o') {
         activateCurrentRow();
         return true;
     }
 
-    return true; // consume all unrecognised keys in Normal mode
+    return true;
 }
 
 bool VimHandler::handleVisualKey(QKeyEvent* ev)
 {
     const Qt::KeyboardModifiers mods = ev->modifiers();
     const int qtKey = ev->key();
+    const QString text = ev->text();
+    const QChar ch = text.isEmpty() ? QChar{} : text.front();
 
     if (mods & Qt::ControlModifier)
         return true;
@@ -143,13 +152,8 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
         return true;
     }
 
-    const QString text = ev->text();
-    if (text.isEmpty())
-        return true;
-    const QChar ch = text.front();
-
-    // Count accumulation
-    if (ch.isDigit()) {
+    // Count accumulation: bare digits only
+    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) {
         const int digit = ch.digitValue();
         if (m_count > 0 || digit != 0)
             m_count = m_count * 10 + digit;
@@ -158,6 +162,17 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
 
     const int count = m_count > 0 ? m_count : 1;
     m_count = 0;
+
+    // Alt combinations — move the whole selection
+    if (mods & Qt::AltModifier) {
+        switch (qtKey) {
+            case Qt::Key_J: moveVisualSelection(+count); return true;
+            case Qt::Key_K: moveVisualSelection(-count); return true;
+            default: return true;
+        }
+    }
+
+    if (ch.isNull()) return true;
 
     if (ch == u'j') {
         auto* view = m_viewLocator->activeView();
@@ -175,7 +190,7 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     if (ch == u'd') { deleteVisualSelection(); enterNormal();        return true; }
     if (ch == u'y') { yankVisualSelection();   enterNormal();        return true; }
 
-    return true; // consume all unrecognised keys in Visual mode
+    return true;
 }
 
 void VimHandler::enterNormal()
@@ -394,6 +409,62 @@ void VimHandler::pasteBefore()
     all.insert(all.begin() + insertPos,
                m_clipboard.tracks().begin(), m_clipboard.tracks().end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+}
+
+// ---------------------------------------------------------------------------
+// Row / selection move (playlist views only)
+// ---------------------------------------------------------------------------
+
+void VimHandler::moveRows(int delta)
+{
+    if (!m_playlistHandler) return;
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model()) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+
+    const int rowCount = view->model()->rowCount();
+    if (rowCount == 0) return;
+    const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+
+    Fooyin::TrackList all = playlist->tracks();
+    const Fooyin::Track moved = all[static_cast<size_t>(row)];
+    all.erase(all.begin() + row);
+    const int insertPos = std::clamp(row + delta, 0, static_cast<int>(all.size()));
+    all.insert(all.begin() + insertPos, moved);
+
+    m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    view->setCurrentIndex(view->model()->index(insertPos, col));
+}
+
+void VimHandler::moveVisualSelection(int delta)
+{
+    if (!m_playlistHandler) return;
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model()) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+
+    const int top = qMin(m_visualAnchor, m_visualCursor);
+    const int bot = qMax(m_visualAnchor, m_visualCursor);
+    const int selSize = bot - top + 1;
+
+    Fooyin::TrackList all = playlist->tracks();
+    if (bot >= static_cast<int>(all.size())) return;
+
+    Fooyin::TrackList moved(all.begin() + top, all.begin() + bot + 1);
+    all.erase(all.begin() + top, all.begin() + bot + 1);
+    const int insertPos = std::clamp(top + delta, 0, static_cast<int>(all.size()));
+    all.insert(all.begin() + insertPos, moved.begin(), moved.end());
+
+    m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+
+    // Keep anchor/cursor orientation, shift both by the actual displacement
+    const bool anchorFirst = (m_visualAnchor <= m_visualCursor);
+    m_visualAnchor = anchorFirst ? insertPos : insertPos + selSize - 1;
+    m_visualCursor = anchorFirst ? insertPos + selSize - 1 : insertPos;
+    updateVisualSelection();
 }
 
 } // namespace Fooyin::VimMotions
