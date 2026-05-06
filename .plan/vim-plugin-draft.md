@@ -369,7 +369,7 @@ Visual-mode `j`/`k` are handled inside the state machine (not separate registrat
 
 ### What has been implemented
 
-**Phases 1, 2, and 3 are complete.** The following files exist and compile:
+**Phases 1–4 are complete.** The following files exist and compile:
 
 ```
 fooyin-vim-plugin/
@@ -380,11 +380,13 @@ fooyin-vim-plugin/
   src/
     vimmotionsplugin.h/.cpp  — plugin entry point; installs VimHandler on qApp
     vimhandler.h/.cpp        — event filter + full Normal/Visual/Insert state machine;
-                               j/k/gg/G/Ctrl+d/Ctrl+u/Enter/o/v all wired up;
+                               j/k/gg/G/Ctrl+d/Ctrl+u/Enter/o/v + Ctrl+j/k/h/l wired up;
                                visual selection updates Qt selection model;
                                Phase 5-6 paste/yank/delete are stubs
     viewlocator.h/.cpp       — finds focused QAbstractItemView via focus-widget walk
                                with QPointer cache invalidated on focusChanged
+    spatialnavigator.h/.cpp  — Ctrl+j/k/h/l QSplitter tree traversal; remembers
+                               last-visited child per splitter in m_lastVisited
 ```
 
 ### Build instructions
@@ -402,51 +404,54 @@ cmake --build build
 # output: build/fyplugin_vimmotions.so
 ```
 
-### What to do next — Phase 4
+### What to do next — Phase 5
 
-Implement `SpatialNavigator` for `Ctrl+j/k/h/l` focus switching between views.
+Implement Visual mode delete (`d`) and yank (`y`), and Normal mode `dd`/`yy`/`p`/`P` via `VimClipboard`.
 
 **Files to create:**
 ```
-src/spatialnavigator.h
-src/spatialnavigator.cpp
+src/vimclipboard.h
+src/vimclipboard.cpp
 ```
 
 **Add to `PLUGIN_SOURCES` in `CMakeLists.txt`.**
 
-**`SpatialNavigator` API:**
+**`VimClipboard` API:**
 ```cpp
-enum class Direction { Up, Down, Left, Right };
-
-class SpatialNavigator : public QObject {
-    Q_OBJECT
+class VimClipboard {
 public:
-    explicit SpatialNavigator(QObject* parent = nullptr);
-    void moveFocus(Direction dir);
+    // Store rows [fromRow, fromRow+count) from view's model
+    void yank(QAbstractItemView* view, int fromRow, int count);
+    // Store selected rows from view's selection model
+    void yankSelection(QAbstractItemView* view);
+    // Returns true if the clipboard has data
+    bool hasData() const;
+    // Paste stored rows into view after/before targetRow
+    // For playlist views: read track list, splice, call replacePlaylistTracks
+    void paste(QAbstractItemView* view, int targetRow, bool before,
+               Fooyin::PlaylistHandler* playlistHandler);
 private:
-    void onFocusChanged(QWidget* old, QWidget* now);
-    QWidget* resolveLastVisited(QWidget* widget);
-    QMap<QSplitter*, int> m_lastVisited;
+    QList<QVariantList> m_rows; // one QVariantList of Qt::DisplayRole per row
 };
 ```
 
-**Algorithm (from §8 of this plan):**
-1. Start from `QApplication::focusWidget()`. Walk up parent chain looking for a `QSplitter`
-   whose orientation matches the direction (`Horizontal` for Left/Right, `Vertical` for Up/Down).
-2. At each matching splitter, check if moving in the requested direction (index ± 1) is valid:
-   - Yes → `resolveLastVisited(sibling)` → `setFocus()` → update `m_lastVisited` → done.
-   - No (edge) → continue walking up.
-3. If the top of the tree is reached, do nothing.
+**Paste implementation note (Unknown #3 resolved):** `PlaylistHandler` has no insert-at-position
+method. Paste must:
+1. Get the current playlist from `PlaylistHandler::playlistModel()` or similar
+2. Read its full track list
+3. Splice the yanked tracks at the target position
+4. Call `replacePlaylistTracks(playlist, newList)`
 
-**`resolveLastVisited(widget)`:**
-- `QSplitter*` → recurse into `widget(m_lastVisited.value(splitter, 0))`
-- `QAbstractItemView*` or other focusable → return it
-- Other → walk down to first visible focusable child
+**Wire into `VimHandler`:**
+- Add `VimClipboard m_clipboard` member (value, not pointer).
+- Add `Fooyin::PlaylistHandler* m_playlistHandler{nullptr}` member; populate from
+  `VimMotionsPlugin::initialise(const CorePluginContext&)` and pass to VimHandler.
+- Implement the five stubs:
+  - `deleteRows(count)` — remove rows from view model + yank them
+  - `yankRows(count)` — yank without removing
+  - `deleteVisualSelection()` — delete m_visualAnchor…m_visualCursor range
+  - `yankVisualSelection()` — yank that range
+  - `pasteAfter()` / `pasteBefore()` — call `m_clipboard.paste(…)`
 
-**Track last visited:** connect to `QApplication::focusChanged`; for each `QSplitter` ancestor
-of `now`, record the index of the child subtree containing `now` in `m_lastVisited`.
-
-**Wire into `VimHandler`:** replace the four `/* Phase 4: spatial focus */` stubs in
-`handleNormalKey` with calls to `m_spatialNavigator->moveFocus(Direction::*)`.
-Add `SpatialNavigator* m_spatialNavigator{nullptr}` member and construct in `VimHandler`'s
-constructor (same as `m_viewLocator`).
+**Deleting rows from a playlist view:**
+Use `PlaylistHandler::replacePlaylistTracks` — read full list, remove the rows, write back.

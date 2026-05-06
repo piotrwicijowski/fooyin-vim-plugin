@@ -99,6 +99,8 @@ set(PLUGIN_SOURCES
     src/vimhandler.h
     src/viewlocator.cpp
     src/viewlocator.h
+    src/spatialnavigator.cpp
+    src/spatialnavigator.h
 )
 
 if(Fooyin_FOUND)

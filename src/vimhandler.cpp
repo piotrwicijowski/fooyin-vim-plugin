@@ -1,4 +1,5 @@
 #include "vimhandler.h"
+#include "spatialnavigator.h"
 #include "viewlocator.h"
 
 #include <QAbstractItemView>
@@ -13,6 +14,7 @@ namespace Fooyin::VimMotions {
 VimHandler::VimHandler(QObject* parent)
     : QObject{parent}
     , m_viewLocator{new ViewLocator(this)}
+    , m_spatialNavigator{new SpatialNavigator(this)}
 { }
 
 VimHandler::Mode VimHandler::mode() const
@@ -52,10 +54,10 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     // Ctrl combinations handled first
     if (mods & Qt::ControlModifier) {
         switch (qtKey) {
-            case Qt::Key_J: /* Phase 4: spatial focus down  */ return true;
-            case Qt::Key_K: /* Phase 4: spatial focus up    */ return true;
-            case Qt::Key_H: /* Phase 4: spatial focus left  */ return true;
-            case Qt::Key_L: /* Phase 4: spatial focus right */ return true;
+            case Qt::Key_J: m_spatialNavigator->moveFocus(Direction::Down);  return true;
+            case Qt::Key_K: m_spatialNavigator->moveFocus(Direction::Up);    return true;
+            case Qt::Key_H: m_spatialNavigator->moveFocus(Direction::Left);  return true;
+            case Qt::Key_L: m_spatialNavigator->moveFocus(Direction::Right); return true;
             case Qt::Key_D: moveCursorHalfPage(+1); return true;
             case Qt::Key_U: moveCursorHalfPage(-1); return true;
             default: return true;

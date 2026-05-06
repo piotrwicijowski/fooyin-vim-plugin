@@ -7,6 +7,7 @@ class QKeyEvent;
 namespace Fooyin::VimMotions {
 
 class ViewLocator;
+class SpatialNavigator;
 
 class VimHandler : public QObject
 {
@@ -56,7 +57,8 @@ private:
     int  m_visualAnchor{-1};
     int  m_visualCursor{-1};
     bool m_suppressFilter{false};
-    ViewLocator* m_viewLocator{nullptr};
+    ViewLocator*      m_viewLocator{nullptr};
+    SpatialNavigator* m_spatialNavigator{nullptr};
 };
 
 } // namespace Fooyin::VimMotions
