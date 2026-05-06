@@ -369,7 +369,7 @@ Visual-mode `j`/`k` are handled inside the state machine (not separate registrat
 
 ### What has been implemented
 
-**Phases 1–5 are complete.** The following files exist and compile:
+**All phases (1–7) are complete.** The following files exist and compile:
 
 ```
 fooyin-vim-plugin/
@@ -390,6 +390,8 @@ fooyin-vim-plugin/
     vimclipboard.h/.cpp      — TrackList yank buffer; paste splices into playlist
                                via PlaylistHandler::replacePlaylistTracks
 ```
+
+All 17 vim actions are registered with `ActionManager` under the "Vim Motions" category with their default shortcuts. Two-key sequences (`gg`, `dd`, `yy`) and count prefixes are parser-internal and not registered as individual actions.
 
 ### Build instructions
 
