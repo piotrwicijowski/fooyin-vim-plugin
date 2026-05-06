@@ -4,6 +4,7 @@
 
 #include <QObject>
 
+class QAbstractItemView;
 class QKeyEvent;
 
 namespace Fooyin {
@@ -64,6 +65,11 @@ private:
     // activePlaylist() first (the playing one); falls back to matching by
     // row count, then to the first available playlist.
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
+
+    // Defers a ClearAndSelect on (row, col) until the model has settled at
+    // expectedRowCount rows. Handles both the sync in-memory reset and a
+    // possible second async database-write reset from fooyin.
+    void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
 
     Mode  m_mode{Mode::Normal};
     int   m_count{0};

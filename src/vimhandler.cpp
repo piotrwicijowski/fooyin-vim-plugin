@@ -10,6 +10,8 @@
 #include <QCoreApplication>
 #include <QItemSelection>
 #include <QKeyEvent>
+#include <QPointer>
+#include <QTimer>
 #include <algorithm>
 #include <utility>
 
@@ -551,6 +553,45 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
     return nullptr;
 }
 
+void VimHandler::scheduleIndexRestore(QAbstractItemView* view, int row, int col,
+                                      int expectedRowCount)
+{
+    if (!view || !view->model() || !view->selectionModel()) return;
+
+    QPointer<QAbstractItemView> viewPtr{view};
+
+    // Restore the cursor once the model reaches expectedRowCount rows.
+    // The row-count guard prevents firing prematurely if a stale signal arrives.
+    auto restore = [viewPtr, row, col, expectedRowCount]() {
+        if (!viewPtr || !viewPtr->model()) return;
+        if (viewPtr->model()->rowCount() != expectedRowCount) {
+            qCDebug(VIM_LOG) << "scheduleIndexRestore: rowCount"
+                             << viewPtr->model()->rowCount() << "!= expected"
+                             << expectedRowCount << ", skipping";
+            return;
+        }
+        const QModelIndex idx = viewPtr->model()->index(row, col);
+        if (!idx.isValid()) return;
+        viewPtr->selectionModel()->setCurrentIndex(
+            idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        qCDebug(VIM_LOG) << "scheduleIndexRestore: cursor restored to row" << row;
+    };
+
+    // Attempt 1: after the sync in-memory modelReset's handlers complete.
+    QTimer::singleShot(0, this, restore);
+
+    // Attempt 2: fooyin emits a second modelReset when the async DB write finishes.
+    // Catch it once and defer the restore by one more event-loop tick so the view
+    // finishes processing the reset before we set the index.
+    QObject::connect(view->model(), &QAbstractItemModel::modelReset,
+        view->model(),
+        [restore, viewPtr]() mutable {
+            qCDebug(VIM_LOG) << "scheduleIndexRestore: caught async modelReset, deferring restore";
+            QTimer::singleShot(0, viewPtr, restore);
+        },
+        Qt::SingleShotConnection);
+}
+
 // ---------------------------------------------------------------------------
 // Yank / delete / paste  (playlist views only; no-op for other view types)
 // ---------------------------------------------------------------------------
@@ -673,15 +714,18 @@ void VimHandler::pasteAfter()
         qCWarning(VIM_LOG) << "pasteAfter: no active playlist";
         return;
     }
-    const int targetRow = (view->currentIndex().isValid() ? view->currentIndex().row() : -1) + 1;
+    const int originalRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    const int targetRow   = originalRow + 1;
     Fooyin::TrackList all = playlist->tracks();
-    const int insertPos = std::clamp(targetRow, 0, static_cast<int>(all.size()));
+    const int insertPos   = std::clamp(targetRow, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "pasteAfter: playlist=" << playlist->name()
-                     << "insertPos=" << insertPos
+                     << "originalRow=" << originalRow << "insertPos=" << insertPos
                      << "trackCount=" << m_clipboard.tracks().size();
     all.insert(all.begin() + insertPos,
                m_clipboard.tracks().begin(), m_clipboard.tracks().end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    scheduleIndexRestore(view, originalRow, col, static_cast<int>(all.size()));
 }
 
 void VimHandler::pasteBefore()
@@ -700,15 +744,17 @@ void VimHandler::pasteBefore()
         qCWarning(VIM_LOG) << "pasteBefore: no active playlist";
         return;
     }
-    const int targetRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const int originalRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     Fooyin::TrackList all = playlist->tracks();
-    const int insertPos = std::clamp(targetRow, 0, static_cast<int>(all.size()));
+    const int insertPos   = std::clamp(originalRow, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "pasteBefore: playlist=" << playlist->name()
-                     << "insertPos=" << insertPos
+                     << "originalRow=" << originalRow << "insertPos=" << insertPos
                      << "trackCount=" << m_clipboard.tracks().size();
     all.insert(all.begin() + insertPos,
                m_clipboard.tracks().begin(), m_clipboard.tracks().end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    scheduleIndexRestore(view, originalRow, col, static_cast<int>(all.size()));
 }
 
 // ---------------------------------------------------------------------------
@@ -751,7 +797,7 @@ void VimHandler::moveRows(int delta)
     all.insert(all.begin() + insertPos, moved);
 
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
-    view->setCurrentIndex(view->model()->index(insertPos, col));
+    scheduleIndexRestore(view, insertPos, col, static_cast<int>(all.size()));
 }
 
 void VimHandler::moveVisualSelection(int delta)
