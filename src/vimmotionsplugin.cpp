@@ -42,25 +42,32 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
         cmd->setCategories(categories);
     };
 
-    reg("Cursor Down",    "VimMotions.CursorDown",   QKeySequence{"j"});
-    reg("Cursor Up",      "VimMotions.CursorUp",     QKeySequence{"k"});
-    reg("Cursor Top",     "VimMotions.CursorTop");                         // two-key: gg
-    reg("Cursor Bottom",  "VimMotions.CursorBottom",  QKeySequence{"G"});
+    // Single-char keys: no QKeySequence registered. They are handled by the event
+    // filter in VimHandler via ShortcutOverride. Registering a Qt shortcut for
+    // bare characters (j, k, v, ...) would cause them to be consumed by the
+    // shortcut system in Insert mode, preventing normal fooyin key handling.
+    reg("Cursor Down",    "VimMotions.CursorDown");    // j
+    reg("Cursor Up",      "VimMotions.CursorUp");      // k
+    reg("Cursor Top",     "VimMotions.CursorTop");     // gg
+    reg("Cursor Bottom",  "VimMotions.CursorBottom");  // G
+    reg("Activate",       "VimMotions.Activate");      // Enter
+    reg("Visual Mode",    "VimMotions.VisualMode");    // v
+    reg("Delete Line",    "VimMotions.DeleteLine");    // dd
+    reg("Yank Line",      "VimMotions.YankLine");      // yy
+    reg("Paste After",    "VimMotions.PasteAfter");    // p
+    reg("Paste Before",   "VimMotions.PasteBefore");   // P
+    reg("Insert Mode",    "VimMotions.InsertMode");    // i
+
+    // Ctrl/Alt combos are safe to register as real shortcuts — they do not
+    // conflict with fooyin's normal single-key bindings.
     reg("Half Page Down", "VimMotions.HalfPageDown",  QKeySequence{"Ctrl+D"});
     reg("Half Page Up",   "VimMotions.HalfPageUp",    QKeySequence{"Ctrl+U"});
-    reg("Activate",       "VimMotions.Activate",      QKeySequence{Qt::Key_Return});
-    reg("Visual Mode",    "VimMotions.VisualMode",    QKeySequence{"v"});
-    reg("Delete Line",    "VimMotions.DeleteLine");                        // two-key: dd
-    reg("Yank Line",      "VimMotions.YankLine");                          // two-key: yy
-    reg("Paste After",    "VimMotions.PasteAfter",   QKeySequence{"p"});
-    reg("Paste Before",   "VimMotions.PasteBefore",  QKeySequence{"P"});
-    reg("Insert Mode",    "VimMotions.InsertMode",   QKeySequence{"i"});
-    reg("Focus Down",     "VimMotions.FocusDown",    QKeySequence{"Ctrl+J"});
-    reg("Focus Up",       "VimMotions.FocusUp",      QKeySequence{"Ctrl+K"});
-    reg("Focus Left",     "VimMotions.FocusLeft",    QKeySequence{"Ctrl+H"});
-    reg("Focus Right",    "VimMotions.FocusRight",   QKeySequence{"Ctrl+L"});
-    reg("Move Down",      "VimMotions.MoveDown",     QKeySequence{"Alt+J"});
-    reg("Move Up",        "VimMotions.MoveUp",       QKeySequence{"Alt+K"});
+    reg("Focus Down",     "VimMotions.FocusDown",     QKeySequence{"Ctrl+J"});
+    reg("Focus Up",       "VimMotions.FocusUp",       QKeySequence{"Ctrl+K"});
+    reg("Focus Left",     "VimMotions.FocusLeft",     QKeySequence{"Ctrl+H"});
+    reg("Focus Right",    "VimMotions.FocusRight",    QKeySequence{"Ctrl+L"});
+    reg("Move Down",      "VimMotions.MoveDown",      QKeySequence{"Alt+J"});
+    reg("Move Up",        "VimMotions.MoveUp",        QKeySequence{"Alt+K"});
     qCInfo(VIM_LOG) << "VimMotionsPlugin: registered 19 actions under 'Vim Motions'";
 }
 

@@ -1,0 +1,2 @@
+set(__QT_DEPLOY_TARGET_fyplugin_vimmotions_FILE /workspace/fooyin-vim-plugin/build/fyplugin_vimmotions.so)
+set(__QT_DEPLOY_TARGET_fyplugin_vimmotions_TYPE MODULE_LIBRARY)

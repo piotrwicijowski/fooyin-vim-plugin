@@ -30,10 +30,33 @@ VimHandler::Mode VimHandler::mode() const
     return m_mode;
 }
 
-bool VimHandler::eventFilter(QObject* /*watched*/, QEvent* event)
+bool VimHandler::eventFilter(QObject* watched, QEvent* event)
 {
-    if (m_suppressFilter || event->type() != QEvent::KeyPress)
+    if (m_suppressFilter)
         return false;
+
+    const auto type = event->type();
+
+    // Qt sends ShortcutOverride before it would activate a matching QShortcut.
+    // If the receiver (or its filter) returns true here, Qt skips the shortcut
+    // and delivers the normal KeyPress instead. In Normal/Visual mode we claim
+    // every key so no registered shortcut can steal it from our handler.
+    if (type == QEvent::ShortcutOverride) {
+        auto* kev = static_cast<QKeyEvent*>(event);
+        qCDebug(VIM_LOG) << "eventFilter ShortcutOverride: key=" << kev->key()
+                         << "text=" << kev->text() << "mods=" << kev->modifiers()
+                         << "mode=" << static_cast<int>(m_mode)
+                         << "watched=" << watched->metaObject()->className();
+        if (m_mode == Mode::Normal || m_mode == Mode::Visual) {
+            kev->accept();
+            return true;
+        }
+        return false;
+    }
+
+    if (type != QEvent::KeyPress)
+        return false;
+
     return handleKeyPress(static_cast<QKeyEvent*>(event));
 }
 
@@ -295,6 +318,13 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
 void VimHandler::enterNormal()
 {
     qCInfo(VIM_LOG) << "Mode → Normal (from" << static_cast<int>(m_mode) << ")";
+    if (m_mode == Mode::Visual) {
+        // Clear the visual selection highlight; leave the current-item indicator
+        // where it is so the cursor stays at the last visual cursor position.
+        auto* view = m_viewLocator->activeView();
+        if (view && view->selectionModel())
+            view->selectionModel()->clearSelection();
+    }
     m_mode = Mode::Normal;
     m_pendingKey = {};
     m_count = 0;
@@ -464,8 +494,12 @@ void VimHandler::updateVisualSelection()
     sel.select(view->model()->index(top, 0),
                view->model()->index(bot, qMax(0, cols - 1)));
     view->selectionModel()->select(sel, QItemSelectionModel::ClearAndSelect);
-    view->setCurrentIndex(view->model()->index(m_visualCursor,
-                          view->currentIndex().isValid() ? view->currentIndex().column() : 0));
+    // Use NoUpdate so moving the current-item indicator does not implicitly
+    // clear the multi-row selection we just applied.
+    const int cursorCol = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    view->selectionModel()->setCurrentIndex(
+        view->model()->index(m_visualCursor, cursorCol),
+        QItemSelectionModel::NoUpdate);
 }
 
 // ---------------------------------------------------------------------------
