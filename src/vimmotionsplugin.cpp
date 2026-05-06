@@ -1,7 +1,10 @@
 #include "vimmotionsplugin.h"
+#include "vimhandler.h"
 
 #include <core/plugins/coreplugincontext.h>
 #include <gui/plugins/guiplugincontext.h>
+
+#include <QApplication>
 
 namespace Fooyin::VimMotions {
 
@@ -15,13 +18,17 @@ void VimMotionsPlugin::initialise(const CorePluginContext& /*context*/)
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& /*context*/)
 {
-    // Phase 2: construct VimHandler, install as event filter on QApplication
+    m_vimHandler = new VimHandler(this);
+    qApp->installEventFilter(m_vimHandler);
     // Phase 7: register all actions with context.actionManager
 }
 
 void VimMotionsPlugin::shutdown()
 {
-    // Phase 2: remove event filter
+    if (m_vimHandler) {
+        qApp->removeEventFilter(m_vimHandler);
+        m_vimHandler = nullptr;
+    }
 }
 
 } // namespace Fooyin::VimMotions

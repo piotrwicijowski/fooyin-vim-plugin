@@ -49,18 +49,20 @@ else()
         "${FOOYIN_BUILD_DIR}/src/utils"
     )
 
+    set(_fooyin_lib_dir "${FOOYIN_BUILD_DIR}/run/lib/fooyin")
+
     find_library(FOOYIN_CORE_LIB
-        NAMES FooyinCore
-        PATHS "${FOOYIN_BUILD_DIR}/src/core"
+        NAMES fooyin_core
+        PATHS "${_fooyin_lib_dir}"
         NO_DEFAULT_PATH)
     find_library(FOOYIN_GUI_LIB
-        NAMES FooyinGui
-        PATHS "${FOOYIN_BUILD_DIR}/src/gui"
+        NAMES fooyin_gui
+        PATHS "${_fooyin_lib_dir}"
         NO_DEFAULT_PATH)
 
     if(NOT FOOYIN_CORE_LIB OR NOT FOOYIN_GUI_LIB)
         message(FATAL_ERROR
-            "Could not find FooyinCore/FooyinGui in ${FOOYIN_BUILD_DIR}.\n"
+            "Could not find fooyin_core/fooyin_gui in ${_fooyin_lib_dir}.\n"
             "Ensure fooyin is fully built.")
     endif()
 
@@ -93,6 +95,8 @@ configure_file(vimmotions.json.in ${CMAKE_CURRENT_BINARY_DIR}/vimmotions.json)
 set(PLUGIN_SOURCES
     src/vimmotionsplugin.cpp
     src/vimmotionsplugin.h
+    src/vimhandler.cpp
+    src/vimhandler.h
 )
 
 if(Fooyin_FOUND)

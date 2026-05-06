@@ -12,6 +12,8 @@ struct GuiPluginContext;
 
 namespace VimMotions {
 
+class VimHandler;
+
 class VimMotionsPlugin : public QObject,
                          public Plugin,
                          public CorePlugin,
@@ -28,6 +30,9 @@ public:
     void initialise(const CorePluginContext& context) override;
     void initialise(const GuiPluginContext& context) override;
     void shutdown() override;
+
+private:
+    VimHandler* m_vimHandler{nullptr};
 };
 
 } // namespace VimMotions

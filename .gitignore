@@ -1,0 +1,36 @@
+# Build directories
+build/
+build-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Qt AUTOMOC / AUTOUIC / AUTORCC
+*_autogen/
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# Compiled output
+*.so
+*.so.*
+*.a
+*.o
+
+# clangd
+.cache/
+.clangd/
+
+# IDE
+.vscode/
+.idea/
+*.user
+*.pro.user
+*.qbs.user
