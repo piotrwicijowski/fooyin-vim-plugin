@@ -319,11 +319,17 @@ void VimHandler::enterNormal()
 {
     qCInfo(VIM_LOG) << "Mode → Normal (from" << static_cast<int>(m_mode) << ")";
     if (m_mode == Mode::Visual) {
-        // Clear the visual selection highlight; leave the current-item indicator
-        // where it is so the cursor stays at the last visual cursor position.
+        // Collapse the visual selection to the cursor row so the paste target
+        // remains highlighted after leaving Visual mode.
         auto* view = m_viewLocator->activeView();
-        if (view && view->selectionModel())
-            view->selectionModel()->clearSelection();
+        if (view && view->model() && view->selectionModel()) {
+            const int row = qMax(0, m_visualCursor);
+            const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+            const QModelIndex idx = view->model()->index(row, col);
+            view->selectionModel()->setCurrentIndex(
+                idx.isValid() ? idx : view->currentIndex(),
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        }
     }
     m_mode = Mode::Normal;
     m_pendingKey = {};
@@ -512,6 +518,39 @@ void VimHandler::setPlaylistHandler(Fooyin::PlaylistHandler* handler)
     m_playlistHandler = handler;
 }
 
+Fooyin::Playlist* VimHandler::targetPlaylist() const
+{
+    if (!m_playlistHandler) return nullptr;
+
+    // Prefer the currently playing playlist.
+    if (auto* p = m_playlistHandler->activePlaylist()) {
+        qCDebug(VIM_LOG) << "targetPlaylist: active (playing):" << p->name();
+        return p;
+    }
+
+    // Fall back: find a playlist whose track count matches the view's row count.
+    auto* view = m_viewLocator->activeView();
+    const int viewRows = (view && view->model()) ? view->model()->rowCount() : -1;
+
+    for (auto* p : m_playlistHandler->playlists()) {
+        if (p && (viewRows < 0 || p->trackCount() == viewRows)) {
+            qCDebug(VIM_LOG) << "targetPlaylist: matched by row count (" << viewRows
+                             << "):" << p->name();
+            return p;
+        }
+    }
+
+    // Last resort: first available playlist.
+    const auto all = m_playlistHandler->playlists();
+    if (!all.empty()) {
+        qCDebug(VIM_LOG) << "targetPlaylist: using first available:" << all.front()->name();
+        return all.front();
+    }
+
+    qCWarning(VIM_LOG) << "targetPlaylist: no playlist found";
+    return nullptr;
+}
+
 // ---------------------------------------------------------------------------
 // Yank / delete / paste  (playlist views only; no-op for other view types)
 // ---------------------------------------------------------------------------
@@ -523,9 +562,9 @@ void VimHandler::yankRows(int count)
         qCWarning(VIM_LOG) << "yankRows: no active view or no PlaylistHandler";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
-        qCWarning(VIM_LOG) << "yankRows: no active playlist";
+        qCWarning(VIM_LOG) << "yankRows: no playlist found";
         return;
     }
     const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
@@ -536,6 +575,12 @@ void VimHandler::yankRows(int count)
                      << "startRow=" << row << "requestedCount=" << count
                      << "actualCount=" << actualCount;
     m_clipboard.yank(Fooyin::TrackList(all.begin() + row, all.begin() + end));
+
+    // Re-assert the selection so the cursor row stays highlighted as the paste target.
+    if (view->selectionModel() && view->currentIndex().isValid())
+        view->selectionModel()->setCurrentIndex(
+            view->currentIndex(),
+            QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
 
 void VimHandler::deleteRows(int count)
@@ -545,9 +590,9 @@ void VimHandler::deleteRows(int count)
         qCWarning(VIM_LOG) << "deleteRows: no active view or no PlaylistHandler";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
-        qCWarning(VIM_LOG) << "deleteRows: no active playlist";
+        qCWarning(VIM_LOG) << "deleteRows: no playlist found";
         return;
     }
     const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
@@ -569,9 +614,9 @@ void VimHandler::yankVisualSelection()
         qCWarning(VIM_LOG) << "yankVisualSelection: no PlaylistHandler";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
-        qCWarning(VIM_LOG) << "yankVisualSelection: no active playlist";
+        qCWarning(VIM_LOG) << "yankVisualSelection: no playlist found";
         return;
     }
     const int top = qMin(m_visualAnchor, m_visualCursor);
@@ -595,7 +640,7 @@ void VimHandler::deleteVisualSelection()
         qCWarning(VIM_LOG) << "deleteVisualSelection: no PlaylistHandler";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
         qCWarning(VIM_LOG) << "deleteVisualSelection: no active playlist";
         return;
@@ -623,7 +668,7 @@ void VimHandler::pasteAfter()
         qCWarning(VIM_LOG) << "pasteAfter: no active view";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
         qCWarning(VIM_LOG) << "pasteAfter: no active playlist";
         return;
@@ -650,7 +695,7 @@ void VimHandler::pasteBefore()
         qCWarning(VIM_LOG) << "pasteBefore: no active view";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
         qCWarning(VIM_LOG) << "pasteBefore: no active playlist";
         return;
@@ -681,7 +726,7 @@ void VimHandler::moveRows(int delta)
         qCWarning(VIM_LOG) << "moveRows: no active view";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
         qCWarning(VIM_LOG) << "moveRows: no active playlist";
         return;
@@ -720,7 +765,7 @@ void VimHandler::moveVisualSelection(int delta)
         qCWarning(VIM_LOG) << "moveVisualSelection: no active view";
         return;
     }
-    auto* playlist = m_playlistHandler->activePlaylist();
+    auto* playlist = targetPlaylist();
     if (!playlist) {
         qCWarning(VIM_LOG) << "moveVisualSelection: no active playlist";
         return;

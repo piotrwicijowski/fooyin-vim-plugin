@@ -7,6 +7,7 @@
 class QKeyEvent;
 
 namespace Fooyin {
+class Playlist;
 class PlaylistHandler;
 } // namespace Fooyin
 
@@ -58,6 +59,11 @@ private:
     void updateVisualSelection();
     void moveRows(int delta);
     void moveVisualSelection(int delta);
+
+    // Returns the playlist the visible PlaylistView is showing. Uses
+    // activePlaylist() first (the playing one); falls back to matching by
+    // row count, then to the first available playlist.
+    [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
 
     Mode  m_mode{Mode::Normal};
     int   m_count{0};
