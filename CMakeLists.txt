@@ -97,6 +97,8 @@ set(PLUGIN_SOURCES
     src/vimmotionsplugin.h
     src/vimhandler.cpp
     src/vimhandler.h
+    src/viewlocator.cpp
+    src/viewlocator.h
 )
 
 if(Fooyin_FOUND)

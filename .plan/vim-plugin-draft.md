@@ -369,7 +369,7 @@ Visual-mode `j`/`k` are handled inside the state machine (not separate registrat
 
 ### What has been implemented
 
-**Phases 1 and 2 are complete.** The following files exist and compile:
+**Phases 1, 2, and 3 are complete.** The following files exist and compile:
 
 ```
 fooyin-vim-plugin/
@@ -379,8 +379,12 @@ fooyin-vim-plugin/
   vimmotions.json.in      — plugin metadata
   src/
     vimmotionsplugin.h/.cpp  — plugin entry point; installs VimHandler on qApp
-    vimhandler.h/.cpp        — event filter + Normal/Visual/Insert state machine
-                               (Phase 3+ action methods are stubs)
+    vimhandler.h/.cpp        — event filter + full Normal/Visual/Insert state machine;
+                               j/k/gg/G/Ctrl+d/Ctrl+u/Enter/o/v all wired up;
+                               visual selection updates Qt selection model;
+                               Phase 5-6 paste/yank/delete are stubs
+    viewlocator.h/.cpp       — finds focused QAbstractItemView via focus-widget walk
+                               with QPointer cache invalidated on focusChanged
 ```
 
 ### Build instructions
@@ -398,83 +402,51 @@ cmake --build build
 # output: build/fyplugin_vimmotions.so
 ```
 
-### What to do next — Phase 3
+### What to do next — Phase 4
 
-Implement `ViewLocator` and wire cursor-navigation actions into `VimHandler`.
+Implement `SpatialNavigator` for `Ctrl+j/k/h/l` focus switching between views.
 
 **Files to create:**
 ```
-src/viewlocator.h
-src/viewlocator.cpp
+src/spatialnavigator.h
+src/spatialnavigator.cpp
 ```
 
 **Add to `PLUGIN_SOURCES` in `CMakeLists.txt`.**
 
-**`ViewLocator` API:**
+**`SpatialNavigator` API:**
 ```cpp
-class ViewLocator : public QObject {
+enum class Direction { Up, Down, Left, Right };
+
+class SpatialNavigator : public QObject {
     Q_OBJECT
 public:
-    explicit ViewLocator(QObject* parent = nullptr);
-    QAbstractItemView* activeView() const;   // may return nullptr
+    explicit SpatialNavigator(QObject* parent = nullptr);
+    void moveFocus(Direction dir);
 private:
-    // invalidate on focusChanged
-    mutable QPointer<QAbstractItemView> m_cached;
+    void onFocusChanged(QWidget* old, QWidget* now);
+    QWidget* resolveLastVisited(QWidget* widget);
+    QMap<QSplitter*, int> m_lastVisited;
 };
 ```
 
-Strategy (from §7 of this plan):
-1. Walk `QApplication::focusWidget()` up parent chain looking for `QAbstractItemView`.
-2. If none, walk main window's widget tree for first visible `QAbstractItemView`.
-3. Cache and invalidate on `QApplication::focusChanged`.
+**Algorithm (from §8 of this plan):**
+1. Start from `QApplication::focusWidget()`. Walk up parent chain looking for a `QSplitter`
+   whose orientation matches the direction (`Horizontal` for Left/Right, `Vertical` for Up/Down).
+2. At each matching splitter, check if moving in the requested direction (index ± 1) is valid:
+   - Yes → `resolveLastVisited(sibling)` → `setFocus()` → update `m_lastVisited` → done.
+   - No (edge) → continue walking up.
+3. If the top of the tree is reached, do nothing.
 
-**Wire into `VimHandler`:**
-- Add `ViewLocator* m_viewLocator` member.
-- Construct it in `VimHandler`'s constructor (or pass from plugin).
-- Fill in the stub action methods using `m_viewLocator->activeView()`:
+**`resolveLastVisited(widget)`:**
+- `QSplitter*` → recurse into `widget(m_lastVisited.value(splitter, 0))`
+- `QAbstractItemView*` or other focusable → return it
+- Other → walk down to first visible focusable child
 
-```cpp
-void VimHandler::moveCursor(int delta) {
-    auto* view = m_viewLocator->activeView();
-    if (!view) return;
-    auto* model = view->model();
-    int row = view->currentIndex().row();
-    int newRow = std::clamp(row + delta, 0, model->rowCount() - 1);
-    view->setCurrentIndex(model->index(newRow, 0));
-}
+**Track last visited:** connect to `QApplication::focusChanged`; for each `QSplitter` ancestor
+of `now`, record the index of the child subtree containing `now` in `m_lastVisited`.
 
-void VimHandler::jumpToFirst() {
-    auto* view = m_viewLocator->activeView();
-    if (!view) return;
-    view->setCurrentIndex(view->model()->index(0, 0));
-}
-
-void VimHandler::jumpToLast() {
-    auto* view = m_viewLocator->activeView();
-    if (!view) return;
-    int last = view->model()->rowCount() - 1;
-    view->setCurrentIndex(view->model()->index(last, 0));
-}
-
-void VimHandler::jumpToRow(int row) {
-    auto* view = m_viewLocator->activeView();
-    if (!view) return;
-    int clamped = std::clamp(row, 0, view->model()->rowCount() - 1);
-    view->setCurrentIndex(view->model()->index(clamped, 0));
-}
-
-void VimHandler::moveCursorHalfPage(int direction) {
-    auto* view = m_viewLocator->activeView();
-    if (!view) return;
-    int visible = view->height() / view->sizeHintForRow(0);  // approx
-    moveCursor(direction * (visible / 2));
-}
-
-void VimHandler::activateCurrentRow() {
-    auto* view = m_viewLocator->activeView();
-    if (!view) return;
-    view->activated(view->currentIndex());
-}
-```
-
-Also seed `m_visualAnchor`/`m_visualCursor` from `activeView()->currentIndex().row()` in `enterVisual()`.
+**Wire into `VimHandler`:** replace the four `/* Phase 4: spatial focus */` stubs in
+`handleNormalKey` with calls to `m_spatialNavigator->moveFocus(Direction::*)`.
+Add `SpatialNavigator* m_spatialNavigator{nullptr}` member and construct in `VimHandler`'s
+constructor (same as `m_viewLocator`).

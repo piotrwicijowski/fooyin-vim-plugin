@@ -1,12 +1,18 @@
 #include "vimhandler.h"
+#include "viewlocator.h"
 
+#include <QAbstractItemView>
+#include <QCoreApplication>
+#include <QItemSelection>
 #include <QKeyEvent>
+#include <algorithm>
 #include <utility>
 
 namespace Fooyin::VimMotions {
 
 VimHandler::VimHandler(QObject* parent)
     : QObject{parent}
+    , m_viewLocator{new ViewLocator(this)}
 { }
 
 VimHandler::Mode VimHandler::mode() const
@@ -16,7 +22,7 @@ VimHandler::Mode VimHandler::mode() const
 
 bool VimHandler::eventFilter(QObject* /*watched*/, QEvent* event)
 {
-    if (event->type() != QEvent::KeyPress)
+    if (m_suppressFilter || event->type() != QEvent::KeyPress)
         return false;
     return handleKeyPress(static_cast<QKeyEvent*>(event));
 }
@@ -148,8 +154,18 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     const int count = m_count > 0 ? m_count : 1;
     m_count = 0;
 
-    if (ch == u'j') { m_visualCursor += count;                      updateVisualSelection(); return true; }
-    if (ch == u'k') { m_visualCursor -= count;                      updateVisualSelection(); return true; }
+    if (ch == u'j') {
+        auto* view = m_viewLocator->activeView();
+        const int last = (view && view->model()) ? view->model()->rowCount() - 1 : INT_MAX;
+        m_visualCursor = std::clamp(m_visualCursor + count, 0, qMax(0, last));
+        updateVisualSelection();
+        return true;
+    }
+    if (ch == u'k') {
+        m_visualCursor = qMax(0, m_visualCursor - count);
+        updateVisualSelection();
+        return true;
+    }
     if (ch == u'o') { std::swap(m_visualAnchor, m_visualCursor);    updateVisualSelection(); return true; }
     if (ch == u'd') { deleteVisualSelection(); enterNormal();        return true; }
     if (ch == u'y') { yankVisualSelection();   enterNormal();        return true; }
@@ -178,21 +194,103 @@ void VimHandler::enterInsert()
 void VimHandler::enterVisual()
 {
     m_mode = Mode::Visual;
-    // Phase 3: seed anchor/cursor from ViewLocator's current row
-    m_visualAnchor = 0;
-    m_visualCursor = 0;
+    auto* view = m_viewLocator->activeView();
+    if (view && view->currentIndex().isValid()) {
+        m_visualAnchor = view->currentIndex().row();
+        m_visualCursor = m_visualAnchor;
+    } else {
+        m_visualAnchor = 0;
+        m_visualCursor = 0;
+    }
+    updateVisualSelection();
     emit modeChanged(m_mode);
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 stubs — cursor navigation
+// Cursor navigation
 // ---------------------------------------------------------------------------
-void VimHandler::moveCursor(int /*delta*/)          { }
-void VimHandler::jumpToFirst()                      { }
-void VimHandler::jumpToLast()                       { }
-void VimHandler::jumpToRow(int /*row*/)             { }
-void VimHandler::moveCursorHalfPage(int /*dir*/)    { }
-void VimHandler::activateCurrentRow()               { }
+
+void VimHandler::moveCursor(int delta)
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model()) return;
+    const int last = view->model()->rowCount() - 1;
+    if (last < 0) return;
+    const int col  = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    const int row  = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    view->setCurrentIndex(view->model()->index(std::clamp(row + delta, 0, last), col));
+}
+
+void VimHandler::jumpToFirst()
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model() || view->model()->rowCount() == 0) return;
+    const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    view->setCurrentIndex(view->model()->index(0, col));
+}
+
+void VimHandler::jumpToLast()
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model()) return;
+    const int last = view->model()->rowCount() - 1;
+    if (last < 0) return;
+    const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    view->setCurrentIndex(view->model()->index(last, col));
+}
+
+void VimHandler::jumpToRow(int row)
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model()) return;
+    const int last = view->model()->rowCount() - 1;
+    if (last < 0) return;
+    const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    view->setCurrentIndex(view->model()->index(std::clamp(row, 0, last), col));
+}
+
+void VimHandler::moveCursorHalfPage(int direction)
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view) return;
+    const QModelIndex cur = view->currentIndex();
+    int itemH = cur.isValid() ? view->visualRect(cur).height() : 0;
+    if (itemH <= 0) itemH = 20;
+    const int halfPage = qMax(1, view->height() / itemH / 2);
+    moveCursor(direction * halfPage);
+}
+
+void VimHandler::activateCurrentRow()
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view) return;
+    const QModelIndex idx = view->currentIndex();
+    if (!idx.isValid()) return;
+    // Send a synthetic Return key event; m_suppressFilter prevents re-entry
+    QKeyEvent ev(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    m_suppressFilter = true;
+    QCoreApplication::sendEvent(view, &ev);
+    m_suppressFilter = false;
+}
+
+// ---------------------------------------------------------------------------
+// Visual selection
+// ---------------------------------------------------------------------------
+
+void VimHandler::updateVisualSelection()
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model() || !view->selectionModel()) return;
+    const int cols = view->model()->columnCount();
+    const int top  = qMin(m_visualAnchor, m_visualCursor);
+    const int bot  = qMax(m_visualAnchor, m_visualCursor);
+    QItemSelection sel;
+    sel.select(view->model()->index(top, 0),
+               view->model()->index(bot, qMax(0, cols - 1)));
+    view->selectionModel()->select(sel, QItemSelectionModel::ClearAndSelect);
+    view->setCurrentIndex(view->model()->index(m_visualCursor,
+                          view->currentIndex().isValid() ? view->currentIndex().column() : 0));
+}
 
 // ---------------------------------------------------------------------------
 // Phase 5-6 stubs — yank / delete / paste
@@ -203,6 +301,5 @@ void VimHandler::deleteVisualSelection()            { }
 void VimHandler::yankVisualSelection()              { }
 void VimHandler::pasteAfter()                       { }
 void VimHandler::pasteBefore()                      { }
-void VimHandler::updateVisualSelection()            { }
 
 } // namespace Fooyin::VimMotions
