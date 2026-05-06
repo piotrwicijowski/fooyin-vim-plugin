@@ -95,6 +95,8 @@ configure_file(vimmotions.json.in ${CMAKE_CURRENT_BINARY_DIR}/vimmotions.json)
 set(PLUGIN_SOURCES
     src/vimmotionsplugin.cpp
     src/vimmotionsplugin.h
+    src/vimlog.h
+    src/vimlog.h
     src/vimhandler.cpp
     src/vimhandler.h
     src/viewlocator.cpp
