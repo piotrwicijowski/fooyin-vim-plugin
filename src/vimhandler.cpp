@@ -295,10 +295,24 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
         return true;
     }
     if (ch == u'd') {
-        qCDebug(VIM_LOG) << "Visual: 'd' → deleteVisualSelection [" << qMin(m_visualAnchor, m_visualCursor)
-                         << "," << qMax(m_visualAnchor, m_visualCursor) << "] → Normal";
+        const int top = qMin(m_visualAnchor, m_visualCursor);
+        const int bot = qMax(m_visualAnchor, m_visualCursor);
+        const int numDeleted  = bot - top + 1;
+        auto* delView = m_viewLocator->activeView();
+        const int delCol = delView && delView->currentIndex().isValid()
+                           ? delView->currentIndex().column() : 0;
+        auto* delPlaylist = targetPlaylist();
+        const int expectedRows = delPlaylist ? delPlaylist->trackCount() - numDeleted : 0;
+
+        qCDebug(VIM_LOG) << "Visual: 'd' → deleteVisualSelection ["
+                         << top << "," << bot << "] → Normal, expectedRows=" << expectedRows;
         deleteVisualSelection();
         enterNormal();
+
+        if (delView && expectedRows > 0) {
+            const int restoreRow = qMin(top, expectedRows - 1);
+            scheduleIndexRestore(delView, restoreRow, delCol, expectedRows);
+        }
         return true;
     }
     if (ch == u'y') {
@@ -636,17 +650,27 @@ void VimHandler::deleteRows(int count)
         qCWarning(VIM_LOG) << "deleteRows: no playlist found";
         return;
     }
-    const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
-    const int end = std::min(row + count, playlist->trackCount());
+    const int row         = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    const int beforeCount = playlist->trackCount();
+    const int end         = std::min(row + count, beforeCount);
+    const int numDeleted  = end - row;
+    const int expectedRows = beforeCount - numDeleted;
+    const int restoreRow  = (expectedRows > 0) ? qMin(row, expectedRows - 1) : 0;
+
     qCDebug(VIM_LOG) << "deleteRows: playlist=" << playlist->name()
                      << "rows [" << row << "," << (end - 1) << "]"
-                     << "count=" << (end - row);
+                     << "count=" << numDeleted
+                     << "restoreRow=" << restoreRow;
     yankRows(count);
     std::vector<int> indices;
-    indices.reserve(static_cast<size_t>(end - row));
+    indices.reserve(static_cast<size_t>(numDeleted));
     for (int i = row; i < end; ++i)
         indices.push_back(i);
     m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
+
+    if (expectedRows > 0)
+        scheduleIndexRestore(view, restoreRow, col, expectedRows);
 }
 
 void VimHandler::yankVisualSelection()
