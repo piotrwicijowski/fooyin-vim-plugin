@@ -11,14 +11,15 @@ namespace Fooyin::VimMotions {
 VimMotionsPlugin::VimMotionsPlugin() = default;
 VimMotionsPlugin::~VimMotionsPlugin() = default;
 
-void VimMotionsPlugin::initialise(const CorePluginContext& /*context*/)
+void VimMotionsPlugin::initialise(const CorePluginContext& context)
 {
-    // Phase 3+: store playlistHandler for track manipulation (dd/yy/p/P)
+    m_playlistHandler = context.playlistHandler;
 }
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& /*context*/)
 {
     m_vimHandler = new VimHandler(this);
+    m_vimHandler->setPlaylistHandler(m_playlistHandler);
     qApp->installEventFilter(m_vimHandler);
     // Phase 7: register all actions with context.actionManager
 }

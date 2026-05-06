@@ -85,7 +85,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Qt6
 # ---------------------------------------------------------------------------
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
 
 # ---------------------------------------------------------------------------
 # Plugin target
@@ -101,6 +101,8 @@ set(PLUGIN_SOURCES
     src/viewlocator.h
     src/spatialnavigator.cpp
     src/spatialnavigator.h
+    src/vimclipboard.cpp
+    src/vimclipboard.h
 )
 
 if(Fooyin_FOUND)
@@ -124,7 +126,8 @@ else()
 
     target_link_libraries(fyplugin_vimmotions PRIVATE
         Fooyin::Gui
-        Qt6::Widgets)
+        Qt6::Widgets
+        Qt6::Sql)
 
     install(TARGETS fyplugin_vimmotions
         LIBRARY DESTINATION ${FOOYIN_PLUGIN_INSTALL_DIR})

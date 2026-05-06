@@ -1,8 +1,14 @@
 #pragma once
 
+#include "vimclipboard.h"
+
 #include <QObject>
 
 class QKeyEvent;
+
+namespace Fooyin {
+class PlaylistHandler;
+} // namespace Fooyin
 
 namespace Fooyin::VimMotions {
 
@@ -20,6 +26,8 @@ public:
 
     [[nodiscard]] Mode mode() const;
 
+    void setPlaylistHandler(Fooyin::PlaylistHandler* handler);
+
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 signals:
@@ -34,7 +42,6 @@ private:
     void enterInsert();
     void enterVisual();
 
-    // Phase 3: cursor navigation (stubs)
     void moveCursor(int delta);
     void jumpToFirst();
     void jumpToLast();
@@ -42,7 +49,6 @@ private:
     void moveCursorHalfPage(int direction);
     void activateCurrentRow();
 
-    // Phase 5-6: yank/delete/paste (stubs)
     void deleteRows(int count);
     void yankRows(int count);
     void deleteVisualSelection();
@@ -51,14 +57,18 @@ private:
     void pasteBefore();
     void updateVisualSelection();
 
-    Mode m_mode{Mode::Normal};
-    int  m_count{0};
+    Mode  m_mode{Mode::Normal};
+    int   m_count{0};
     QChar m_pendingKey;
-    int  m_visualAnchor{-1};
-    int  m_visualCursor{-1};
-    bool m_suppressFilter{false};
+    int   m_visualAnchor{-1};
+    int   m_visualCursor{-1};
+    bool  m_suppressFilter{false};
+
     ViewLocator*      m_viewLocator{nullptr};
     SpatialNavigator* m_spatialNavigator{nullptr};
+
+    VimClipboard             m_clipboard;
+    Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
 };
 
 } // namespace Fooyin::VimMotions

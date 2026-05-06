@@ -2,6 +2,9 @@
 #include "spatialnavigator.h"
 #include "viewlocator.h"
 
+#include <core/playlist/playlist.h>
+#include <core/playlist/playlisthandler.h>
+
 #include <QAbstractItemView>
 #include <QCoreApplication>
 #include <QItemSelection>
@@ -295,13 +298,102 @@ void VimHandler::updateVisualSelection()
 }
 
 // ---------------------------------------------------------------------------
-// Phase 5-6 stubs — yank / delete / paste
+// PlaylistHandler wiring
 // ---------------------------------------------------------------------------
-void VimHandler::deleteRows(int /*count*/)          { }
-void VimHandler::yankRows(int /*count*/)            { }
-void VimHandler::deleteVisualSelection()            { }
-void VimHandler::yankVisualSelection()              { }
-void VimHandler::pasteAfter()                       { }
-void VimHandler::pasteBefore()                      { }
+
+void VimHandler::setPlaylistHandler(Fooyin::PlaylistHandler* handler)
+{
+    m_playlistHandler = handler;
+}
+
+// ---------------------------------------------------------------------------
+// Yank / delete / paste  (playlist views only; no-op for other view types)
+// ---------------------------------------------------------------------------
+
+void VimHandler::yankRows(int count)
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !m_playlistHandler) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+    const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const auto& all = playlist->tracks();
+    const int end = std::clamp(row + count, 0, static_cast<int>(all.size()));
+    m_clipboard.yank(Fooyin::TrackList(all.begin() + row, all.begin() + end));
+}
+
+void VimHandler::deleteRows(int count)
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !m_playlistHandler) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+    const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    const int end = std::min(row + count, playlist->trackCount());
+    yankRows(count);
+    std::vector<int> indices;
+    indices.reserve(static_cast<size_t>(end - row));
+    for (int i = row; i < end; ++i)
+        indices.push_back(i);
+    m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
+}
+
+void VimHandler::yankVisualSelection()
+{
+    if (!m_playlistHandler) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+    const int top = qMin(m_visualAnchor, m_visualCursor);
+    const int bot = qMax(m_visualAnchor, m_visualCursor);
+    const auto& all = playlist->tracks();
+    const int end = std::min(bot + 1, static_cast<int>(all.size()));
+    if (top >= static_cast<int>(all.size())) return;
+    m_clipboard.yank(Fooyin::TrackList(all.begin() + top, all.begin() + end));
+}
+
+void VimHandler::deleteVisualSelection()
+{
+    if (!m_playlistHandler) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+    yankVisualSelection();
+    const int top = qMin(m_visualAnchor, m_visualCursor);
+    const int bot = qMax(m_visualAnchor, m_visualCursor);
+    const int size = playlist->trackCount();
+    std::vector<int> indices;
+    for (int i = top; i <= bot && i < size; ++i)
+        indices.push_back(i);
+    m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
+}
+
+void VimHandler::pasteAfter()
+{
+    if (!m_clipboard.hasData() || !m_playlistHandler) return;
+    auto* view = m_viewLocator->activeView();
+    if (!view) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+    const int targetRow = (view->currentIndex().isValid() ? view->currentIndex().row() : -1) + 1;
+    Fooyin::TrackList all = playlist->tracks();
+    const int insertPos = std::clamp(targetRow, 0, static_cast<int>(all.size()));
+    all.insert(all.begin() + insertPos,
+               m_clipboard.tracks().begin(), m_clipboard.tracks().end());
+    m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+}
+
+void VimHandler::pasteBefore()
+{
+    if (!m_clipboard.hasData() || !m_playlistHandler) return;
+    auto* view = m_viewLocator->activeView();
+    if (!view) return;
+    auto* playlist = m_playlistHandler->activePlaylist();
+    if (!playlist) return;
+    const int targetRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    Fooyin::TrackList all = playlist->tracks();
+    const int insertPos = std::clamp(targetRow, 0, static_cast<int>(all.size()));
+    all.insert(all.begin() + insertPos,
+               m_clipboard.tracks().begin(), m_clipboard.tracks().end());
+    m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+}
 
 } // namespace Fooyin::VimMotions

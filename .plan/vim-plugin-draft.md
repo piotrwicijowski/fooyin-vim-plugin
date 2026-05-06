@@ -369,7 +369,7 @@ Visual-mode `j`/`k` are handled inside the state machine (not separate registrat
 
 ### What has been implemented
 
-**Phases 1–4 are complete.** The following files exist and compile:
+**Phases 1–5 are complete.** The following files exist and compile:
 
 ```
 fooyin-vim-plugin/
@@ -387,6 +387,8 @@ fooyin-vim-plugin/
                                with QPointer cache invalidated on focusChanged
     spatialnavigator.h/.cpp  — Ctrl+j/k/h/l QSplitter tree traversal; remembers
                                last-visited child per splitter in m_lastVisited
+    vimclipboard.h/.cpp      — TrackList yank buffer; paste splices into playlist
+                               via PlaylistHandler::replacePlaylistTracks
 ```
 
 ### Build instructions
@@ -404,54 +406,34 @@ cmake --build build
 # output: build/fyplugin_vimmotions.so
 ```
 
-### What to do next — Phase 5
+### What to do next — Phase 7
 
-Implement Visual mode delete (`d`) and yank (`y`), and Normal mode `dd`/`yy`/`p`/`P` via `VimClipboard`.
+Register all vim actions with `ActionManager` so they appear in Settings → Shortcuts.
 
-**Files to create:**
-```
-src/vimclipboard.h
-src/vimclipboard.cpp
-```
+**Wire in `VimMotionsPlugin::initialise(const GuiPluginContext& context)`:**
 
-**Add to `PLUGIN_SOURCES` in `CMakeLists.txt`.**
-
-**`VimClipboard` API:**
 ```cpp
-class VimClipboard {
-public:
-    // Store rows [fromRow, fromRow+count) from view's model
-    void yank(QAbstractItemView* view, int fromRow, int count);
-    // Store selected rows from view's selection model
-    void yankSelection(QAbstractItemView* view);
-    // Returns true if the clipboard has data
-    bool hasData() const;
-    // Paste stored rows into view after/before targetRow
-    // For playlist views: read track list, splice, call replacePlaylistTracks
-    void paste(QAbstractItemView* view, int targetRow, bool before,
-               Fooyin::PlaylistHandler* playlistHandler);
-private:
-    QList<QVariantList> m_rows; // one QVariantList of Qt::DisplayRole per row
-};
+auto* am = context.actionManager;
+const Id cat{"VimMotions"};
+am->registerAction(new QAction{tr("Cursor Down")},    {"VimMotions.CursorDown"},    {cat});
+am->registerAction(new QAction{tr("Cursor Up")},      {"VimMotions.CursorUp"},      {cat});
+am->registerAction(new QAction{tr("Cursor Top")},     {"VimMotions.CursorTop"},     {cat});
+am->registerAction(new QAction{tr("Cursor Bottom")},  {"VimMotions.CursorBottom"},  {cat});
+am->registerAction(new QAction{tr("Half Page Down")}, {"VimMotions.HalfPageDown"},  {cat});
+am->registerAction(new QAction{tr("Half Page Up")},   {"VimMotions.HalfPageUp"},    {cat});
+am->registerAction(new QAction{tr("Activate")},       {"VimMotions.Activate"},      {cat});
+am->registerAction(new QAction{tr("Visual Mode")},    {"VimMotions.VisualMode"},    {cat});
+am->registerAction(new QAction{tr("Delete Line")},    {"VimMotions.DeleteLine"},    {cat});
+am->registerAction(new QAction{tr("Yank Line")},      {"VimMotions.YankLine"},      {cat});
+am->registerAction(new QAction{tr("Paste After")},    {"VimMotions.PasteAfter"},    {cat});
+am->registerAction(new QAction{tr("Paste Before")},   {"VimMotions.PasteBefore"},   {cat});
+am->registerAction(new QAction{tr("Insert Mode")},    {"VimMotions.InsertMode"},    {cat});
+am->registerAction(new QAction{tr("Focus Down")},     {"VimMotions.FocusDown"},     {cat});
+am->registerAction(new QAction{tr("Focus Up")},       {"VimMotions.FocusUp"},       {cat});
+am->registerAction(new QAction{tr("Focus Left")},     {"VimMotions.FocusLeft"},     {cat});
+am->registerAction(new QAction{tr("Focus Right")},    {"VimMotions.FocusRight"},    {cat});
 ```
 
-**Paste implementation note (Unknown #3 resolved):** `PlaylistHandler` has no insert-at-position
-method. Paste must:
-1. Get the current playlist from `PlaylistHandler::playlistModel()` or similar
-2. Read its full track list
-3. Splice the yanked tracks at the target position
-4. Call `replacePlaylistTracks(playlist, newList)`
-
-**Wire into `VimHandler`:**
-- Add `VimClipboard m_clipboard` member (value, not pointer).
-- Add `Fooyin::PlaylistHandler* m_playlistHandler{nullptr}` member; populate from
-  `VimMotionsPlugin::initialise(const CorePluginContext&)` and pass to VimHandler.
-- Implement the five stubs:
-  - `deleteRows(count)` — remove rows from view model + yank them
-  - `yankRows(count)` — yank without removing
-  - `deleteVisualSelection()` — delete m_visualAnchor…m_visualCursor range
-  - `yankVisualSelection()` — yank that range
-  - `pasteAfter()` / `pasteBefore()` — call `m_clipboard.paste(…)`
-
-**Deleting rows from a playlist view:**
-Use `PlaylistHandler::replacePlaylistTracks` — read full list, remove the rows, write back.
+**Then read shortcuts back** from the registered `Command` objects inside `VimHandler` — so
+users can rebind keys in Settings and the plugin respects them. Check the `ActionManager` API
+(`utils/actions/actionmanager.h`) for the method signatures before implementing.
