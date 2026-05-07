@@ -1,6 +1,7 @@
 #include "spatialnavigator.h"
 #include "vimlog.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QSplitter>
 #include <QWidget>
@@ -15,11 +16,11 @@ SpatialNavigator::SpatialNavigator(QObject* parent)
     qCDebug(VIM_LOG) << "SpatialNavigator created";
 }
 
-void SpatialNavigator::moveFocus(Direction dir)
+void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
 {
-    QWidget* current = QApplication::focusWidget();
+    QWidget* current = startFrom ? startFrom : QApplication::focusWidget();
     if (!current) {
-        qCWarning(VIM_LOG) << "SpatialNavigator::moveFocus: no focused widget";
+        qCWarning(VIM_LOG) << "SpatialNavigator::moveFocus: no starting widget";
         return;
     }
 
@@ -30,7 +31,8 @@ void SpatialNavigator::moveFocus(Direction dir)
     qCDebug(VIM_LOG) << "SpatialNavigator::moveFocus: dir=" << static_cast<int>(dir)
                      << "orientation=" << (orientation == Qt::Horizontal ? "H" : "V")
                      << "step=" << step
-                     << "from=" << current->metaObject()->className();
+                     << "from=" << current->metaObject()->className()
+                     << "(startFrom=" << (startFrom ? startFrom->metaObject()->className() : "null") << ")";
 
     // Walk up the parent chain. 'child' is always the direct child of 'parent'.
     QWidget* child  = current;
@@ -107,19 +109,35 @@ QWidget* SpatialNavigator::resolveLastVisited(QWidget* widget)
         return resolveLastVisited(splitter->widget(idx));
     }
 
-    // If this widget can receive keyboard focus, it is our target.
-    if (widget->focusPolicy() != Qt::NoFocus) {
-        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: leaf target ="
+    qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: examining"
+                     << widget->metaObject()->className()
+                     << "focusPolicy=" << widget->focusPolicy()
+                     << "visible=" << widget->isVisible()
+                     << "children=" << widget->children().count();
+
+    // Prefer a QAbstractItemView: return immediately if this IS one.
+    // This avoids surfacing viewport or other internal children of the view.
+    if (qobject_cast<QAbstractItemView*>(widget)) {
+        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: view target ="
                          << widget->metaObject()->className();
         return widget;
     }
 
-    // Otherwise recurse into visible children.
+    // Recurse into visible children first so that a QAbstractItemView nested
+    // inside a focusable container (e.g. EditableTabWidget) is found before
+    // the container itself is returned as a fallback.
     for (QObject* obj : widget->children()) {
         if (auto* w = qobject_cast<QWidget*>(obj)) {
             if (QWidget* found = resolveLastVisited(w))
                 return found;
         }
+    }
+
+    // Fall back: return this widget if it can receive keyboard focus.
+    if (widget->focusPolicy() != Qt::NoFocus) {
+        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: focusable fallback ="
+                         << widget->metaObject()->className();
+        return widget;
     }
 
     return nullptr;

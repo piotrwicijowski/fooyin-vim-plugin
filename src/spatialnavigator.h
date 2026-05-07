@@ -17,7 +17,10 @@ class SpatialNavigator : public QObject
 public:
     explicit SpatialNavigator(QObject* parent = nullptr);
 
-    void moveFocus(Direction dir);
+    // startFrom: the widget to treat as the current location (falls back to
+    // QApplication::focusWidget() when null). Pass the active view from
+    // ViewLocator so navigation works even when Qt focus is on a toolbar button.
+    void moveFocus(Direction dir, QWidget* startFrom = nullptr);
 
 private:
     void onFocusChanged(QWidget* old, QWidget* now);

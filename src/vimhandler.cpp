@@ -96,16 +96,16 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         switch (qtKey) {
             case Qt::Key_J:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+J → focus Down";
-                m_spatialNavigator->moveFocus(Direction::Down);  return true;
+                m_spatialNavigator->moveFocus(Direction::Down,  m_viewLocator->activeView()); return true;
             case Qt::Key_K:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+K → focus Up";
-                m_spatialNavigator->moveFocus(Direction::Up);    return true;
+                m_spatialNavigator->moveFocus(Direction::Up,    m_viewLocator->activeView()); return true;
             case Qt::Key_H:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+H → focus Left";
-                m_spatialNavigator->moveFocus(Direction::Left);  return true;
+                m_spatialNavigator->moveFocus(Direction::Left,  m_viewLocator->activeView()); return true;
             case Qt::Key_L:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+L → focus Right";
-                m_spatialNavigator->moveFocus(Direction::Right); return true;
+                m_spatialNavigator->moveFocus(Direction::Right, m_viewLocator->activeView()); return true;
             case Qt::Key_D:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+D → half page down";
                 moveCursorHalfPage(+1); return true;
