@@ -684,8 +684,8 @@ void VimHandler::scheduleIndexRestore(QAbstractItemView* view, int row, int col,
 // Undo / redo
 // ---------------------------------------------------------------------------
 
-void VimHandler::pushUndoEntry(Fooyin::UId playlistId, Fooyin::TrackList before,
-                                Fooyin::TrackList after, int cursorBefore, int cursorAfter, int col)
+void VimHandler::pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before,
+                                Fooyin::PlaylistTrackList after, int cursorBefore, int cursorAfter, int col)
 {
     if (m_undoIndex + 1 < static_cast<int>(m_undoStack.size()))
         m_undoStack.resize(static_cast<size_t>(m_undoIndex + 1));
@@ -796,7 +796,7 @@ void VimHandler::deleteRows(int count)
     const int expectedRows = beforeCount - numDeleted;
     const int restoreRow  = (expectedRows > 0) ? qMin(row, expectedRows - 1) : 0;
 
-    Fooyin::TrackList snapshotBefore = playlist->tracks();
+    Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
 
     qCDebug(VIM_LOG) << "deleteRows: playlist=" << playlist->name()
                      << "rows [" << row << "," << (end - 1) << "]"
@@ -809,7 +809,7 @@ void VimHandler::deleteRows(int count)
         indices.push_back(i);
     m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
 
-    Fooyin::TrackList snapshotAfter = snapshotBefore;
+    Fooyin::PlaylistTrackList snapshotAfter = snapshotBefore;
     snapshotAfter.erase(snapshotAfter.begin() + row, snapshotAfter.begin() + end);
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(snapshotAfter),
                   row, restoreRow, col);
@@ -865,7 +865,7 @@ void VimHandler::deleteVisualSelection()
     const int expectedRows = size - numDeleted;
     const int restoreRow   = (expectedRows > 0) ? qMin(top, expectedRows - 1) : 0;
 
-    Fooyin::TrackList snapshotBefore = playlist->tracks();
+    Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
 
     qCDebug(VIM_LOG) << "deleteVisualSelection: playlist=" << playlist->name()
                      << "rows [" << top << "," << qMin(bot, size - 1) << "]";
@@ -875,7 +875,7 @@ void VimHandler::deleteVisualSelection()
         indices.push_back(i);
     m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
 
-    Fooyin::TrackList snapshotAfter = snapshotBefore;
+    Fooyin::PlaylistTrackList snapshotAfter = snapshotBefore;
     snapshotAfter.erase(snapshotAfter.begin() + top,
                         snapshotAfter.begin() + std::min(bot + 1, size));
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(snapshotAfter),
@@ -901,14 +901,14 @@ void VimHandler::pasteAfter()
     const int originalRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     const int targetRow   = originalRow + 1;
-    Fooyin::TrackList snapshotBefore = playlist->tracks();
-    Fooyin::TrackList all = snapshotBefore;
+    Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
+    Fooyin::PlaylistTrackList all = snapshotBefore;
     const int insertPos   = std::clamp(targetRow, 0, static_cast<int>(all.size()));
+    const auto newEntries = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
     qCDebug(VIM_LOG) << "pasteAfter: playlist=" << playlist->name()
                      << "originalRow=" << originalRow << "insertPos=" << insertPos
-                     << "trackCount=" << m_clipboard.tracks().size();
-    all.insert(all.begin() + insertPos,
-               m_clipboard.tracks().begin(), m_clipboard.tracks().end());
+                     << "trackCount=" << newEntries.size();
+    all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
     const int afterSize = static_cast<int>(all.size());
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
@@ -934,14 +934,14 @@ void VimHandler::pasteBefore()
     }
     const int originalRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
-    Fooyin::TrackList snapshotBefore = playlist->tracks();
-    Fooyin::TrackList all = snapshotBefore;
+    Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
+    Fooyin::PlaylistTrackList all = snapshotBefore;
     const int insertPos   = std::clamp(originalRow, 0, static_cast<int>(all.size()));
+    const auto newEntries = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
     qCDebug(VIM_LOG) << "pasteBefore: playlist=" << playlist->name()
                      << "originalRow=" << originalRow << "insertPos=" << insertPos
-                     << "trackCount=" << m_clipboard.tracks().size();
-    all.insert(all.begin() + insertPos,
-               m_clipboard.tracks().begin(), m_clipboard.tracks().end());
+                     << "trackCount=" << newEntries.size();
+    all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
     const int afterSize = static_cast<int>(all.size());
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
@@ -978,15 +978,15 @@ void VimHandler::moveRows(int delta)
     const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
 
-    Fooyin::TrackList snapshotBefore = playlist->tracks();
-    Fooyin::TrackList all = snapshotBefore;
-    const Fooyin::Track moved = all[static_cast<size_t>(row)];
+    Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
+    Fooyin::PlaylistTrackList all = snapshotBefore;
+    const Fooyin::PlaylistTrack moved = all[static_cast<size_t>(row)];
     all.erase(all.begin() + row);
     const int insertPos = std::clamp(row + delta, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "moveRows: playlist=" << playlist->name()
                      << "row" << row << "->" << insertPos
                      << "(delta=" << delta << ")"
-                     << "track=" << moved.title();
+                     << "track=" << moved.track.title();
     all.insert(all.begin() + insertPos, moved);
 
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
@@ -1017,15 +1017,15 @@ void VimHandler::moveVisualSelection(int delta)
     const int bot = qMax(m_visualAnchor, m_visualCursor);
     const int selSize = bot - top + 1;
 
-    Fooyin::TrackList snapshotBefore = playlist->tracks();
-    Fooyin::TrackList all = snapshotBefore;
+    Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
+    Fooyin::PlaylistTrackList all = snapshotBefore;
     if (bot >= static_cast<int>(all.size())) {
         qCWarning(VIM_LOG) << "moveVisualSelection: selection out of range"
                            << "(bot=" << bot << "size=" << all.size() << ")";
         return;
     }
 
-    Fooyin::TrackList movedTracks(all.begin() + top, all.begin() + bot + 1);
+    Fooyin::PlaylistTrackList movedTracks(all.begin() + top, all.begin() + bot + 1);
     all.erase(all.begin() + top, all.begin() + bot + 1);
     const int insertPos = std::clamp(top + delta, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "moveVisualSelection: playlist=" << playlist->name()

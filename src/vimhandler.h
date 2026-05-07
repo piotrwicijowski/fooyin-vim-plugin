@@ -2,6 +2,7 @@
 
 #include "vimclipboard.h"
 
+#include <core/playlist/playlist.h>
 #include <QObject>
 #include <utils/id.h>
 
@@ -66,8 +67,8 @@ private:
     void moveRows(int delta);
     void moveVisualSelection(int delta);
 
-    void pushUndoEntry(Fooyin::UId playlistId, Fooyin::TrackList before,
-                       Fooyin::TrackList after, int cursorBefore, int cursorAfter, int col);
+    void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before,
+                       Fooyin::PlaylistTrackList after, int cursorBefore, int cursorAfter, int col);
     void undo();
     void redo();
 
@@ -92,12 +93,12 @@ private:
     SpatialNavigator* m_spatialNavigator{nullptr};
 
     struct UndoEntry {
-        Fooyin::UId       playlistId;
-        Fooyin::TrackList before;
-        Fooyin::TrackList after;
-        int               cursorBefore{-1};
-        int               cursorAfter{-1};
-        int               col{0};
+        Fooyin::UId               playlistId;
+        Fooyin::PlaylistTrackList before;
+        Fooyin::PlaylistTrackList after;
+        int                       cursorBefore{-1};
+        int                       cursorAfter{-1};
+        int                       col{0};
     };
 
     VimClipboard             m_clipboard;
