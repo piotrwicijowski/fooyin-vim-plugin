@@ -168,6 +168,36 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
                 qCDebug(VIM_LOG) << "Visual: unrecognised Alt combo qtKey=" << qtKey << ", passing through";
                 return false;
     }
+    }
+
+    if (ch.isNull()) return false;
+
+    // Two-key sequence completion
+    if (!m_pendingKey.isNull()) {
+        const QChar pending = m_pendingKey;
+        m_pendingKey = {};
+        qCDebug(VIM_LOG) << "Normal: completing two-key seq '" << pending << "' + '" << ch << "'";
+        if (pending == u'g' && ch == u'g') { qCDebug(VIM_LOG) << "Normal: gg → jumpToFirst"; jumpToFirst();      return true; }
+        if (pending == u'd' && ch == u'd') { qCDebug(VIM_LOG) << "Normal: dd count=" << count; deleteRows(count); return true; }
+        if (pending == u'y' && ch == u'y') { qCDebug(VIM_LOG) << "Normal: yy count=" << count; yankRows(count);   return true; }
+        qCDebug(VIM_LOG) << "Normal: incomplete two-key seq (pending='" << pending << "'), processing '" << ch << "' standalone";
+    }
+
+    // Start of two-key sequences
+    if (ch == u'g' || ch == u'd' || ch == u'y') {
+        qCDebug(VIM_LOG) << "Normal: first key of two-key seq: '" << ch << "'";
+        m_pendingKey = ch;
+        return true;
+    }
+
+    if (ch == u'j') { qCDebug(VIM_LOG) << "Normal: 'j' → moveCursor +" << count; moveCursor(+count); return true; }
+    if (ch == u'k') { qCDebug(VIM_LOG) << "Normal: 'k' → moveCursor -" << count; moveCursor(-count); return true; }
+    if (ch == u'G') {
+        if (hadCount) { qCDebug(VIM_LOG) << "Normal: 'G' → jumpToRow" << (count - 1); jumpToRow(count - 1); }
+        else          { qCDebug(VIM_LOG) << "Normal: 'G' → jumpToLast"; jumpToLast(); }
+        return true;
+    }
+
     if (ch == u'v') { qCDebug(VIM_LOG) << "Normal: 'v' → Visual mode";  enterVisual(); return true; }
     if (ch == u'p') { qCDebug(VIM_LOG) << "Normal: 'p' → pasteAfter";   pasteAfter();  return true; }
     if (ch == u'P') { qCDebug(VIM_LOG) << "Normal: 'P' → pasteBefore";  pasteBefore(); return true; }
@@ -351,55 +381,6 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// ShortcutOverride predicates — mirror exactly which keys each mode consumes
-// ---------------------------------------------------------------------------
-
-bool VimHandler::wouldHandleNormal(QKeyEvent* ev) const
-{
-    const Qt::KeyboardModifiers mods = ev->modifiers();
-    const int key = ev->key();
-    const QString text = ev->text();
-    const QChar ch = text.isEmpty() ? QChar{} : text.front();
-
-    if (mods & Qt::ControlModifier) {
-        return key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H
-            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U;
-    }
-    if (key == Qt::Key_Escape) return true;
-    if (ch == u'i') return true;
-    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
-    if (mods & Qt::AltModifier) {
-        return key == Qt::Key_J || key == Qt::Key_K;
-    }
-    if (ch.isNull()) return false;
-    // If a two-key sequence is already in progress, the next printable key completes it.
-    if (!m_pendingKey.isNull()) return true;
-    if (ch == u'g' || ch == u'd' || ch == u'y') return true;
-    if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'v') return true;
-    if (ch == u'p' || ch == u'P' || ch == u'o') return true;
-    if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
-    return false;
-}
-
-bool VimHandler::wouldHandleVisual(QKeyEvent* ev) const
-{
-    const Qt::KeyboardModifiers mods = ev->modifiers();
-    const int key = ev->key();
-    const QString text = ev->text();
-    const QChar ch = text.isEmpty() ? QChar{} : text.front();
-
-    if (mods & Qt::ControlModifier) return false;
-    if (key == Qt::Key_Escape) return true;
-    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
-    if (mods & Qt::AltModifier) {
-        return key == Qt::Key_J || key == Qt::Key_K;
-    }
-    if (ch.isNull()) return false;
-    if (ch == u'j' || ch == u'k' || ch == u'o') return true;
-    if (ch == u'd' || ch == u'y') return true;
-    return false;
-}
 
 // ---------------------------------------------------------------------------
 // Mode transitions
