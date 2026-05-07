@@ -21,6 +21,7 @@ public:
 private:
     void onFocusChanged(QWidget* old, QWidget* now);
     static QAbstractItemView* findViewUnder(QWidget* root);
+    static QAbstractItemView* findPlaylistViewUnder(QWidget* root);
 
     mutable QPointer<QAbstractItemView> m_cached;
 };

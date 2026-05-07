@@ -63,8 +63,20 @@ QAbstractItemView* ViewLocator::activeView() const
         w = w->parentWidget();
     }
 
-    // Fall back: scan all top-level windows for the first visible view
-    qCDebug(VIM_LOG) << "ViewLocator::activeView: no focused view, scanning top-level widgets";
+    // Fall back: prefer a Fooyin::PlaylistView and activate it so the first vim
+    // action after startup lands on the playlist rather than a random widget.
+    qCDebug(VIM_LOG) << "ViewLocator::activeView: no focused view, scanning for PlaylistView";
+    for (QWidget* top : QApplication::topLevelWidgets()) {
+        if (auto* view = findPlaylistViewUnder(top)) {
+            qCDebug(VIM_LOG) << "ViewLocator::activeView: activating PlaylistView";
+            view->setFocus(Qt::OtherFocusReason);
+            m_cached = view;
+            return view;
+        }
+    }
+
+    // Last resort: any visible QAbstractItemView
+    qCDebug(VIM_LOG) << "ViewLocator::activeView: no PlaylistView found, scanning for any view";
     for (QWidget* top : QApplication::topLevelWidgets()) {
         if (auto* view = findViewUnder(top)) {
             qCDebug(VIM_LOG) << "ViewLocator::activeView: found via scan →"
@@ -87,6 +99,23 @@ QAbstractItemView* ViewLocator::findViewUnder(QWidget* root)
     for (QObject* child : root->children()) {
         if (auto* w = qobject_cast<QWidget*>(child)) {
             if (auto* view = findViewUnder(w))
+                return view;
+        }
+    }
+    return nullptr;
+}
+
+QAbstractItemView* ViewLocator::findPlaylistViewUnder(QWidget* root)
+{
+    if (!root || !root->isVisible())
+        return nullptr;
+    if (auto* view = qobject_cast<QAbstractItemView*>(root)) {
+        if (QLatin1String(root->metaObject()->className()) == QLatin1String("Fooyin::PlaylistView"))
+            return view;
+    }
+    for (QObject* child : root->children()) {
+        if (auto* w = qobject_cast<QWidget*>(child)) {
+            if (auto* view = findPlaylistViewUnder(w))
                 return view;
         }
     }
