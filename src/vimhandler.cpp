@@ -464,7 +464,9 @@ void VimHandler::moveCursor(int delta)
     qCDebug(VIM_LOG) << "moveCursor: row" << row << "->" << dest
                      << "(delta=" << delta << ", last=" << last << ")"
                      << "view=" << view->metaObject()->className();
-    view->setCurrentIndex(view->model()->index(dest, col));
+    view->selectionModel()->setCurrentIndex(
+        view->model()->index(dest, col),
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
 
 void VimHandler::jumpToFirst()
@@ -477,7 +479,9 @@ void VimHandler::jumpToFirst()
     const int fromRow = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
     const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     qCDebug(VIM_LOG) << "jumpToFirst: row" << fromRow << "-> 0";
-    view->setCurrentIndex(view->model()->index(0, col));
+    view->selectionModel()->setCurrentIndex(
+        view->model()->index(0, col),
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
 
 void VimHandler::jumpToLast()
@@ -495,7 +499,9 @@ void VimHandler::jumpToLast()
     const int fromRow = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
     const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     qCDebug(VIM_LOG) << "jumpToLast: row" << fromRow << "->" << last;
-    view->setCurrentIndex(view->model()->index(last, col));
+    view->selectionModel()->setCurrentIndex(
+        view->model()->index(last, col),
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
 
 void VimHandler::jumpToRow(int row)
@@ -515,7 +521,9 @@ void VimHandler::jumpToRow(int row)
     const int dest = std::clamp(row, 0, last);
     qCDebug(VIM_LOG) << "jumpToRow: requested=" << row << "clamped=" << dest
                      << "from=" << fromRow;
-    view->setCurrentIndex(view->model()->index(dest, col));
+    view->selectionModel()->setCurrentIndex(
+        view->model()->index(dest, col),
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
 
 void VimHandler::moveCursorHalfPage(int direction)
