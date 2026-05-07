@@ -4,4 +4,5 @@
 - undo redo - done
 - make the playlist view the first that gets focus - done
 - dot for repeat
+- slash search
 
