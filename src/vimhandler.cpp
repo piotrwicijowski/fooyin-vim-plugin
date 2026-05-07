@@ -593,22 +593,26 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
 {
     if (!m_playlistHandler) return nullptr;
 
-    // Prefer the currently playing playlist.
-    if (auto* p = m_playlistHandler->activePlaylist()) {
-        qCDebug(VIM_LOG) << "targetPlaylist: active (playing):" << p->name();
-        return p;
-    }
-
-    // Fall back: find a playlist whose track count matches the view's row count.
+    // Prefer the playlist the active view is currently displaying, identified
+    // by matching its row count. This ensures yank/paste target what the user
+    // sees, not whatever happens to be playing in the background.
     auto* view = m_viewLocator->activeView();
     const int viewRows = (view && view->model()) ? view->model()->rowCount() : -1;
 
-    for (auto* p : m_playlistHandler->playlists()) {
-        if (p && (viewRows < 0 || p->trackCount() == viewRows)) {
-            qCDebug(VIM_LOG) << "targetPlaylist: matched by row count (" << viewRows
-                             << "):" << p->name();
-            return p;
+    if (viewRows > 0) {
+        for (auto* p : m_playlistHandler->playlists()) {
+            if (p && p->trackCount() == viewRows) {
+                qCDebug(VIM_LOG) << "targetPlaylist: matched by row count (" << viewRows
+                                 << "):" << p->name();
+                return p;
+            }
         }
+    }
+
+    // Fall back: currently playing playlist.
+    if (auto* p = m_playlistHandler->activePlaylist()) {
+        qCDebug(VIM_LOG) << "targetPlaylist: active (playing):" << p->name();
+        return p;
     }
 
     // Last resort: first available playlist.
