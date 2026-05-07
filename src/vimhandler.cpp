@@ -41,15 +41,20 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
 
     // Qt sends ShortcutOverride before it would activate a matching QShortcut.
     // If the receiver (or its filter) returns true here, Qt skips the shortcut
-    // and delivers the normal KeyPress instead. In Normal/Visual mode we claim
-    // every key so no registered shortcut can steal it from our handler.
+    // and delivers the normal KeyPress instead. We only claim keys that vim
+    // actually handles so unrecognised shortcuts pass through normally.
     if (type == QEvent::ShortcutOverride) {
         auto* kev = static_cast<QKeyEvent*>(event);
         qCDebug(VIM_LOG) << "eventFilter ShortcutOverride: key=" << kev->key()
                          << "text=" << kev->text() << "mods=" << kev->modifiers()
                          << "mode=" << static_cast<int>(m_mode)
                          << "watched=" << watched->metaObject()->className();
-        if (m_mode == Mode::Normal || m_mode == Mode::Visual) {
+        bool claim = false;
+        if (m_mode == Mode::Normal)
+            claim = wouldHandleNormal(kev);
+        else if (m_mode == Mode::Visual)
+            claim = wouldHandleVisual(kev);
+        if (claim) {
             kev->accept();
             return true;
         }
@@ -113,8 +118,8 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
                 qCDebug(VIM_LOG) << "Normal: Ctrl+U → half page up";
                 moveCursorHalfPage(-1); return true;
             default:
-                qCDebug(VIM_LOG) << "Normal: unrecognised Ctrl combo qtKey=" << qtKey << ", consuming";
-                return true;
+                qCDebug(VIM_LOG) << "Normal: unrecognised Ctrl combo qtKey=" << qtKey << ", passing through";
+                return false;
         }
     }
 
@@ -160,44 +165,8 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
                 qCDebug(VIM_LOG) << "Normal: Alt+K → moveRows -" << count;
                 moveRows(-count); return true;
             default:
-                qCDebug(VIM_LOG) << "Normal: unrecognised Alt combo qtKey=" << qtKey << ", consuming";
-                return true;
-        }
-    }
-
-    if (ch.isNull()) {
-        qCDebug(VIM_LOG) << "Normal: empty text (modifier-only or unhandled key), consuming";
-        return true;
-    }
-
-    // Two-key sequence completion
-    if (!m_pendingKey.isNull()) {
-        const QChar pending = m_pendingKey;
-        m_pendingKey = {};
-        qCDebug(VIM_LOG) << "Normal: completing two-key seq '" << pending << "' + '" << ch << "'";
-
-        if (pending == u'g' && ch == u'g') { qCDebug(VIM_LOG) << "Normal: gg → jumpToFirst"; jumpToFirst();     return true; }
-        if (pending == u'd' && ch == u'd') { qCDebug(VIM_LOG) << "Normal: dd count=" << count; deleteRows(count); return true; }
-        if (pending == u'y' && ch == u'y') { qCDebug(VIM_LOG) << "Normal: yy count=" << count; yankRows(count);   return true; }
-
-        qCDebug(VIM_LOG) << "Normal: incomplete two-key seq (pending='" << pending
-                         << "'), processing '" << ch << "' standalone";
-    }
-
-    // Start of two-key sequences
-    if (ch == u'g' || ch == u'd' || ch == u'y') {
-        qCDebug(VIM_LOG) << "Normal: first key of two-key seq: '" << ch << "'";
-        m_pendingKey = ch;
-        return true;
-    }
-
-    // Single-key commands
-    if (ch == u'j') { qCDebug(VIM_LOG) << "Normal: 'j' → moveCursor +" << count; moveCursor(+count); return true; }
-    if (ch == u'k') { qCDebug(VIM_LOG) << "Normal: 'k' → moveCursor -" << count; moveCursor(-count); return true; }
-    if (ch == u'G') {
-        if (hadCount) { qCDebug(VIM_LOG) << "Normal: 'G' → jumpToRow" << (count - 1); jumpToRow(count - 1); }
-        else          { qCDebug(VIM_LOG) << "Normal: 'G' → jumpToLast"; jumpToLast(); }
-        return true;
+                qCDebug(VIM_LOG) << "Visual: unrecognised Alt combo qtKey=" << qtKey << ", passing through";
+                return false;
     }
     if (ch == u'v') { qCDebug(VIM_LOG) << "Normal: 'v' → Visual mode";  enterVisual(); return true; }
     if (ch == u'p') { qCDebug(VIM_LOG) << "Normal: 'p' → pasteAfter";   pasteAfter();  return true; }
@@ -209,8 +178,8 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         return true;
     }
 
-    qCDebug(VIM_LOG) << "Normal: unrecognised key '" << text << "' (qtKey=" << qtKey << "), consuming";
-    return true;
+    qCDebug(VIM_LOG) << "Normal: unrecognised key '" << text << "' (qtKey=" << qtKey << "), passing through";
+    return false;
 }
 
 bool VimHandler::handleVisualKey(QKeyEvent* ev)
@@ -225,8 +194,8 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
                      << "anchor=" << m_visualAnchor << "cursor=" << m_visualCursor;
 
     if (mods & Qt::ControlModifier) {
-        qCDebug(VIM_LOG) << "Visual: Ctrl combo, consuming";
-        return true;
+        qCDebug(VIM_LOG) << "Visual: Ctrl combo, passing through";
+        return false;
     }
 
     if (qtKey == Qt::Key_Escape) {
@@ -260,14 +229,14 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
                 qCDebug(VIM_LOG) << "Visual: Alt+K → moveVisualSelection -" << count;
                 moveVisualSelection(-count); return true;
             default:
-                qCDebug(VIM_LOG) << "Visual: unrecognised Alt combo qtKey=" << qtKey << ", consuming";
-                return true;
+                qCDebug(VIM_LOG) << "Normal: unrecognised Alt combo qtKey=" << qtKey << ", passing through";
+                return false;
         }
     }
 
     if (ch.isNull()) {
-        qCDebug(VIM_LOG) << "Visual: empty text, consuming";
-        return true;
+        qCDebug(VIM_LOG) << "Visual: empty text, passing through";
+        return false;
     }
 
     if (ch == u'j') {
@@ -323,8 +292,113 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
         return true;
     }
 
-    qCDebug(VIM_LOG) << "Visual: unrecognised key '" << text << "' (qtKey=" << qtKey << "), consuming";
-    return true;
+    qCDebug(VIM_LOG) << "Visual: unrecognised key '" << text << "' (qtKey=" << qtKey << "), passing through";
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// ShortcutOverride predicates — mirror handleNormal/VisualKey without side effects
+// ---------------------------------------------------------------------------
+
+bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
+{
+    const Qt::KeyboardModifiers mods = kev->modifiers();
+    const int key = kev->key();
+    const QChar ch = kev->text().isEmpty() ? QChar{} : kev->text().front();
+
+    if (mods & Qt::ControlModifier)
+        return key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H
+            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U;
+
+    if (key == Qt::Key_Escape) return true;
+    if (ch == u'i') return true;
+    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
+
+    if (mods & Qt::AltModifier)
+        return key == Qt::Key_J || key == Qt::Key_K;
+
+    if (ch.isNull()) return false;
+
+    // Any printable char while a two-key sequence is pending completes it.
+    if (!m_pendingKey.isNull()) return true;
+
+    if (ch == u'g' || ch == u'd' || ch == u'y') return true;
+    if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'v') return true;
+    if (ch == u'p' || ch == u'P' || ch == u'o') return true;
+    if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
+
+    return false;
+}
+
+bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
+{
+    const Qt::KeyboardModifiers mods = kev->modifiers();
+    const int key = kev->key();
+    const QChar ch = kev->text().isEmpty() ? QChar{} : kev->text().front();
+
+    if (mods & Qt::ControlModifier) return false;
+    if (key == Qt::Key_Escape) return true;
+    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
+
+    if (mods & Qt::AltModifier)
+        return key == Qt::Key_J || key == Qt::Key_K;
+
+    if (ch.isNull()) return false;
+
+    if (ch == u'j' || ch == u'k' || ch == u'o') return true;
+    if (ch == u'd' || ch == u'y') return true;
+
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// ShortcutOverride predicates — mirror exactly which keys each mode consumes
+// ---------------------------------------------------------------------------
+
+bool VimHandler::wouldHandleNormal(QKeyEvent* ev) const
+{
+    const Qt::KeyboardModifiers mods = ev->modifiers();
+    const int key = ev->key();
+    const QString text = ev->text();
+    const QChar ch = text.isEmpty() ? QChar{} : text.front();
+
+    if (mods & Qt::ControlModifier) {
+        return key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H
+            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U;
+    }
+    if (key == Qt::Key_Escape) return true;
+    if (ch == u'i') return true;
+    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
+    if (mods & Qt::AltModifier) {
+        return key == Qt::Key_J || key == Qt::Key_K;
+    }
+    if (ch.isNull()) return false;
+    // If a two-key sequence is already in progress, the next printable key completes it.
+    if (!m_pendingKey.isNull()) return true;
+    if (ch == u'g' || ch == u'd' || ch == u'y') return true;
+    if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'v') return true;
+    if (ch == u'p' || ch == u'P' || ch == u'o') return true;
+    if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
+    return false;
+}
+
+bool VimHandler::wouldHandleVisual(QKeyEvent* ev) const
+{
+    const Qt::KeyboardModifiers mods = ev->modifiers();
+    const int key = ev->key();
+    const QString text = ev->text();
+    const QChar ch = text.isEmpty() ? QChar{} : text.front();
+
+    if (mods & Qt::ControlModifier) return false;
+    if (key == Qt::Key_Escape) return true;
+    if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
+    if (mods & Qt::AltModifier) {
+        return key == Qt::Key_J || key == Qt::Key_K;
+    }
+    if (ch.isNull()) return false;
+    if (ch == u'j' || ch == u'k' || ch == u'o') return true;
+    if (ch == u'd' || ch == u'y') return true;
+    return false;
 }
 
 // ---------------------------------------------------------------------------

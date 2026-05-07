@@ -39,6 +39,8 @@ private:
     bool handleKeyPress(QKeyEvent* ev);
     bool handleNormalKey(QKeyEvent* ev);
     bool handleVisualKey(QKeyEvent* ev);
+    [[nodiscard]] bool wouldHandleNormal(QKeyEvent* ev) const;
+    [[nodiscard]] bool wouldHandleVisual(QKeyEvent* ev) const;
 
     void enterNormal();
     void enterInsert();
