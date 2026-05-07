@@ -27,6 +27,8 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `dd` / `[count]dd` | Delete row(s) from playlist |
 | `yy` / `[count]yy` | Yank row(s) into vim clipboard |
 | `p` / `P` | Paste yanked rows after / before cursor |
+| `u` | Undo last playlist change (dd, p, P, Alt+j/k) |
+| `Ctrl+r` | Redo last undone change |
 | `i` | Enter Insert mode |
 | `Ctrl+j/k/h/l` | Move focus to the view below / above / left / right |
 | `Alt+j` / `Alt+k` | Move current row down / up in the playlist |

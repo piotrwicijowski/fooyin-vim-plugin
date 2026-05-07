@@ -117,6 +117,9 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
             case Qt::Key_U:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+U → half page up";
                 moveCursorHalfPage(-1); return true;
+            case Qt::Key_R:
+                qCDebug(VIM_LOG) << "Normal: Ctrl+R → redo";
+                redo(); return true;
             default:
                 qCDebug(VIM_LOG) << "Normal: unrecognised Ctrl combo qtKey=" << qtKey << ", passing through";
                 return false;
@@ -201,12 +204,15 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     if (ch == u'v') { qCDebug(VIM_LOG) << "Normal: 'v' → Visual mode";  enterVisual(); return true; }
     if (ch == u'p') { qCDebug(VIM_LOG) << "Normal: 'p' → pasteAfter";   pasteAfter();  return true; }
     if (ch == u'P') { qCDebug(VIM_LOG) << "Normal: 'P' → pasteBefore";  pasteBefore(); return true; }
+    if (ch == u'u') { qCDebug(VIM_LOG) << "Normal: 'u' → undo";         undo();        return true; }
 
     if (qtKey == Qt::Key_Return || qtKey == Qt::Key_Enter || ch == u'o') {
         qCDebug(VIM_LOG) << "Normal: Enter/o → activateCurrentRow";
         activateCurrentRow();
         return true;
     }
+
+    if (ch == u'u') { qCDebug(VIM_LOG) << "Normal: 'u' → undo"; undo(); return true; }
 
     qCDebug(VIM_LOG) << "Normal: unrecognised key '" << text << "' (qtKey=" << qtKey << "), passing through";
     return false;
@@ -338,7 +344,7 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
 
     if (mods & Qt::ControlModifier)
         return key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H
-            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U;
+            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U || key == Qt::Key_R;
 
     if (key == Qt::Key_Escape) return true;
     if (ch == u'i') return true;
@@ -355,6 +361,7 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
     if (ch == u'g' || ch == u'd' || ch == u'y') return true;
     if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'v') return true;
     if (ch == u'p' || ch == u'P' || ch == u'o') return true;
+    if (ch == u'u') return true;
     if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
 
     return false;
@@ -666,6 +673,70 @@ void VimHandler::scheduleIndexRestore(QAbstractItemView* view, int row, int col,
 }
 
 // ---------------------------------------------------------------------------
+// Undo / redo
+// ---------------------------------------------------------------------------
+
+void VimHandler::pushUndoEntry(Fooyin::UId playlistId, Fooyin::TrackList before,
+                                Fooyin::TrackList after, int cursorBefore, int cursorAfter, int col)
+{
+    if (m_undoIndex + 1 < static_cast<int>(m_undoStack.size()))
+        m_undoStack.resize(static_cast<size_t>(m_undoIndex + 1));
+    m_undoStack.push_back({std::move(playlistId), std::move(before), std::move(after),
+                           cursorBefore, cursorAfter, col});
+    m_undoIndex = static_cast<int>(m_undoStack.size()) - 1;
+    qCDebug(VIM_LOG) << "pushUndoEntry: undoIndex=" << m_undoIndex
+                     << "stackSize=" << m_undoStack.size();
+}
+
+void VimHandler::undo()
+{
+    if (!m_playlistHandler) {
+        qCWarning(VIM_LOG) << "undo: no PlaylistHandler";
+        return;
+    }
+    if (m_undoIndex < 0) {
+        qCDebug(VIM_LOG) << "undo: stack empty";
+        return;
+    }
+    const UndoEntry& entry = m_undoStack[static_cast<size_t>(m_undoIndex)];
+    qCDebug(VIM_LOG) << "undo: index=" << m_undoIndex
+                     << "trackCount=" << entry.before.size()
+                     << "cursorBefore=" << entry.cursorBefore;
+    m_playlistHandler->replacePlaylistTracks(
+        entry.playlistId, entry.before, Fooyin::PlaylistTrackChangeSource::History);
+    auto* view = m_viewLocator->activeView();
+    if (view && entry.cursorBefore >= 0) {
+        scheduleIndexRestore(view, entry.cursorBefore, entry.col,
+                             static_cast<int>(entry.before.size()));
+    }
+    --m_undoIndex;
+}
+
+void VimHandler::redo()
+{
+    if (!m_playlistHandler) {
+        qCWarning(VIM_LOG) << "redo: no PlaylistHandler";
+        return;
+    }
+    if (m_undoIndex + 1 >= static_cast<int>(m_undoStack.size())) {
+        qCDebug(VIM_LOG) << "redo: nothing to redo";
+        return;
+    }
+    ++m_undoIndex;
+    const UndoEntry& entry = m_undoStack[static_cast<size_t>(m_undoIndex)];
+    qCDebug(VIM_LOG) << "redo: index=" << m_undoIndex
+                     << "trackCount=" << entry.after.size()
+                     << "cursorAfter=" << entry.cursorAfter;
+    m_playlistHandler->replacePlaylistTracks(
+        entry.playlistId, entry.after, Fooyin::PlaylistTrackChangeSource::History);
+    auto* view = m_viewLocator->activeView();
+    if (view && entry.cursorAfter >= 0) {
+        scheduleIndexRestore(view, entry.cursorAfter, entry.col,
+                             static_cast<int>(entry.after.size()));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Yank / delete / paste  (playlist views only; no-op for other view types)
 // ---------------------------------------------------------------------------
 
@@ -717,6 +788,8 @@ void VimHandler::deleteRows(int count)
     const int expectedRows = beforeCount - numDeleted;
     const int restoreRow  = (expectedRows > 0) ? qMin(row, expectedRows - 1) : 0;
 
+    Fooyin::TrackList snapshotBefore = playlist->tracks();
+
     qCDebug(VIM_LOG) << "deleteRows: playlist=" << playlist->name()
                      << "rows [" << row << "," << (end - 1) << "]"
                      << "count=" << numDeleted
@@ -727,6 +800,11 @@ void VimHandler::deleteRows(int count)
     for (int i = row; i < end; ++i)
         indices.push_back(i);
     m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
+
+    Fooyin::TrackList snapshotAfter = snapshotBefore;
+    snapshotAfter.erase(snapshotAfter.begin() + row, snapshotAfter.begin() + end);
+    pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(snapshotAfter),
+                  row, restoreRow, col);
 
     if (expectedRows > 0)
         scheduleIndexRestore(view, restoreRow, col, expectedRows);
@@ -772,6 +850,15 @@ void VimHandler::deleteVisualSelection()
     const int top = qMin(m_visualAnchor, m_visualCursor);
     const int bot = qMax(m_visualAnchor, m_visualCursor);
     const int size = playlist->trackCount();
+
+    auto* view    = m_viewLocator->activeView();
+    const int col = (view && view->currentIndex().isValid()) ? view->currentIndex().column() : 0;
+    const int numDeleted   = std::min(bot, size - 1) - top + 1;
+    const int expectedRows = size - numDeleted;
+    const int restoreRow   = (expectedRows > 0) ? qMin(top, expectedRows - 1) : 0;
+
+    Fooyin::TrackList snapshotBefore = playlist->tracks();
+
     qCDebug(VIM_LOG) << "deleteVisualSelection: playlist=" << playlist->name()
                      << "rows [" << top << "," << qMin(bot, size - 1) << "]";
     yankVisualSelection();
@@ -779,6 +866,12 @@ void VimHandler::deleteVisualSelection()
     for (int i = top; i <= bot && i < size; ++i)
         indices.push_back(i);
     m_playlistHandler->removePlaylistTracks(playlist->id(), indices);
+
+    Fooyin::TrackList snapshotAfter = snapshotBefore;
+    snapshotAfter.erase(snapshotAfter.begin() + top,
+                        snapshotAfter.begin() + std::min(bot + 1, size));
+    pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(snapshotAfter),
+                  m_visualCursor, restoreRow, col);
 }
 
 void VimHandler::pasteAfter()
@@ -800,7 +893,8 @@ void VimHandler::pasteAfter()
     const int originalRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     const int targetRow   = originalRow + 1;
-    Fooyin::TrackList all = playlist->tracks();
+    Fooyin::TrackList snapshotBefore = playlist->tracks();
+    Fooyin::TrackList all = snapshotBefore;
     const int insertPos   = std::clamp(targetRow, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "pasteAfter: playlist=" << playlist->name()
                      << "originalRow=" << originalRow << "insertPos=" << insertPos
@@ -808,7 +902,10 @@ void VimHandler::pasteAfter()
     all.insert(all.begin() + insertPos,
                m_clipboard.tracks().begin(), m_clipboard.tracks().end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
-    scheduleIndexRestore(view, originalRow, col, static_cast<int>(all.size()));
+    const int afterSize = static_cast<int>(all.size());
+    pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
+                  originalRow, originalRow, col);
+    scheduleIndexRestore(view, originalRow, col, afterSize);
 }
 
 void VimHandler::pasteBefore()
@@ -829,7 +926,8 @@ void VimHandler::pasteBefore()
     }
     const int originalRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
-    Fooyin::TrackList all = playlist->tracks();
+    Fooyin::TrackList snapshotBefore = playlist->tracks();
+    Fooyin::TrackList all = snapshotBefore;
     const int insertPos   = std::clamp(originalRow, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "pasteBefore: playlist=" << playlist->name()
                      << "originalRow=" << originalRow << "insertPos=" << insertPos
@@ -837,7 +935,10 @@ void VimHandler::pasteBefore()
     all.insert(all.begin() + insertPos,
                m_clipboard.tracks().begin(), m_clipboard.tracks().end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
-    scheduleIndexRestore(view, originalRow, col, static_cast<int>(all.size()));
+    const int afterSize = static_cast<int>(all.size());
+    pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
+                  originalRow, originalRow, col);
+    scheduleIndexRestore(view, originalRow, col, afterSize);
 }
 
 // ---------------------------------------------------------------------------
@@ -869,7 +970,8 @@ void VimHandler::moveRows(int delta)
     const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
 
-    Fooyin::TrackList all = playlist->tracks();
+    Fooyin::TrackList snapshotBefore = playlist->tracks();
+    Fooyin::TrackList all = snapshotBefore;
     const Fooyin::Track moved = all[static_cast<size_t>(row)];
     all.erase(all.begin() + row);
     const int insertPos = std::clamp(row + delta, 0, static_cast<int>(all.size()));
@@ -880,7 +982,10 @@ void VimHandler::moveRows(int delta)
     all.insert(all.begin() + insertPos, moved);
 
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
-    scheduleIndexRestore(view, insertPos, col, static_cast<int>(all.size()));
+    const int afterSize = static_cast<int>(all.size());
+    pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
+                  row, insertPos, col);
+    scheduleIndexRestore(view, insertPos, col, afterSize);
 }
 
 void VimHandler::moveVisualSelection(int delta)
@@ -904,20 +1009,21 @@ void VimHandler::moveVisualSelection(int delta)
     const int bot = qMax(m_visualAnchor, m_visualCursor);
     const int selSize = bot - top + 1;
 
-    Fooyin::TrackList all = playlist->tracks();
+    Fooyin::TrackList snapshotBefore = playlist->tracks();
+    Fooyin::TrackList all = snapshotBefore;
     if (bot >= static_cast<int>(all.size())) {
         qCWarning(VIM_LOG) << "moveVisualSelection: selection out of range"
                            << "(bot=" << bot << "size=" << all.size() << ")";
         return;
     }
 
-    Fooyin::TrackList moved(all.begin() + top, all.begin() + bot + 1);
+    Fooyin::TrackList movedTracks(all.begin() + top, all.begin() + bot + 1);
     all.erase(all.begin() + top, all.begin() + bot + 1);
     const int insertPos = std::clamp(top + delta, 0, static_cast<int>(all.size()));
     qCDebug(VIM_LOG) << "moveVisualSelection: playlist=" << playlist->name()
                      << "rows [" << top << "," << bot << "] (size=" << selSize << ")"
                      << "->" << insertPos << "(delta=" << delta << ")";
-    all.insert(all.begin() + insertPos, moved.begin(), moved.end());
+    all.insert(all.begin() + insertPos, movedTracks.begin(), movedTracks.end());
 
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
 
@@ -926,6 +1032,8 @@ void VimHandler::moveVisualSelection(int delta)
     m_visualCursor = anchorFirst ? insertPos + selSize - 1 : insertPos;
     qCDebug(VIM_LOG) << "moveVisualSelection: new anchor=" << m_visualAnchor
                      << "cursor=" << m_visualCursor;
+    pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
+                  top, insertPos, 0);
     updateVisualSelection();
 }
 

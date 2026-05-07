@@ -3,6 +3,9 @@
 #include "vimclipboard.h"
 
 #include <QObject>
+#include <utils/id.h>
+
+#include <vector>
 
 class QAbstractItemView;
 class QKeyEvent;
@@ -63,6 +66,11 @@ private:
     void moveRows(int delta);
     void moveVisualSelection(int delta);
 
+    void pushUndoEntry(Fooyin::UId playlistId, Fooyin::TrackList before,
+                       Fooyin::TrackList after, int cursorBefore, int cursorAfter, int col);
+    void undo();
+    void redo();
+
     // Returns the playlist the visible PlaylistView is showing. Uses
     // activePlaylist() first (the playing one); falls back to matching by
     // row count, then to the first available playlist.
@@ -83,8 +91,20 @@ private:
     ViewLocator*      m_viewLocator{nullptr};
     SpatialNavigator* m_spatialNavigator{nullptr};
 
+    struct UndoEntry {
+        Fooyin::UId       playlistId;
+        Fooyin::TrackList before;
+        Fooyin::TrackList after;
+        int               cursorBefore{-1};
+        int               cursorAfter{-1};
+        int               col{0};
+    };
+
     VimClipboard             m_clipboard;
     Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
+
+    std::vector<UndoEntry> m_undoStack;
+    int                    m_undoIndex{-1};
 };
 
 } // namespace Fooyin::VimMotions
