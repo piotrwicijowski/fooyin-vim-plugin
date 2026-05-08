@@ -10,6 +10,7 @@
 
 class QAbstractItemView;
 class QKeyEvent;
+class QTreeView;
 
 namespace Fooyin {
 class Playlist;
@@ -66,6 +67,11 @@ private:
     void updateVisualSelection();
     void moveRows(int delta);
     void moveVisualSelection(int delta);
+
+    void treeMoveCursor(QTreeView* tree, int delta);
+    void treeMoveSibling(int delta);
+    void treeOpenOrDescend();
+    void treeCloseOrAscend();
 
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before,
                        Fooyin::PlaylistTrackList after, int cursorBefore, int cursorAfter, int col);

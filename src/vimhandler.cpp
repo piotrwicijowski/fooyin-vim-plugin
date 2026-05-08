@@ -12,12 +12,18 @@
 #include <QKeyEvent>
 #include <QPointer>
 #include <QTimer>
+#include <QTreeView>
 #include <algorithm>
 #include <utility>
 
 Q_LOGGING_CATEGORY(VIM_LOG, "fy.vim")
 
 namespace Fooyin::VimMotions {
+
+static QTreeView* asTreeView(QAbstractItemView* v)
+{
+    return qobject_cast<QTreeView*>(v);
+}
 
 VimHandler::VimHandler(QObject* parent)
     : QObject{parent}
@@ -95,6 +101,20 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     qCDebug(VIM_LOG) << "Normal key: text=" << text << "qtKey=" << qtKey
                      << "mods=" << mods << "pendingKey=" << m_pendingKey
                      << "accumCount=" << m_count;
+
+    // Ctrl+Shift combinations — must come before the plain-Ctrl block
+    if ((mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        switch (qtKey) {
+            case Qt::Key_J:
+                qCDebug(VIM_LOG) << "Normal: Ctrl+Shift+J → treeMoveSibling +1";
+                treeMoveSibling(+1); return true;
+            case Qt::Key_K:
+                qCDebug(VIM_LOG) << "Normal: Ctrl+Shift+K → treeMoveSibling -1";
+                treeMoveSibling(-1); return true;
+            default:
+                return false;
+        }
+    }
 
     // Ctrl combinations — consumed before count accumulation
     if (mods & Qt::ControlModifier) {
@@ -195,6 +215,22 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
 
     if (ch == u'j') { qCDebug(VIM_LOG) << "Normal: 'j' → moveCursor +" << count; moveCursor(+count); return true; }
     if (ch == u'k') { qCDebug(VIM_LOG) << "Normal: 'k' → moveCursor -" << count; moveCursor(-count); return true; }
+    if (ch == u'l') {
+        if (asTreeView(m_viewLocator->activeView())) {
+            qCDebug(VIM_LOG) << "Normal: 'l' → treeOpenOrDescend";
+            treeOpenOrDescend();
+            return true;
+        }
+        return false;
+    }
+    if (ch == u'h') {
+        if (asTreeView(m_viewLocator->activeView())) {
+            qCDebug(VIM_LOG) << "Normal: 'h' → treeCloseOrAscend";
+            treeCloseOrAscend();
+            return true;
+        }
+        return false;
+    }
     if (ch == u'G') {
         if (hadCount) { qCDebug(VIM_LOG) << "Normal: 'G' → jumpToRow" << (count - 1); jumpToRow(count - 1); }
         else          { qCDebug(VIM_LOG) << "Normal: 'G' → jumpToLast"; jumpToLast(); }
@@ -360,6 +396,7 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
 
     if (ch == u'g' || ch == u'd' || ch == u'y') return true;
     if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'v') return true;
+    if (ch == u'l' || ch == u'h') return true;
     if (ch == u'p' || ch == u'P' || ch == u'o') return true;
     if (ch == u'u') return true;
     if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
@@ -453,6 +490,12 @@ void VimHandler::moveCursor(int delta)
         qCWarning(VIM_LOG) << "moveCursor: no active view or model";
         return;
     }
+
+    if (auto* tree = asTreeView(view)) {
+        treeMoveCursor(tree, delta);
+        return;
+    }
+
     const int last = view->model()->rowCount() - 1;
     if (last < 0) {
         qCDebug(VIM_LOG) << "moveCursor: view is empty";
@@ -491,6 +534,21 @@ void VimHandler::jumpToLast()
         qCWarning(VIM_LOG) << "jumpToLast: no active view or model";
         return;
     }
+
+    if (auto* tree = asTreeView(view)) {
+        QModelIndex cur = tree->model()->index(0, 0);
+        if (!cur.isValid()) return;
+        while (true) {
+            const QModelIndex next = tree->indexBelow(cur);
+            if (!next.isValid()) break;
+            cur = next;
+        }
+        qCDebug(VIM_LOG) << "jumpToLast (tree): last visible item row=" << cur.row();
+        tree->selectionModel()->setCurrentIndex(
+            cur, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        return;
+    }
+
     const int last = view->model()->rowCount() - 1;
     if (last < 0) {
         qCDebug(VIM_LOG) << "jumpToLast: view is empty";
@@ -563,6 +621,95 @@ void VimHandler::activateCurrentRow()
     m_suppressFilter = true;
     QCoreApplication::sendEvent(view, &ev);
     m_suppressFilter = false;
+}
+
+// ---------------------------------------------------------------------------
+// Tree navigation (PlaylistOrganiser)
+// ---------------------------------------------------------------------------
+
+void VimHandler::treeMoveCursor(QTreeView* tree, int delta)
+{
+    QModelIndex cur = tree->currentIndex();
+    if (!cur.isValid())
+        cur = tree->model()->index(0, 0);
+    if (!cur.isValid()) return;
+
+    const int steps = std::abs(delta);
+    for (int i = 0; i < steps; ++i) {
+        const QModelIndex next = (delta > 0) ? tree->indexBelow(cur)
+                                             : tree->indexAbove(cur);
+        if (!next.isValid()) break;
+        cur = next;
+    }
+    qCDebug(VIM_LOG) << "treeMoveCursor: delta=" << delta << "→ row=" << cur.row();
+    tree->selectionModel()->setCurrentIndex(
+        cur, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+}
+
+void VimHandler::treeMoveSibling(int delta)
+{
+    auto* tree = asTreeView(m_viewLocator->activeView());
+    if (!tree) return;
+
+    const QModelIndex cur = tree->currentIndex();
+    if (!cur.isValid()) return;
+
+    const int targetRow = cur.row() + delta;
+    if (targetRow < 0) return;
+
+    const QModelIndex sibling = tree->model()->index(targetRow, 0, cur.parent());
+    if (!sibling.isValid()) return;
+
+    qCDebug(VIM_LOG) << "treeMoveSibling: delta=" << delta
+                     << "row" << cur.row() << "->" << targetRow;
+    tree->selectionModel()->setCurrentIndex(
+        sibling, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+}
+
+void VimHandler::treeOpenOrDescend()
+{
+    auto* tree = asTreeView(m_viewLocator->activeView());
+    if (!tree) return;
+
+    const QModelIndex cur = tree->currentIndex();
+    if (!cur.isValid()) return;
+
+    if (!tree->isExpanded(cur)) {
+        qCDebug(VIM_LOG) << "treeOpenOrDescend: expanding row=" << cur.row();
+        tree->expand(cur);
+    } else {
+        const QModelIndex child = tree->model()->index(0, 0, cur);
+        if (child.isValid()) {
+            qCDebug(VIM_LOG) << "treeOpenOrDescend: descending to first child";
+            tree->selectionModel()->setCurrentIndex(
+                child, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        } else {
+            qCDebug(VIM_LOG) << "treeOpenOrDescend: already expanded leaf, no-op";
+        }
+    }
+}
+
+void VimHandler::treeCloseOrAscend()
+{
+    auto* tree = asTreeView(m_viewLocator->activeView());
+    if (!tree) return;
+
+    const QModelIndex cur = tree->currentIndex();
+    if (!cur.isValid()) return;
+
+    if (tree->isExpanded(cur)) {
+        qCDebug(VIM_LOG) << "treeCloseOrAscend: collapsing row=" << cur.row();
+        tree->collapse(cur);
+    } else {
+        const QModelIndex parent = cur.parent();
+        if (parent.isValid()) {
+            qCDebug(VIM_LOG) << "treeCloseOrAscend: ascending to parent";
+            tree->selectionModel()->setCurrentIndex(
+                parent, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        } else {
+            qCDebug(VIM_LOG) << "treeCloseOrAscend: already at root, no-op";
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
