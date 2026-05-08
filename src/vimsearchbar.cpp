@@ -25,6 +25,11 @@ VimSearchBar::VimSearchBar()
     connect(m_edit, &QLineEdit::textChanged, this, &VimSearchBar::textChanged);
 }
 
+void VimSearchBar::setLabel(const QString& text)
+{
+    m_prefix->setText(text);
+}
+
 void VimSearchBar::attachTo(QWidget* anchor)
 {
     if (m_anchor)

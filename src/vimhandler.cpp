@@ -96,6 +96,8 @@ bool VimHandler::handleKeyPress(QKeyEvent* ev)
             return handleVisualKey(ev);
         case Mode::Filter:
             return false;
+        case Mode::Search:
+            return false;
     }
     return false;
 }
@@ -262,6 +264,7 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
 
     if (ch == u'u') { qCDebug(VIM_LOG) << "Normal: 'u' → undo"; undo(); return true; }
 
+    if (ch == u'/') { qCDebug(VIM_LOG) << "Normal: '/' → enterSearch"; enterSearch(); return true; }
     if (ch == u'n') { qCDebug(VIM_LOG) << "Normal: 'n' → nextMatch"; nextMatch(); return true; }
     if (ch == u'N') { qCDebug(VIM_LOG) << "Normal: 'N' → prevMatch"; prevMatch(); return true; }
 
@@ -416,7 +419,7 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
     if (ch == u'p' || ch == u'P' || ch == u'o') return true;
     if (ch == u'u') return true;
     if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
-    if (ch == u'n' || ch == u'N') return true;
+    if (ch == u'/' || ch == u'n' || ch == u'N') return true;
 
     return false;
 }
@@ -1288,18 +1291,33 @@ void VimHandler::cancelFilter()
 
 void VimHandler::nextMatch()
 {
-    if (m_lastFilter.isEmpty())
+    if (!m_searchMatches.empty()) {
+        m_searchMatchIdx = (m_searchMatchIdx + 1) % static_cast<int>(m_searchMatches.size());
+        qCDebug(VIM_LOG) << "nextMatch: search match" << m_searchMatchIdx
+                         << "row=" << m_searchMatches[static_cast<size_t>(m_searchMatchIdx)];
+        jumpToMatch(m_searchMatchIdx);
         return;
-    qCDebug(VIM_LOG) << "nextMatch: moveCursor +1";
-    moveCursor(+1);
+    }
+    if (!m_lastFilter.isEmpty()) {
+        qCDebug(VIM_LOG) << "nextMatch: filter mode, moveCursor +1";
+        moveCursor(+1);
+    }
 }
 
 void VimHandler::prevMatch()
 {
-    if (m_lastFilter.isEmpty())
+    if (!m_searchMatches.empty()) {
+        const int sz = static_cast<int>(m_searchMatches.size());
+        m_searchMatchIdx = (m_searchMatchIdx - 1 + sz) % sz;
+        qCDebug(VIM_LOG) << "prevMatch: search match" << m_searchMatchIdx
+                         << "row=" << m_searchMatches[static_cast<size_t>(m_searchMatchIdx)];
+        jumpToMatch(m_searchMatchIdx);
         return;
-    qCDebug(VIM_LOG) << "prevMatch: moveCursor -1";
-    moveCursor(-1);
+    }
+    if (!m_lastFilter.isEmpty()) {
+        qCDebug(VIM_LOG) << "prevMatch: filter mode, moveCursor -1";
+        moveCursor(-1);
+    }
 }
 
 void VimHandler::onFilterTextChanged(const QString& text)
@@ -1321,6 +1339,163 @@ Fooyin::FyWidget* VimHandler::findEnclosingFyWidget(QAbstractItemView* view) con
         w = w->parentWidget();
     }
     return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Search (/)
+// ---------------------------------------------------------------------------
+
+void VimHandler::enterSearch()
+{
+    auto* view = m_viewLocator->activeView();
+    if (!view || !view->model()) {
+        qCWarning(VIM_LOG) << "enterSearch: no active view or model";
+        return;
+    }
+
+    // Save the view now — once the search bar gains focus, activeView() would
+    // lose its cache and its fallback would steal focus back to the view.
+    m_searchView = view;
+    m_preSearchRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+
+    if (!m_searchBar) {
+        m_searchBar = new VimSearchBar();
+        m_searchBar->setLabel(QStringLiteral("/"));
+        connect(m_searchBar, &VimSearchBar::textChanged, this, &VimHandler::onSearchTextChanged);
+        connect(m_searchBar, &VimSearchBar::confirmed,   this, &VimHandler::commitSearch);
+        connect(m_searchBar, &VimSearchBar::cancelled,   this, &VimHandler::cancelSearch);
+    }
+
+    m_searchBar->attachTo(view->window());
+    m_searchBar->clear();
+    m_searchMatches.clear();
+    m_searchMatchIdx = -1;
+
+    m_mode = Mode::Search;
+    m_pendingKey = {};
+    m_count = 0;
+    emit modeChanged(m_mode);
+
+    m_searchBar->show();
+    m_searchBar->setFocus();
+    qCInfo(VIM_LOG) << "Mode → Search, preSearchRow=" << m_preSearchRow;
+}
+
+void VimHandler::commitSearch()
+{
+    m_lastSearchPattern = m_searchBar ? m_searchBar->text() : QString{};
+    if (m_searchBar)
+        m_searchBar->hide();
+
+    if (m_searchView)
+        m_searchView->setFocus(Qt::OtherFocusReason);
+
+    m_mode = Mode::Normal;
+    m_pendingKey = {};
+    m_count = 0;
+    emit modeChanged(m_mode);
+    qCInfo(VIM_LOG) << "Search committed: '" << m_lastSearchPattern
+                    << "' matchCount=" << m_searchMatches.size();
+}
+
+void VimHandler::cancelSearch()
+{
+    if (m_searchBar)
+        m_searchBar->hide();
+
+    m_searchMatches.clear();
+    m_searchMatchIdx = -1;
+    m_lastSearchPattern.clear();
+
+    auto* view = m_searchView.data();
+    if (view && view->model() && m_preSearchRow >= 0) {
+        const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+        view->selectionModel()->setCurrentIndex(
+            view->model()->index(m_preSearchRow, col),
+            QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    }
+
+    if (view)
+        view->setFocus(Qt::OtherFocusReason);
+
+    m_mode = Mode::Normal;
+    m_pendingKey = {};
+    m_count = 0;
+    emit modeChanged(m_mode);
+    qCInfo(VIM_LOG) << "Search cancelled, cursor restored to row" << m_preSearchRow;
+}
+
+void VimHandler::buildMatchList(const QString& pattern)
+{
+    m_searchMatches.clear();
+    m_searchMatchIdx = -1;
+
+    if (pattern.isEmpty())
+        return;
+
+    auto* view = m_searchView.data();
+    if (!view || !view->model())
+        return;
+
+    auto* model = view->model();
+    const int rows = model->rowCount();
+    const int cols = model->columnCount();
+
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            const QModelIndex mi = model->index(row, col);
+            // PlaylistModel returns formatted track text via ToolTipRole;
+            // Qt::DisplayRole is only used for the RatingEditor column.
+            QString cell = model->data(mi, Qt::ToolTipRole).toString();
+            if (cell.isEmpty())
+                cell = model->data(mi, Qt::DisplayRole).toString();
+            if (!cell.isEmpty() && cell.contains(pattern, Qt::CaseInsensitive)) {
+                m_searchMatches.push_back(row);
+                break;
+            }
+        }
+    }
+    qCDebug(VIM_LOG) << "buildMatchList: pattern='" << pattern
+                     << "' matches=" << m_searchMatches.size();
+}
+
+void VimHandler::onSearchTextChanged(const QString& text)
+{
+    buildMatchList(text);
+
+    if (!m_searchMatches.empty()) {
+        m_searchMatchIdx = 0;
+        for (int i = 0; i < static_cast<int>(m_searchMatches.size()); ++i) {
+            if (m_searchMatches[static_cast<size_t>(i)] >= m_preSearchRow) {
+                m_searchMatchIdx = i;
+                break;
+            }
+        }
+        jumpToMatch(m_searchMatchIdx);
+    } else if (!text.isEmpty()) {
+        auto* view = m_searchView.data();
+        if (view && view->model()) {
+            const int col = view->currentIndex().isValid()
+                          ? view->currentIndex().column() : 0;
+            view->selectionModel()->setCurrentIndex(
+                view->model()->index(m_preSearchRow, col),
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        }
+    }
+}
+
+void VimHandler::jumpToMatch(int idx)
+{
+    auto* view = m_searchView.data();
+    if (!view || !view->model() || m_searchMatches.empty())
+        return;
+    const int row = m_searchMatches[static_cast<size_t>(idx)];
+    const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    const QModelIndex mi = view->model()->index(row, col);
+    view->selectionModel()->setCurrentIndex(
+        mi, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    view->scrollTo(mi);
+    qCDebug(VIM_LOG) << "jumpToMatch: idx=" << idx << "row=" << row;
 }
 
 } // namespace Fooyin::VimMotions

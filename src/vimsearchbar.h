@@ -16,6 +16,7 @@ public:
 
     // Reparent and pin to the bottom edge of anchor.
     void attachTo(QWidget* anchor);
+    void setLabel(const QString& text);
     void clear();
     void prefillText(const QString& text);
     QString text() const;
