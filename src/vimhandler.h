@@ -4,6 +4,7 @@
 
 #include <core/playlist/playlist.h>
 #include <QObject>
+#include <QPointer>
 #include <utils/id.h>
 
 #include <vector>
@@ -13,6 +14,7 @@ class QKeyEvent;
 class QTreeView;
 
 namespace Fooyin {
+class FyWidget;
 class Playlist;
 class PlaylistHandler;
 } // namespace Fooyin
@@ -21,15 +23,17 @@ namespace Fooyin::VimMotions {
 
 class ViewLocator;
 class SpatialNavigator;
+class VimSearchBar;
 
 class VimHandler : public QObject
 {
     Q_OBJECT
 
 public:
-    enum class Mode { Normal, Visual, Insert };
+    enum class Mode { Normal, Visual, Insert, Search };
 
     explicit VimHandler(QObject* parent = nullptr);
+    ~VimHandler() override;
 
     [[nodiscard]] Mode mode() const;
 
@@ -50,6 +54,10 @@ private:
     void enterNormal();
     void enterInsert();
     void enterVisual();
+    void enterSearch();
+    void commitSearch();
+    void cancelSearch();
+    void onSearchTextChanged(const QString& text);
 
     void moveCursor(int delta);
     void jumpToFirst();
@@ -57,6 +65,8 @@ private:
     void jumpToRow(int row);
     void moveCursorHalfPage(int direction);
     void activateCurrentRow();
+    void nextMatch();
+    void prevMatch();
 
     void deleteRows(int count);
     void yankRows(int count);
@@ -78,14 +88,9 @@ private:
     void undo();
     void redo();
 
-    // Returns the playlist the visible PlaylistView is showing. Uses
-    // activePlaylist() first (the playing one); falls back to matching by
-    // row count, then to the first available playlist.
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
+    [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
 
-    // Defers a ClearAndSelect on (row, col) until the model has settled at
-    // expectedRowCount rows. Handles both the sync in-memory reset and a
-    // possible second async database-write reset from fooyin.
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
 
     Mode  m_mode{Mode::Normal};
@@ -112,6 +117,10 @@ private:
 
     std::vector<UndoEntry> m_undoStack;
     int                    m_undoIndex{-1};
+
+    QPointer<VimSearchBar>    m_searchBar;
+    QPointer<Fooyin::FyWidget> m_searchTarget;
+    QString                   m_lastSearch;
 };
 
 } // namespace Fooyin::VimMotions

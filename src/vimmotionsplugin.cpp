@@ -19,8 +19,9 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
                     << (m_playlistHandler ? "(PlaylistHandler acquired)" : "(no PlaylistHandler!)");
 }
 
-void VimMotionsPlugin::initialise(const GuiPluginContext& /*context*/)
+void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 {
+    m_searchController = context.searchController;
     qCInfo(VIM_LOG) << "VimMotionsPlugin: GUI initialising, installing event filter";
     m_vimHandler = new VimHandler(this);
     m_vimHandler->setPlaylistHandler(m_playlistHandler);

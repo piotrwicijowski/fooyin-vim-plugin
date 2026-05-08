@@ -96,7 +96,6 @@ set(PLUGIN_SOURCES
     src/vimmotionsplugin.cpp
     src/vimmotionsplugin.h
     src/vimlog.h
-    src/vimlog.h
     src/vimhandler.cpp
     src/vimhandler.h
     src/viewlocator.cpp
@@ -105,6 +104,8 @@ set(PLUGIN_SOURCES
     src/spatialnavigator.h
     src/vimclipboard.cpp
     src/vimclipboard.h
+    src/vimsearchbar.cpp
+    src/vimsearchbar.h
 )
 
 if(Fooyin_FOUND)

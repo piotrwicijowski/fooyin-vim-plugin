@@ -10,6 +10,7 @@ namespace Fooyin {
 struct CorePluginContext;
 struct GuiPluginContext;
 class PlaylistHandler;
+class SearchController;
 
 namespace VimMotions {
 
@@ -33,8 +34,9 @@ public:
     void shutdown() override;
 
 private:
-    PlaylistHandler* m_playlistHandler{nullptr};
-    VimHandler*      m_vimHandler{nullptr};
+    PlaylistHandler*  m_playlistHandler{nullptr};
+    SearchController* m_searchController{nullptr};
+    VimHandler*       m_vimHandler{nullptr};
 };
 
 } // namespace VimMotions
