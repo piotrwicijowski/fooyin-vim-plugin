@@ -37,7 +37,7 @@ VimHandler::VimHandler(QObject* parent)
 
 VimHandler::~VimHandler()
 {
-    delete m_searchBar;
+    delete m_filterBar;
 }
 
 VimHandler::Mode VimHandler::mode() const
@@ -94,7 +94,7 @@ bool VimHandler::handleKeyPress(QKeyEvent* ev)
             return handleNormalKey(ev);
         case Mode::Visual:
             return handleVisualKey(ev);
-        case Mode::Search:
+        case Mode::Filter:
             return false;
     }
     return false;
@@ -149,6 +149,9 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
             case Qt::Key_R:
                 qCDebug(VIM_LOG) << "Normal: Ctrl+R → redo";
                 redo(); return true;
+            case Qt::Key_I:
+                qCDebug(VIM_LOG) << "Normal: Ctrl+I → enterFilter";
+                enterFilter(); return true;
             default:
                 qCDebug(VIM_LOG) << "Normal: unrecognised Ctrl combo qtKey=" << qtKey << ", passing through";
                 return false;
@@ -259,7 +262,6 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
 
     if (ch == u'u') { qCDebug(VIM_LOG) << "Normal: 'u' → undo"; undo(); return true; }
 
-    if (ch == u'/') { qCDebug(VIM_LOG) << "Normal: '/' → enterSearch"; enterSearch(); return true; }
     if (ch == u'n') { qCDebug(VIM_LOG) << "Normal: 'n' → nextMatch"; nextMatch(); return true; }
     if (ch == u'N') { qCDebug(VIM_LOG) << "Normal: 'N' → prevMatch"; prevMatch(); return true; }
 
@@ -393,7 +395,8 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
 
     if (mods & Qt::ControlModifier)
         return key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H
-            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U || key == Qt::Key_R;
+            || key == Qt::Key_L || key == Qt::Key_D || key == Qt::Key_U || key == Qt::Key_R
+            || key == Qt::Key_I;
 
     if (key == Qt::Key_Escape) return true;
     if (ch == u'i') return true;
@@ -413,7 +416,7 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
     if (ch == u'p' || ch == u'P' || ch == u'o') return true;
     if (ch == u'u') return true;
     if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
-    if (ch == u'/' || ch == u'n' || ch == u'N') return true;
+    if (ch == u'n' || ch == u'N') return true;
 
     return false;
 }
@@ -1207,85 +1210,85 @@ void VimHandler::moveVisualSelection(int delta)
 }
 
 // ---------------------------------------------------------------------------
-// Search (/)
+// Filter (Ctrl+I)
 // ---------------------------------------------------------------------------
 
-void VimHandler::enterSearch()
+void VimHandler::enterFilter()
 {
     auto* view = m_viewLocator->activeView();
     if (!view) {
-        qCWarning(VIM_LOG) << "enterSearch: no active view";
+        qCWarning(VIM_LOG) << "enterFilter: no active view";
         return;
     }
 
     auto* target = findEnclosingFyWidget(view);
     if (!target) {
-        qCWarning(VIM_LOG) << "enterSearch: no enclosing FyWidget found";
+        qCWarning(VIM_LOG) << "enterFilter: no enclosing FyWidget found";
         return;
     }
-    m_searchTarget = target;
+    m_filterTarget = target;
 
-    if (!m_searchBar) {
-        m_searchBar = new VimSearchBar();
-        connect(m_searchBar, &VimSearchBar::textChanged, this, &VimHandler::onSearchTextChanged);
-        connect(m_searchBar, &VimSearchBar::confirmed,   this, &VimHandler::commitSearch);
-        connect(m_searchBar, &VimSearchBar::cancelled,   this, &VimHandler::cancelSearch);
+    if (!m_filterBar) {
+        m_filterBar = new VimSearchBar();
+        connect(m_filterBar, &VimSearchBar::textChanged, this, &VimHandler::onFilterTextChanged);
+        connect(m_filterBar, &VimSearchBar::confirmed,   this, &VimHandler::commitFilter);
+        connect(m_filterBar, &VimSearchBar::cancelled,   this, &VimHandler::cancelFilter);
     }
 
-    m_searchBar->attachTo(view->window());
-    m_searchBar->clear();
-    if (!m_lastSearch.isEmpty())
-        m_searchBar->prefillText(m_lastSearch);
+    m_filterBar->attachTo(view->window());
+    m_filterBar->clear();
+    if (!m_lastFilter.isEmpty())
+        m_filterBar->prefillText(m_lastFilter);
 
-    m_mode = Mode::Search;
+    m_mode = Mode::Filter;
     m_pendingKey = {};
     m_count = 0;
     emit modeChanged(m_mode);
 
-    m_searchBar->show();
-    m_searchBar->setFocus();
-    qCInfo(VIM_LOG) << "Mode → Search";
+    m_filterBar->show();
+    m_filterBar->setFocus();
+    qCInfo(VIM_LOG) << "Mode → Filter";
 }
 
-void VimHandler::commitSearch()
+void VimHandler::commitFilter()
 {
-    if (!m_searchBar)
+    if (!m_filterBar)
         return;
-    m_lastSearch = m_searchBar->text();
-    m_searchBar->hide();
+    m_lastFilter = m_filterBar->text();
+    m_filterBar->hide();
 
-    if (m_searchTarget)
-        m_searchTarget->setFocus(Qt::OtherFocusReason);
+    if (m_filterTarget)
+        m_filterTarget->setFocus(Qt::OtherFocusReason);
 
     m_mode = Mode::Normal;
     m_pendingKey = {};
     m_count = 0;
     emit modeChanged(m_mode);
-    qCInfo(VIM_LOG) << "Search committed: '" << m_lastSearch << "' → Normal";
+    qCInfo(VIM_LOG) << "Filter committed: '" << m_lastFilter << "' → Normal";
 }
 
-void VimHandler::cancelSearch()
+void VimHandler::cancelFilter()
 {
-    if (m_searchTarget)
-        m_searchTarget->searchEvent(Fooyin::SearchRequest{});
-    m_lastSearch.clear();
+    if (m_filterTarget)
+        m_filterTarget->searchEvent(Fooyin::SearchRequest{});
+    m_lastFilter.clear();
 
-    if (m_searchBar)
-        m_searchBar->hide();
+    if (m_filterBar)
+        m_filterBar->hide();
 
-    if (m_searchTarget)
-        m_searchTarget->setFocus(Qt::OtherFocusReason);
+    if (m_filterTarget)
+        m_filterTarget->setFocus(Qt::OtherFocusReason);
 
     m_mode = Mode::Normal;
     m_pendingKey = {};
     m_count = 0;
     emit modeChanged(m_mode);
-    qCInfo(VIM_LOG) << "Search cancelled → Normal";
+    qCInfo(VIM_LOG) << "Filter cancelled → Normal";
 }
 
 void VimHandler::nextMatch()
 {
-    if (m_lastSearch.isEmpty())
+    if (m_lastFilter.isEmpty())
         return;
     qCDebug(VIM_LOG) << "nextMatch: moveCursor +1";
     moveCursor(+1);
@@ -1293,20 +1296,20 @@ void VimHandler::nextMatch()
 
 void VimHandler::prevMatch()
 {
-    if (m_lastSearch.isEmpty())
+    if (m_lastFilter.isEmpty())
         return;
     qCDebug(VIM_LOG) << "prevMatch: moveCursor -1";
     moveCursor(-1);
 }
 
-void VimHandler::onSearchTextChanged(const QString& text)
+void VimHandler::onFilterTextChanged(const QString& text)
 {
-    if (!m_searchTarget)
+    if (!m_filterTarget)
         return;
     Fooyin::SearchRequest req;
     req.text      = text;
     req.emptyMode = Fooyin::EmptySearchMode::ShowAll;
-    m_searchTarget->searchEvent(req);
+    m_filterTarget->searchEvent(req);
 }
 
 Fooyin::FyWidget* VimHandler::findEnclosingFyWidget(QAbstractItemView* view) const

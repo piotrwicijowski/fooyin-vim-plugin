@@ -30,7 +30,7 @@ class VimHandler : public QObject
     Q_OBJECT
 
 public:
-    enum class Mode { Normal, Visual, Insert, Search };
+    enum class Mode { Normal, Visual, Insert, Filter };
 
     explicit VimHandler(QObject* parent = nullptr);
     ~VimHandler() override;
@@ -54,10 +54,10 @@ private:
     void enterNormal();
     void enterInsert();
     void enterVisual();
-    void enterSearch();
-    void commitSearch();
-    void cancelSearch();
-    void onSearchTextChanged(const QString& text);
+    void enterFilter();
+    void commitFilter();
+    void cancelFilter();
+    void onFilterTextChanged(const QString& text);
 
     void moveCursor(int delta);
     void jumpToFirst();
@@ -118,9 +118,9 @@ private:
     std::vector<UndoEntry> m_undoStack;
     int                    m_undoIndex{-1};
 
-    QPointer<VimSearchBar>    m_searchBar;
-    QPointer<Fooyin::FyWidget> m_searchTarget;
-    QString                   m_lastSearch;
+    QPointer<VimSearchBar>     m_filterBar;
+    QPointer<Fooyin::FyWidget> m_filterTarget;
+    QString                    m_lastFilter;
 };
 
 } // namespace Fooyin::VimMotions

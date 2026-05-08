@@ -11,7 +11,7 @@ namespace Fooyin::VimMotions {
 
 VimSearchBar::VimSearchBar()
     : QWidget{nullptr}
-    , m_prefix{new QLabel(QStringLiteral("/"), this)}
+    , m_prefix{new QLabel(QStringLiteral("Filter: "), this)}
     , m_edit{new QLineEdit(this)}
 {
     auto* layout = new QHBoxLayout(this);
