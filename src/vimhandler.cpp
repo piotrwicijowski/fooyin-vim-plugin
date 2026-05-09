@@ -1686,9 +1686,11 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
 
 int VimHandler::currentCount()
 {
-    m_hadExplicitCount = m_count > 0;
-    m_dispatchCount = m_count > 0 ? m_count : 1;
-    m_count = 0;
+    if (m_count > 0) {
+        m_hadExplicitCount = true;
+        m_dispatchCount = m_count;
+        m_count = 0;
+    }
     return m_dispatchCount;
 }
 

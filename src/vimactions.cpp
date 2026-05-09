@@ -26,7 +26,11 @@ void VimActions::registerAll()
         h.jumpToFirst();
     });
     registerAction(u"jumpToLast"_s, [](VimHandler& h, const QStringView&) {
-        h.jumpToLast();
+        if (h.hadExplicitCount()) {
+            h.jumpToRow(h.currentCount() - 1);
+        } else {
+            h.jumpToLast();
+        }
     });
     registerAction(u"jumpToRow"_s, [](VimHandler& h, const QStringView& a) {
         h.jumpToRow(a.toInt());
@@ -128,6 +132,14 @@ void VimActions::registerAll()
 
     // -- Focus --
     registerAction(u"focusNowPlaying"_s, [](VimHandler& h, const QStringView&) {
+        h.focusNowPlaying();
+    });
+    registerAction(u"focusNowPlayingAndExit"_s, [](VimHandler& h, const QStringView&) {
+        h.enterNormal();
+        h.focusNowPlaying();
+    });
+    registerAction(u"focusNowPlayingAndExit"_s, [](VimHandler& h, const QStringView&) {
+        h.enterNormal();
         h.focusNowPlaying();
     });
 

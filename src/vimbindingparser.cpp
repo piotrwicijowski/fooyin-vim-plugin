@@ -171,6 +171,14 @@ bool KeyCombo::matches(QKeyEvent* ev) const
     }
 
     if (evMods != Qt::NoModifier) {
+        // Allow uppercase letters: when the binding has no modifiers
+        // but the event has ShiftModifier, try matching by text
+        // character (e.g. binding "G" should match Shift+G).
+        if (evMods == Qt::ShiftModifier && !ch.isNull()) {
+            const QString text = ev->text();
+            if (!text.isEmpty() && text.front() == ch)
+                return true;
+        }
         return false;
     }
 

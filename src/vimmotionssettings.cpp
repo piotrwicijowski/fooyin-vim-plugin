@@ -23,6 +23,7 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
         {"VimMotions/Bindings/Normal/h",     "treeCloseOrAscend"},
         {"VimMotions/Bindings/Normal/l",     "treeOpenOrDescend"},
         {"VimMotions/Bindings/Normal/o",     "focusNowPlaying"},
+        {"VimMotions/Bindings/Normal/g;",    "focusNowPlaying"},
         {"VimMotions/Bindings/Normal/p",     "pasteAfter"},
         {"VimMotions/Bindings/Normal/P",     "pasteBefore"},
         {"VimMotions/Bindings/Normal/slash", "enterSearch"},
@@ -59,6 +60,7 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
         {"VimMotions/Bindings/Visual/Alt+K", "moveVisualSelection:-1"},
         {"VimMotions/Bindings/Visual/h",     "treeCloseOrAscend"},
         {"VimMotions/Bindings/Visual/l",     "treeOpenOrDescend"},
+{"VimMotions/Bindings/Visual/g;",    "focusNowPlayingAndExit"},
 
         // -- Insert mode --
         {"VimMotions/Bindings/Insert/Escape","leaveInsertMode"},
