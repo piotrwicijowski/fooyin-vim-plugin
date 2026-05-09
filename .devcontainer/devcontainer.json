@@ -1,0 +1,19 @@
+{
+	"name": "Claude code devcontainer",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"args": {
+			"TZ": "${localEnv:TZ:Atlantic/Reykjavik}",
+			"CLAUDE_CODE_VERSION": "latest",
+		}
+	},
+	"remoteUser": "node",
+	"containerEnv": {
+		"CLAUDE_CONFIG_DIR": "/home/node/.claude"
+	},
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+	"workspaceFolder": "/workspace",
+	"mounts": [
+		"source=${localWorkspaceFolder}/../fooyin,target=/fooyin,type=bind,readonly"
+	]
+}
