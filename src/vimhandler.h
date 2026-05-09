@@ -171,6 +171,7 @@ private:
 
     VimActions m_actions;
     bool m_useConfigBindings{false};
+    bool m_useDefaultBindings{true};
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};
     QHash<Mode, QList<BindingEntry>> m_configBindings;

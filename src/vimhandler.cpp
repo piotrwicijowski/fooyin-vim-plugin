@@ -1668,11 +1668,17 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
     if (!manager) return;
 
     m_useConfigBindings = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
+    m_useDefaultBindings = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
 
     using namespace Settings::VimMotions;
     manager->subscribe<UseConfigBindings>(this, [this](bool val) {
         m_useConfigBindings = val;
         if (val) rebuildBindings();
+    });
+
+    manager->subscribe<UseDefaultBindings>(this, [this](bool val) {
+        m_useDefaultBindings = val;
+    if (m_useConfigBindings) rebuildBindings();
     });
 
     for (const auto& b : VimMotionsSettings::defaultBindings()) {
@@ -1681,7 +1687,7 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
         });
     }
 
-    rebuildBindings();
+    if (m_useConfigBindings) rebuildBindings();
 }
 
 int VimHandler::currentCount()
@@ -1775,6 +1781,15 @@ void VimHandler::rebuildBindings()
 
     for (const auto& b : VimMotionsSettings::defaultBindings()) {
         const QString fullKey = QString::fromLatin1(b.key);
+
+        // When UseDefaultBindings is false, only include bindings
+        // that the user has explicitly set in their config file
+        if (!m_useDefaultBindings) {
+            if (!m_settingsManager->fileContains(fullKey)) {
+                continue;
+            }
+        }
+
         const QString val = m_settingsManager->value(fullKey).toString();
 
         // Empty value = user wants to unmap this default binding

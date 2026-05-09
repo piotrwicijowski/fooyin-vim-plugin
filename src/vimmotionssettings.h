@@ -15,6 +15,7 @@ Q_NAMESPACE
 enum VimMotionsSetting : uint32_t
 {
     UseConfigBindings = 0 | Type::Bool,
+    UseDefaultBindings,
 };
 Q_ENUM_NS(VimMotionsSetting)
 

@@ -208,7 +208,7 @@ The plugin supports user-defined key bindings stored in fooyin's config file (`~
 
 ### Enabling
 
-Add (or change) this line in `fooyin.conf`:
+Add (or change) these lines in `fooyin.conf`:
 
 ```ini
 [VimMotions]
@@ -216,6 +216,8 @@ UseConfigBindings=true
 ```
 
 When `true`, the plugin reads all keys under the `VimMotions/Bindings` group and dispatches key events through the config-driven system instead of the hardcoded handlers.
+
+By default, all built-in bindings are active when `UseConfigBindings=true`. Use `UseDefaultBindings` (see below) to start from a clean slate.
 
 ### Binding format
 
@@ -292,6 +294,26 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 
 Bindings are read from settings on startup and rebuilt automatically whenever any `VimMotions/Bindings/*` setting changes. You can edit `fooyin.conf` while fooyin is running and changes will take effect on the next keystroke — no restart needed.
 
+### UseDefaultBindings
+
+By default (`UseDefaultBindings=true`), all built-in bindings are active when `UseConfigBindings=true`. You can still override or unmap individual bindings on top of those defaults.
+
+Set `UseDefaultBindings=false` to start from a **clean slate** — no default bindings are loaded. Only bindings you explicitly configure in `fooyin.conf` will take effect:
+
+```ini
+[VimMotions]
+UseConfigBindings=true
+UseDefaultBindings=false
+Bindings\Normal\j=moveCursor:+1
+Bindings\Normal\k=moveCursor:-1
+Bindings\Normal\gg=jumpToFirst
+Bindings\Normal\G=jumpToLast
+```
+
+With this config, only `j`, `k`, `gg`, and `G` are active in Normal mode — all other defaults are ignored. See the [Explicit default configuration](#explicit-default-configuration) section for the full list of all default bindings.
+
+Changes take effect immediately — no restart needed (see [Runtime changes](#runtime-changes)).
+
 ### Unmapping bindings
 
 To remove (unmap) a default binding, set its value to an empty string:
@@ -304,9 +326,73 @@ Bindings\Visual\Escape=
 
 This prevents the key from triggering any action in that mode. The key will fall through to fooyin's normal shortcut handling.
 
-### Defaults
+### Explicit default configuration
 
-When no bindings are configured (or `UseConfigBindings=false`), the hardcoded bindings documented in the tables above are used. The default config values match those hardcoded bindings exactly, so enabling `UseConfigBindings` without editing any binding keys produces identical behaviour.
+To opt into only the bindings you need, set `UseDefaultBindings=false` and copy the desired lines below into your config. The full set of default bindings is:
+
+```ini
+[VimMotions]
+UseConfigBindings=true
+UseDefaultBindings=false
+
+; -- Normal mode --
+Bindings\Normal\j=moveCursor:+1
+Bindings\Normal\k=moveCursor:-1
+Bindings\Normal\gg=jumpToFirst
+Bindings\Normal\G=jumpToLast
+Bindings\Normal\dd=deleteRows
+Bindings\Normal\yy=yankRows
+Bindings\Normal\i=enterInsert
+Bindings\Normal\v=enterVisual
+Bindings\Normal\u=undo
+Bindings\Normal\Ctrl+R=redo
+Bindings\Normal\h=treeCloseOrAscend
+Bindings\Normal\l=treeOpenOrDescend
+Bindings\Normal\o=focusNowPlaying
+Bindings\Normal\g;=focusNowPlaying
+Bindings\Normal\p=pasteAfter
+Bindings\Normal\P=pasteBefore
+Bindings\Normal\slash=enterSearch
+Bindings\Normal\n=nextMatch
+Bindings\Normal\N=prevMatch
+Bindings\Normal\Escape=clearPending
+Bindings\Normal\Ctrl+J=spatialMoveFocus:down
+Bindings\Normal\Ctrl+K=spatialMoveFocus:up
+Bindings\Normal\Ctrl+H=spatialMoveFocus:left
+Bindings\Normal\Ctrl+L=spatialMoveFocus:right
+Bindings\Normal\Ctrl+D=moveCursorHalfPage:+1
+Bindings\Normal\Ctrl+U=moveCursorHalfPage:-1
+Bindings\Normal\Ctrl+I=enterFilter
+Bindings\Normal\Ctrl+Shift+J=treeMoveSibling:+1
+Bindings\Normal\Ctrl+Shift+K=treeMoveSibling:-1
+Bindings\Normal\Alt+J=moveRows:+1
+Bindings\Normal\Alt+K=moveRows:-1
+
+; -- Visual mode --
+Bindings\Visual\j=extendCursor:+1
+Bindings\Visual\k=extendCursor:-1
+Bindings\Visual\gg=extendToFirst
+Bindings\Visual\G=extendToEnd
+Bindings\Visual\o=swapAnchor
+Bindings\Visual\d=deleteSelection
+Bindings\Visual\y=yankSelection
+Bindings\Visual\Escape=leaveVisualMode
+Bindings\Visual\n=nextMatchAndExit
+Bindings\Visual\N=prevMatchAndExit
+Bindings\Visual\slash=enterSearchAndExit
+Bindings\Visual\Ctrl+D=extendHalfPage:+1
+Bindings\Visual\Ctrl+U=extendHalfPage:-1
+Bindings\Visual\Alt+J=moveVisualSelection:+1
+Bindings\Visual\Alt+K=moveVisualSelection:-1
+Bindings\Visual\h=treeCloseOrAscend
+Bindings\Visual\l=treeOpenOrDescend
+Bindings\Visual\g;=focusNowPlayingAndExit
+
+; -- Insert mode --
+Bindings\Insert\Escape=leaveInsertMode
+```
+
+When adding new default configurable bindings to the plugin code, the entries above must also be added to this section to keep documentation in sync.
 
 ## Notes
 
