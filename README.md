@@ -292,6 +292,18 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 
 Bindings are read from settings on startup and rebuilt automatically whenever any `VimMotions/Bindings/*` setting changes. You can edit `fooyin.conf` while fooyin is running and changes will take effect on the next keystroke — no restart needed.
 
+### Unmapping bindings
+
+To remove (unmap) a default binding, set its value to an empty string:
+
+```ini
+[VimMotions]
+Bindings\Normal\j=
+Bindings\Visual\Escape=
+```
+
+This prevents the key from triggering any action in that mode. The key will fall through to fooyin's normal shortcut handling.
+
 ### Defaults
 
 When no bindings are configured (or `UseConfigBindings=false`), the hardcoded bindings documented in the tables above are used. The default config values match those hardcoded bindings exactly, so enabling `UseConfigBindings` without editing any binding keys produces identical behaviour.

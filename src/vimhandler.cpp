@@ -1777,6 +1777,9 @@ void VimHandler::rebuildBindings()
         const QString fullKey = QString::fromLatin1(b.key);
         const QString val = m_settingsManager->value(fullKey).toString();
 
+        // Empty value = user wants to unmap this default binding
+        if (val.isEmpty()) continue;
+
         const QStringList parts = fullKey.split(u'/');
         if (parts.size() < 4) continue;
 
