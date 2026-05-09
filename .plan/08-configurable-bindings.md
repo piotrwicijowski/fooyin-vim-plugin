@@ -1,6 +1,19 @@
 # Configurable Bindings
 
-> Status: draft — design decisions locked. Ready to implement.
+> Status: in-progress — chunks implemented sequentially.
+
+## Progress
+
+| Chunk | Status |
+|---|---|
+| 1. VimBindingParser | Done |
+| 2. VimActions | Done |
+| 3. VimMotionsSettings | Done |
+| 4. CMakeLists.txt | Done |
+| 5. VimHandler integration | Stub pass done (compiles); logic pending |
+| 6. wouldHandle predicates | Not started |
+| 7. Runtime subscribe | Not started |
+| 8. README update | Not started |
 
 ## Decisions summary
 

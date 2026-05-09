@@ -18,9 +18,12 @@ class ActionManager;
 class FyWidget;
 class Playlist;
 class PlaylistHandler;
+class SettingsManager;
 } // namespace Fooyin
 
 namespace Fooyin::VimMotions {
+
+enum class Direction : int;
 
 class ViewLocator;
 class SpatialNavigator;
@@ -40,8 +43,56 @@ public:
 
     void setPlaylistHandler(Fooyin::PlaylistHandler* handler);
     void setActionManager(Fooyin::ActionManager* manager);
+    void setSettingsManager(Fooyin::SettingsManager* manager);
 
     bool eventFilter(QObject* watched, QEvent* event) override;
+
+    // -- Action API (called by config-driven dispatch) --
+    void moveCursor(int delta);
+    void jumpToFirst();
+    void jumpToLast();
+    void jumpToRow(int row);
+    void moveCursorHalfPage(int direction);
+    void activateCurrentRow();
+
+    void treeMoveSibling(int delta);
+    void treeOpenOrDescend();
+    void treeCloseOrAscend();
+
+    void enterInsert();
+    void enterVisual();
+    void enterNormal();
+    void enterFilter();
+
+    void deleteRows(int count);
+    void yankRows(int count);
+    void pasteAfter();
+    void pasteBefore();
+    void undo();
+    void redo();
+
+    void focusNowPlaying();
+
+    void enterSearch();
+    void nextMatch();
+    void prevMatch();
+
+    void moveRows(int delta);
+    void moveVisualSelection(int delta);
+    void deleteVisualSelection();
+    void yankVisualSelection();
+    void updateVisualSelection();
+
+    // -- Helpers for config-driven dispatch (stubs until Chunk 5) --
+    [[nodiscard]] int currentCount();
+    void clearPendingState();
+    void moveSpatialFocus(Direction dir);
+    void extendVisualCursor(int delta);
+    void extendVisualToFirst();
+    void extendVisualToEnd();
+    void extendVisualToRow(int row);
+    void extendVisualHalfPage(int direction);
+    void swapVisualAnchor();
 
 signals:
     void modeChanged(Mode newMode);
@@ -53,52 +104,21 @@ private:
     [[nodiscard]] bool wouldHandleNormal(QKeyEvent* ev) const;
     [[nodiscard]] bool wouldHandleVisual(QKeyEvent* ev) const;
 
-    void enterNormal();
-    void enterInsert();
-    void enterVisual();
-    void enterFilter();
     void commitFilter();
     void cancelFilter();
     void onFilterTextChanged(const QString& text);
 
-    void enterSearch();
     void commitSearch();
     void cancelSearch();
     void onSearchTextChanged(const QString& text);
     void buildMatchList(const QString& pattern);
     void jumpToMatch(int idx);
 
-    void focusNowPlaying();
-
-    void moveCursor(int delta);
-    void jumpToFirst();
-    void jumpToLast();
-    void jumpToRow(int row);
-    void moveCursorHalfPage(int direction);
     [[nodiscard]] int halfPageDelta() const;
-    void activateCurrentRow();
-    void nextMatch();
-    void prevMatch();
-
-    void deleteRows(int count);
-    void yankRows(int count);
-    void deleteVisualSelection();
-    void yankVisualSelection();
-    void pasteAfter();
-    void pasteBefore();
-    void updateVisualSelection();
-    void moveRows(int delta);
-    void moveVisualSelection(int delta);
-
     void treeMoveCursor(QTreeView* tree, int delta);
-    void treeMoveSibling(int delta);
-    void treeOpenOrDescend();
-    void treeCloseOrAscend();
 
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before,
                        Fooyin::PlaylistTrackList after, int cursorBefore, int cursorAfter, int col);
-    void undo();
-    void redo();
 
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
@@ -127,6 +147,7 @@ private:
     VimClipboard              m_clipboard;
     Fooyin::ActionManager*    m_actionManager{nullptr};
     Fooyin::PlaylistHandler*  m_playlistHandler{nullptr};
+    Fooyin::SettingsManager*  m_settingsManager{nullptr};
 
     std::vector<UndoEntry> m_undoStack;
     int                    m_undoIndex{-1};

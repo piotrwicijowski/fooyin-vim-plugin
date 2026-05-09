@@ -93,19 +93,25 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
 configure_file(vimmotions.json.in ${CMAKE_CURRENT_BINARY_DIR}/vimmotions.json)
 
 set(PLUGIN_SOURCES
-    src/vimmotionsplugin.cpp
-    src/vimmotionsplugin.h
-    src/vimlog.h
+    src/vimactions.cpp
+    src/vimactions.h
+    src/vimbindingparser.cpp
+    src/vimbindingparser.h
     src/vimhandler.cpp
     src/vimhandler.h
-    src/viewlocator.cpp
-    src/viewlocator.h
-    src/spatialnavigator.cpp
-    src/spatialnavigator.h
     src/vimclipboard.cpp
     src/vimclipboard.h
+    src/vimlog.h
+    src/vimmotionsplugin.cpp
+    src/vimmotionsplugin.h
+    src/vimmotionssettings.cpp
+    src/vimmotionssettings.h
     src/vimsearchbar.cpp
     src/vimsearchbar.h
+    src/spatialnavigator.cpp
+    src/spatialnavigator.h
+    src/viewlocator.cpp
+    src/viewlocator.h
 )
 
 if(Fooyin_FOUND)

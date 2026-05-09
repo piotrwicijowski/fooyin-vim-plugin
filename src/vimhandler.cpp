@@ -1622,4 +1622,38 @@ void VimHandler::jumpToMatch(int idx)
     qCDebug(VIM_LOG) << "jumpToMatch: idx=" << idx << "row=" << row;
 }
 
+// ---------------------------------------------------------------------------
+// Config-binding stubs (filled out in Chunk 5)
+// ---------------------------------------------------------------------------
+
+void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
+{
+    m_settingsManager = manager;
+}
+
+int VimHandler::currentCount()
+{
+    const int count = m_count > 0 ? m_count : 1;
+    m_count = 0;
+    return count;
+}
+
+void VimHandler::clearPendingState()
+{
+    m_count = 0;
+    m_pendingKey = {};
+}
+
+void VimHandler::moveSpatialFocus(Direction dir)
+{
+    m_spatialNavigator->moveFocus(dir, m_viewLocator->activeView());
+}
+
+void VimHandler::extendVisualCursor(int /*delta*/) {}
+void VimHandler::extendVisualToFirst() {}
+void VimHandler::extendVisualToEnd() {}
+void VimHandler::extendVisualToRow(int /*row*/) {}
+void VimHandler::extendVisualHalfPage(int /*direction*/) {}
+void VimHandler::swapVisualAnchor() {}
+
 } // namespace Fooyin::VimMotions
