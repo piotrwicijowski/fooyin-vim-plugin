@@ -2,14 +2,18 @@
 #include "spatialnavigator.h"
 #include "vimsearchbar.h"
 #include "viewlocator.h"
+#include "vimbindingparser.h"
+#include "vimmotionssettings.h"
 #include "vimlog.h"
 
 #include <core/playlist/playlist.h>
 #include <core/playlist/playlisthandler.h>
+#include <core/plugins/coreplugincontext.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/actions/command.h>
+#include <utils/settings/settingsmanager.h>
 
 #include <QAbstractItemView>
 #include <QCoreApplication>
@@ -35,6 +39,7 @@ VimHandler::VimHandler(QObject* parent)
     , m_viewLocator{new ViewLocator(this)}
     , m_spatialNavigator{new SpatialNavigator(this)}
 {
+    m_actions.registerAll();
     qCDebug(VIM_LOG) << "VimHandler created";
 }
 
@@ -66,10 +71,26 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
                          << "mode=" << static_cast<int>(m_mode)
                          << "watched=" << watched->metaObject()->className();
         bool claim = false;
-        if (m_mode == Mode::Normal)
-            claim = wouldHandleNormal(kev);
-        else if (m_mode == Mode::Visual)
-            claim = wouldHandleVisual(kev);
+        if (m_useConfigBindings) {
+            if (m_mode == Mode::Normal || m_mode == Mode::Visual) {
+                claim = wouldHandleFromConfig(kev, m_mode);
+            } else if (m_mode == Mode::Insert) {
+                const auto key = kev->key();
+                const auto mods = kev->modifiers();
+                if (key == Qt::Key_Escape && mods == Qt::NoModifier) {
+                    claim = true;
+                } else if (key != Qt::Key_Escape
+                           && !m_configBindings.value(Mode::Insert).isEmpty()
+                           && wouldHandleFromConfig(kev, Mode::Insert)) {
+                    claim = true;
+                }
+            }
+        } else {
+            if (m_mode == Mode::Normal)
+                claim = wouldHandleNormal(kev);
+            else if (m_mode == Mode::Visual)
+                claim = wouldHandleVisual(kev);
+        }
         if (claim) {
             kev->accept();
             return true;
@@ -85,6 +106,21 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
 
 bool VimHandler::handleKeyPress(QKeyEvent* ev)
 {
+    if (m_useConfigBindings) {
+        switch (m_mode) {
+            case Mode::Insert:
+                return dispatchFromConfig(ev, Mode::Insert);
+            case Mode::Normal:
+                return dispatchFromConfig(ev, Mode::Normal);
+            case Mode::Visual:
+                return dispatchFromConfig(ev, Mode::Visual);
+            case Mode::Filter:
+            case Mode::Search:
+                return false;
+        }
+        return false;
+    }
+
     switch (m_mode) {
         case Mode::Insert:
             if (ev->key() == Qt::Key_Escape) {
@@ -1623,19 +1659,29 @@ void VimHandler::jumpToMatch(int idx)
 }
 
 // ---------------------------------------------------------------------------
-// Config-binding stubs (filled out in Chunk 5)
+// Config-binding implementation
 // ---------------------------------------------------------------------------
 
 void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
 {
     m_settingsManager = manager;
+    if (manager) {
+        m_useConfigBindings = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
+        rebuildBindings();
+    }
 }
 
 int VimHandler::currentCount()
 {
-    const int count = m_count > 0 ? m_count : 1;
+    m_hadExplicitCount = m_count > 0;
+    m_dispatchCount = m_count > 0 ? m_count : 1;
     m_count = 0;
-    return count;
+    return m_dispatchCount;
+}
+
+bool VimHandler::hadExplicitCount() const
+{
+    return m_hadExplicitCount;
 }
 
 void VimHandler::clearPendingState()
@@ -1649,11 +1695,236 @@ void VimHandler::moveSpatialFocus(Direction dir)
     m_spatialNavigator->moveFocus(dir, m_viewLocator->activeView());
 }
 
-void VimHandler::extendVisualCursor(int /*delta*/) {}
-void VimHandler::extendVisualToFirst() {}
-void VimHandler::extendVisualToEnd() {}
-void VimHandler::extendVisualToRow(int /*row*/) {}
-void VimHandler::extendVisualHalfPage(int /*direction*/) {}
-void VimHandler::swapVisualAnchor() {}
+void VimHandler::extendVisualCursor(int delta)
+{
+    auto* view = m_viewLocator->activeView();
+    const int last = (view && view->model()) ? view->model()->rowCount() - 1 : INT_MAX;
+    m_visualCursor = std::clamp(m_visualCursor + delta, 0, qMax(0, last));
+    updateVisualSelection();
+}
+
+void VimHandler::extendVisualToFirst()
+{
+    m_visualCursor = 0;
+    updateVisualSelection();
+}
+
+void VimHandler::extendVisualToEnd()
+{
+    auto* view = m_viewLocator->activeView();
+    if (view && view->model()) {
+        const int last = view->model()->rowCount() - 1;
+        if (last >= 0) {
+            m_visualCursor = hadExplicitCount()
+                ? std::clamp(currentCount() - 1, 0, last)
+                : last;
+            updateVisualSelection();
+        }
+    }
+}
+
+void VimHandler::extendVisualToRow(int row)
+{
+    auto* view = m_viewLocator->activeView();
+    if (view && view->model()) {
+        const int last = view->model()->rowCount() - 1;
+        m_visualCursor = std::clamp(row, 0, qMax(0, last));
+        updateVisualSelection();
+    }
+}
+
+void VimHandler::extendVisualHalfPage(int direction)
+{
+    const int delta = halfPageDelta();
+    m_visualCursor = std::clamp(m_visualCursor + direction * delta, 0,
+                                (m_viewLocator->activeView() && m_viewLocator->activeView()->model())
+                                    ? qMax(0, m_viewLocator->activeView()->model()->rowCount() - 1)
+                                    : 0);
+    updateVisualSelection();
+}
+
+void VimHandler::swapVisualAnchor()
+{
+    std::swap(m_visualAnchor, m_visualCursor);
+    updateVisualSelection();
+}
+
+// ---------------------------------------------------------------------------
+// Binding rebuild
+// ---------------------------------------------------------------------------
+
+void VimHandler::rebuildBindings()
+{
+    m_configBindings.clear();
+    if (!m_settingsManager) return;
+
+    for (const auto& b : VimMotionsSettings::defaultBindings()) {
+        const QString fullKey = QString::fromLatin1(b.key);
+        const QString val = m_settingsManager->value(fullKey).toString();
+
+        const QStringList parts = fullKey.split(u'/');
+        if (parts.size() < 4) continue;
+
+        const QString modeStr = parts[parts.size() - 2];
+        const QString keyComboStr = parts[parts.size() - 1];
+
+        Mode mode = Mode::Normal;
+        if (modeStr == QStringLiteral("Visual")) mode = Mode::Visual;
+        else if (modeStr == QStringLiteral("Insert")) mode = Mode::Insert;
+
+        auto entry = parseBindingString(keyComboStr, val);
+        m_configBindings[mode].push_back(std::move(entry));
+    }
+
+    qCInfo(VIM_LOG) << "Rebuilt config bindings:"
+                    << m_configBindings[Mode::Normal].size() << "normal,"
+                    << m_configBindings[Mode::Visual].size() << "visual,"
+                    << m_configBindings[Mode::Insert].size() << "insert";
+}
+
+// ---------------------------------------------------------------------------
+// Action execution
+// ---------------------------------------------------------------------------
+
+void VimHandler::executeAction(const BindingEntry& entry)
+{
+    auto handler = m_actions.find(entry.actionName);
+    if (handler) {
+        handler(*this, QStringView{entry.args});
+    } else {
+        qCWarning(VIM_LOG) << "executeAction: unknown action" << entry.actionName;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Config-driven dispatch
+// ---------------------------------------------------------------------------
+
+bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
+{
+    const Qt::KeyboardModifiers mods = ev->modifiers();
+    const int qtKey = ev->key();
+    const QString text = ev->text();
+    const QChar ch = text.isEmpty() ? QChar{} : text.front();
+
+    if (mode == Mode::Normal || mode == Mode::Visual) {
+        if (qtKey == Qt::Key_Escape && mods == Qt::NoModifier) {
+            qCDebug(VIM_LOG) << "ConfigDispatch: Esc → clear";
+            m_pendingKey = {};
+            m_count = 0;
+            if (mode == Mode::Visual) enterNormal();
+            return true;
+        }
+
+        if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) {
+            const int digit = ch.digitValue();
+            if (m_count > 0 || digit != 0) {
+                m_count = m_count * 10 + digit;
+                qCDebug(VIM_LOG) << "ConfigDispatch: digit" << digit << "→ count=" << m_count;
+            }
+            return true;
+        }
+    }
+
+    m_hadExplicitCount = m_count > 0;
+    m_dispatchCount = m_count > 0 ? m_count : 1;
+    m_count = 0;
+
+    if (!m_pendingKey.isNull()) {
+        QChar pending = m_pendingKey;
+        m_pendingKey = {};
+
+        const auto& bindings = m_configBindings[mode];
+        for (const auto& b : bindings) {
+            if (b.isTwoKey && b.firstKey.ch == pending && b.secondKey.matches(ev)) {
+                qCDebug(VIM_LOG) << "ConfigDispatch: two-key complete '" << pending << ch << "'";
+                executeAction(b);
+                return true;
+            }
+        }
+    }
+
+    const auto& bindings = m_configBindings[mode];
+
+    const BindingEntry* best = nullptr;
+    int bestModCount = -1;
+
+    for (const auto& b : bindings) {
+        if (b.isTwoKey) continue;
+        if (b.firstKey.matches(ev)) {
+            int mc = 0;
+            auto m = b.firstKey.modifiers;
+            if (m & Qt::ControlModifier) ++mc;
+            if (m & Qt::AltModifier) ++mc;
+            if (m & Qt::ShiftModifier) ++mc;
+            if (m & Qt::MetaModifier) ++mc;
+            if (mc > bestModCount) {
+                bestModCount = mc;
+                best = &b;
+            }
+        }
+    }
+
+    if (!best) {
+        for (const auto& b : bindings) {
+            if (!b.isTwoKey) continue;
+            if (b.firstKey.matches(ev)) {
+                best = &b;
+                bestModCount = -2;
+                break;
+            }
+        }
+    }
+
+    if (!best) {
+        qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << qtKey << "text=" << text;
+        return false;
+    }
+
+    if (best->isTwoKey) {
+        m_pendingKey = best->firstKey.ch;
+        qCDebug(VIM_LOG) << "ConfigDispatch: two-key start '" << m_pendingKey << "'";
+        return true;
+    }
+
+    qCDebug(VIM_LOG) << "ConfigDispatch: action" << best->actionName << "args=" << best->args;
+    executeAction(*best);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Config-driven wouldHandle (ShortcutOverride predicate)
+// ---------------------------------------------------------------------------
+
+bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
+{
+    if (mode == Mode::Normal || mode == Mode::Visual) {
+        const int qtKey = ev->key();
+        const auto mods = ev->modifiers();
+        if (qtKey == Qt::Key_Escape && mods == Qt::NoModifier) return true;
+
+        const QChar ch = ev->text().isEmpty() ? QChar{} : ev->text().front();
+        if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
+    }
+
+    const auto& bindings = m_configBindings.value(mode);
+
+    if (!m_pendingKey.isNull()) {
+        for (const auto& b : bindings) {
+            if (b.isTwoKey && b.firstKey.ch == m_pendingKey && b.secondKey.matches(ev))
+                return true;
+        }
+    }
+
+    for (const auto& b : bindings) {
+        if (b.isTwoKey) {
+            if (b.firstKey.matches(ev)) return true;
+        } else {
+            if (b.firstKey.matches(ev)) return true;
+        }
+    }
+
+    return false;
+}
 
 } // namespace Fooyin::VimMotions

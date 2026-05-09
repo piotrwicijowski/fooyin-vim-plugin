@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vimactions.h"
+#include "vimbindingparser.h"
 #include "vimclipboard.h"
 
 #include <core/playlist/playlist.h>
@@ -47,7 +49,6 @@ public:
 
     bool eventFilter(QObject* watched, QEvent* event) override;
 
-    // -- Action API (called by config-driven dispatch) --
     void moveCursor(int delta);
     void jumpToFirst();
     void jumpToLast();
@@ -83,8 +84,8 @@ public:
     void yankVisualSelection();
     void updateVisualSelection();
 
-    // -- Helpers for config-driven dispatch (stubs until Chunk 5) --
     [[nodiscard]] int currentCount();
+    [[nodiscard]] bool hadExplicitCount() const;
     void clearPendingState();
     void moveSpatialFocus(Direction dir);
     void extendVisualCursor(int delta);
@@ -103,6 +104,11 @@ private:
     bool handleVisualKey(QKeyEvent* ev);
     [[nodiscard]] bool wouldHandleNormal(QKeyEvent* ev) const;
     [[nodiscard]] bool wouldHandleVisual(QKeyEvent* ev) const;
+    [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
+
+    bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
+    void executeAction(const BindingEntry& entry);
+    void rebuildBindings();
 
     void commitFilter();
     void cancelFilter();
@@ -162,6 +168,12 @@ private:
     int                         m_searchMatchIdx{-1};
     int                         m_preSearchRow{-1};
     QString                     m_lastSearchPattern;
+
+    VimActions m_actions;
+    bool m_useConfigBindings{false};
+    int m_dispatchCount{0};
+    bool m_hadExplicitCount{false};
+    QHash<Mode, QList<BindingEntry>> m_configBindings;
 };
 
 } // namespace Fooyin::VimMotions

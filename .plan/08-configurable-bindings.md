@@ -10,8 +10,8 @@
 | 2. VimActions | Done |
 | 3. VimMotionsSettings | Done |
 | 4. CMakeLists.txt | Done |
-| 5. VimHandler integration | Stub pass done (compiles); logic pending |
-| 6. wouldHandle predicates | Not started |
+| 5. VimHandler integration | Done |
+| 6. wouldHandle predicates | Done (integrated into Chunk 5) |
 | 7. Runtime subscribe | Not started |
 | 8. README update | Not started |
 

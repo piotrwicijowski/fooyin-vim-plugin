@@ -1,5 +1,6 @@
 #include "vimmotionsplugin.h"
 #include "vimhandler.h"
+#include "vimmotionssettings.h"
 #include "vimlog.h"
 
 #include <core/plugins/coreplugincontext.h>
@@ -15,8 +16,11 @@ VimMotionsPlugin::~VimMotionsPlugin() = default;
 void VimMotionsPlugin::initialise(const CorePluginContext& context)
 {
     m_playlistHandler = context.playlistHandler;
+    m_settingsManager = context.settingsManager;
     qCInfo(VIM_LOG) << "VimMotionsPlugin: core initialised"
                     << (m_playlistHandler ? "(PlaylistHandler acquired)" : "(no PlaylistHandler!)");
+
+    VimMotionsSettings{m_settingsManager};
 }
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
@@ -27,6 +31,7 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
     m_vimHandler = new VimHandler(this);
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
     m_vimHandler->setActionManager(m_actionManager);
+    m_vimHandler->setSettingsManager(m_settingsManager);
     qApp->installEventFilter(m_vimHandler);
 }
 
