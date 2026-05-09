@@ -20,6 +20,9 @@
 #include <QItemSelection>
 #include <QKeyEvent>
 #include <QPointer>
+#include <QSet>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QTreeView>
 #include <algorithm>
@@ -1779,8 +1782,12 @@ void VimHandler::rebuildBindings()
     m_configBindings.clear();
     if (!m_settingsManager) return;
 
+    // Track default keys so we skip them during the custom-key scan
+    QSet<QString> seenDefaultKeys;
+
     for (const auto& b : VimMotionsSettings::defaultBindings()) {
         const QString fullKey = QString::fromLatin1(b.key);
+        seenDefaultKeys.insert(fullKey);
 
         // When UseDefaultBindings is false, only include bindings
         // that the user has explicitly set in their config file
@@ -1807,6 +1814,47 @@ void VimHandler::rebuildBindings()
 
         auto entry = parseBindingString(keyComboStr, val);
         m_configBindings[mode].push_back(std::move(entry));
+    }
+
+    // Scan the settings file for user-defined custom bindings
+    // that are not in the defaults list (e.g. "d" or "f" in Normal mode)
+    {
+        const QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+                                     + QStringLiteral("/fooyin.conf");
+        QSettings fileSettings{settingsPath, QSettings::IniFormat};
+        fileSettings.beginGroup(QStringLiteral("VimMotions"));
+        const QStringList allKeys = fileSettings.allKeys();
+
+        qCDebug(VIM_LOG) << "Custom binding scan:" << allKeys.size() << "keys under VimMotions in" << settingsPath;
+
+        for (const QString& key : allKeys) {
+            if (!key.startsWith(QStringLiteral("Bindings/"))) continue;
+
+            const QString fullKey = QStringLiteral("VimMotions/") + key;
+            if (seenDefaultKeys.contains(fullKey)) {
+                qCDebug(VIM_LOG) << "  custom-scan: skip (default key)" << key;
+                continue;
+            }
+
+            const QString val = fileSettings.value(key).toString();
+            qCDebug(VIM_LOG) << "  custom-scan:" << key << "=" << val << "(empty? " << val.isEmpty() << ")";
+            if (val.isEmpty()) continue;
+
+            const QStringList parts = fullKey.split(u'/');
+            if (parts.size() < 4) continue;
+
+            const QString modeStr = parts[parts.size() - 2];
+            const QString keyComboStr = parts[parts.size() - 1];
+
+            Mode mode = Mode::Normal;
+            if (modeStr == QStringLiteral("Visual")) mode = Mode::Visual;
+            else if (modeStr == QStringLiteral("Insert")) mode = Mode::Insert;
+
+            auto entry = parseBindingString(keyComboStr, val);
+            m_configBindings[mode].push_back(std::move(entry));
+            qCDebug(VIM_LOG) << "  custom-scan: added" << key << "->" << val << "in" << modeStr << "mode";
+        }
+        fileSettings.endGroup();
     }
 
     qCInfo(VIM_LOG) << "Rebuilt config bindings:"
