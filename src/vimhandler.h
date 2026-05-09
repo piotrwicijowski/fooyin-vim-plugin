@@ -47,7 +47,14 @@ public:
     void setActionManager(Fooyin::ActionManager* manager);
     void setSettingsManager(Fooyin::SettingsManager* manager);
 
-    bool eventFilter(QObject* watched, QEvent* event) override;
+    [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
+
+    // Testing support
+    void rebuildBindings();
+    [[nodiscard]] const QHash<Mode, QList<BindingEntry>>& configBindings() const
+    {
+        return m_configBindings;
+    }
 
     void moveCursor(int delta);
     void jumpToFirst();
@@ -108,7 +115,6 @@ private:
 
     bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
     void executeAction(const BindingEntry& entry);
-    void rebuildBindings();
 
     void commitFilter();
     void cancelFilter();

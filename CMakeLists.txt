@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+option(BUILD_TESTING "Build tests" OFF)
+
+option(BUILD_TESTING "Build tests" OFF)
+
 # ---------------------------------------------------------------------------
 # Locate fooyin
 #
@@ -140,4 +144,13 @@ else()
 
     install(TARGETS fyplugin_vimmotions
         LIBRARY DESTINATION ${FOOYIN_PLUGIN_INSTALL_DIR})
+endif()
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+if(BUILD_TESTING)
+    enable_testing()
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_subdirectory(tests)
 endif()

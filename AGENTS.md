@@ -22,3 +22,18 @@ When making changes to features, key bindings, or modes, update `README.md` to m
 ### Default binding documentation
 
 When adding a new default configurable binding (in `VimMotionsSettings::defaultBindings()` in `vimmotionssettings.cpp`), the binding MUST also be added to the **Explicit default configuration** section in `README.md`. This section lists all default bindings in INI format for users who set `UseDefaultBindings=false`. Failure to add the entry there means the binding will be effectively invisible to users in that mode.
+
+## Build and test verification
+
+Once a feature is code-complete, build the plugin and build and run the tests:
+
+```bash
+cmake --build build
+cmake -B build-test -DBUILD_TESTING=ON -G Ninja
+cmake --build build-test
+QT_QPA_PLATFORM=offscreen ctest --test-dir build-test -V
+```
+
+## Planning new features
+
+When planning a new feature, the implementation plan MUST include unit tests (via `tests/bindingparsertest.cpp`) and integration tests (via `tests/bindingintegrationtest.cpp`) that cover the new functionality. Tests are a deliverable, not an afterthought.
