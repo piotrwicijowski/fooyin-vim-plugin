@@ -158,7 +158,16 @@ bool KeyCombo::matches(QKeyEvent* ev) const
     if (modifiers != Qt::NoModifier) {
         if ((evMods & modifiers) != modifiers)
             return false;
-        return ev->key() == key;
+        if (ev->key() == key)
+            return true;
+        // On some X11 layouts modifier combos change the keysym;
+        // fall back to matching the text character (case-insensitive)
+        if (!ch.isNull()) {
+            const QString text = ev->text();
+            if (!text.isEmpty())
+                return text.front().toUpper() == ch.toUpper();
+        }
+        return false;
     }
 
     if (evMods != Qt::NoModifier) {

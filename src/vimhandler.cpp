@@ -1820,6 +1820,19 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     const QString text = ev->text();
     const QChar ch = text.isEmpty() ? QChar{} : text.front();
 
+    // Ignore bare modifier key presses (Alt, Ctrl, Shift, Meta) so
+    // they don't consume the accumulated count.  They will be claimed
+    // again as part of the full modifier+key combo.
+    switch (qtKey) {
+        case Qt::Key_Shift:
+        case Qt::Key_Control:
+        case Qt::Key_Alt:
+        case Qt::Key_Meta:
+            return false;
+        default:
+            break;
+    }
+
     if (mode == Mode::Normal || mode == Mode::Visual) {
         if (qtKey == Qt::Key_Escape && mods == Qt::NoModifier) {
             qCDebug(VIM_LOG) << "ConfigDispatch: Esc → clear";

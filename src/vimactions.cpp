@@ -77,7 +77,10 @@ void VimActions::registerAll()
         h.pasteBefore();
     });
 
-    // -- Visual-mode actions --
+    // -- Row movement (Alt+J/K) --
+    registerAction(u"moveRows"_s, [](VimHandler& h, const QStringView& a) {
+        h.moveRows(a.toInt());
+    });
     registerAction(u"extendCursor"_s, [](VimHandler& h, const QStringView& a) {
         h.extendVisualCursor(a.toInt());
     });
