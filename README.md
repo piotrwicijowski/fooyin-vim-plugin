@@ -1,16 +1,18 @@
 # fooyin-vim-plugin
 
-Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Normal, Visual, and Insert modes to every list view in fooyin (playlist, library browser, file browser, queue, etc.).
+Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Normal, Visual, Insert, Filter, and Search modes to every list view in fooyin (playlist, library browser, file browser, queue, etc.).
 
 ## Features
 
 ### Modes
 
 | Mode | How to enter | What it does |
-|---|---|---|
-| Normal | Start-up default / `Esc` from Insert | All vim keys active; fooyin shortcuts suppressed |
+|---|---|---|---|
+| Normal | Start-up default / `Esc` from Insert, Search, Filter | All vim keys active; fooyin shortcuts suppressed |
 | Visual | `v` | Linewise range selection |
 | Insert | `i` | Vim off; all keys pass through to fooyin normally |
+| Filter | `Ctrl+i` | Live incremental filter — hides non-matching rows |
+| Search | `/` | Live search — all rows visible, cursor jumps to matches |
 
 ### Normal mode bindings
 
@@ -20,9 +22,10 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `[count]j` / `[count]k` | Move cursor N rows |
 | `gg` | Jump to first row |
 | `G` / `[count]G` | Jump to last row / row N (1-indexed) |
+| `o` | Focus currently playing item |
+| `g;` | Focus currently playing item |
 | `Ctrl+d` | Half page down |
 | `Ctrl+u` | Half page up |
-| `Enter` | Activate / play item under cursor |
 | `v` | Enter Visual mode |
 | `dd` / `[count]dd` | Delete row(s) from playlist |
 | `yy` / `[count]yy` | Yank row(s) into vim clipboard |
@@ -30,6 +33,13 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `u` | Undo last playlist change (dd, p, P, Alt+j/k) |
 | `Ctrl+r` | Redo last undone change |
 | `i` | Enter Insert mode |
+| `/` | Enter Search mode |
+| `n` / `N` | Next / previous search match (+/-1 row if filter active) |
+| `Ctrl+i` | Enter Filter mode |
+| `h` | Collapse node / ascend to parent (tree views) |
+| `l` | Expand node / descend to first child (tree views) |
+| `Ctrl+Shift+J` | Next sibling at same level (tree views) |
+| `Ctrl+Shift+K` | Previous sibling at same level (tree views) |
 | `Ctrl+j/k/h/l` | Move focus to the view below / above / left / right |
 | `Alt+j` / `Alt+k` | Move current row down / up in the playlist |
 | `[count]Alt+j` / `[count]Alt+k` | Move current row N positions down / up |

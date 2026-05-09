@@ -14,3 +14,7 @@ The fooyin source at `/fooyin` is the host directory `../fooyin` relative to thi
 ## Devcontainer
 
 Configuration lives in `.devcontainer/`. The container is launched with devpod-cli.
+
+## README maintenance
+
+When making changes to features, key bindings, or modes, update `README.md` to match. The README documents all modes, bindings, and behaviour — keep it in sync with the code.
