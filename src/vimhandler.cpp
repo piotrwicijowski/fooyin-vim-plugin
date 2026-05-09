@@ -282,9 +282,29 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
                      << "mods=" << mods << "accumCount=" << m_count
                      << "anchor=" << m_visualAnchor << "cursor=" << m_visualCursor;
 
+    // Ctrl combinations — Ctrl+D/U for half-page scroll extending selection
     if (mods & Qt::ControlModifier) {
-        qCDebug(VIM_LOG) << "Visual: Ctrl combo, passing through";
-        return false;
+        switch (qtKey) {
+            case Qt::Key_D: {
+                qCDebug(VIM_LOG) << "Visual: Ctrl+D → half page down";
+                auto* view = m_viewLocator->activeView();
+                if (view && view->model()) {
+                    const int last = view->model()->rowCount() - 1;
+                    m_visualCursor = std::clamp(m_visualCursor + halfPageDelta(), 0, qMax(0, last));
+                    updateVisualSelection();
+                }
+                return true;
+            }
+            case Qt::Key_U: {
+                qCDebug(VIM_LOG) << "Visual: Ctrl+U → half page up";
+                m_visualCursor = qMax(0, m_visualCursor - halfPageDelta());
+                updateVisualSelection();
+                return true;
+            }
+            default:
+                qCDebug(VIM_LOG) << "Visual: unrecognised Ctrl combo qtKey=" << qtKey << ", passing through";
+                return false;
+        }
     }
 
     if (qtKey == Qt::Key_Escape) {
@@ -305,6 +325,7 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     }
 
     const int count = m_count > 0 ? m_count : 1;
+    const bool hadCount = m_count > 0;
     m_count = 0;
     qCDebug(VIM_LOG) << "Visual: effective count=" << count;
 
@@ -318,7 +339,7 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
                 qCDebug(VIM_LOG) << "Visual: Alt+K → moveVisualSelection -" << count;
                 moveVisualSelection(-count); return true;
             default:
-                qCDebug(VIM_LOG) << "Normal: unrecognised Alt combo qtKey=" << qtKey << ", passing through";
+                qCDebug(VIM_LOG) << "Visual: unrecognised Alt combo qtKey=" << qtKey << ", passing through";
                 return false;
         }
     }
@@ -326,6 +347,34 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     if (ch.isNull()) {
         qCDebug(VIM_LOG) << "Visual: empty text, passing through";
         return false;
+    }
+
+    // Two-key sequence completion
+    if (!m_pendingKey.isNull()) {
+        const QChar pending = m_pendingKey;
+        m_pendingKey = {};
+        qCDebug(VIM_LOG) << "Visual: completing two-key seq '" << pending << "' + '" << ch << "'";
+        if (pending == u'g' && ch == u'g') {
+            qCDebug(VIM_LOG) << "Visual: gg → extend selection to first row";
+            m_visualCursor = 0;
+            updateVisualSelection();
+            return true;
+        }
+        if (pending == u'g' && ch == u';') {
+            qCDebug(VIM_LOG) << "Visual: g; → focusNowPlaying";
+            enterNormal();
+            focusNowPlaying();
+            return true;
+        }
+        qCDebug(VIM_LOG) << "Visual: incomplete two-key seq (pending='" << pending << "'), ignoring";
+        return true;
+    }
+
+    // Start of two-key sequences
+    if (ch == u'g') {
+        qCDebug(VIM_LOG) << "Visual: first key of two-key seq: '" << ch << "'";
+        m_pendingKey = ch;
+        return true;
     }
 
     if (ch == u'j') {
@@ -350,6 +399,53 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
                          << m_visualAnchor << "<->" << m_visualCursor << ")";
         std::swap(m_visualAnchor, m_visualCursor);
         updateVisualSelection();
+        return true;
+    }
+    if (ch == u'G') {
+        auto* view = m_viewLocator->activeView();
+        if (view && view->model()) {
+            const int last = view->model()->rowCount() - 1;
+            if (last >= 0) {
+                m_visualCursor = hadCount ? std::clamp(count - 1, 0, last) : last;
+                qCDebug(VIM_LOG) << "Visual: 'G' → cursor" << m_visualCursor << "(last=" << last << ")";
+                updateVisualSelection();
+            }
+        }
+        return true;
+    }
+    if (ch == u'l') {
+        if (asTreeView(m_viewLocator->activeView())) {
+            qCDebug(VIM_LOG) << "Visual: 'l' → treeOpenOrDescend";
+            treeOpenOrDescend();
+            return true;
+        }
+        return false;
+    }
+    if (ch == u'h') {
+        if (asTreeView(m_viewLocator->activeView())) {
+            qCDebug(VIM_LOG) << "Visual: 'h' → treeCloseOrAscend";
+            treeCloseOrAscend();
+            return true;
+        }
+        return false;
+    }
+    if (ch == u'n') {
+        qCDebug(VIM_LOG) << "Visual: 'n' → nextMatch (exit visual)";
+        enterNormal();
+        nextMatch();
+        return true;
+    }
+    if (ch == u'N') {
+        qCDebug(VIM_LOG) << "Visual: 'N' → prevMatch (exit visual)";
+        enterNormal();
+        prevMatch();
+        return true;
+    }
+    if (ch == u'/') {
+        qCDebug(VIM_LOG) << "Visual: '/' → enterSearch (exit visual)";
+        m_count = 0;
+        enterNormal();
+        enterSearch();
         return true;
     }
     if (ch == u'd') {
@@ -428,7 +524,9 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
     const int key = kev->key();
     const QChar ch = kev->text().isEmpty() ? QChar{} : kev->text().front();
 
-    if (mods & Qt::ControlModifier) return false;
+    if (mods & Qt::ControlModifier)
+        return key == Qt::Key_D || key == Qt::Key_U;
+
     if (key == Qt::Key_Escape) return true;
     if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
 
@@ -437,8 +535,13 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
 
     if (ch.isNull()) return false;
 
+    if (!m_pendingKey.isNull()) return true;
+
+    if (ch == u'g' || ch == u'd' || ch == u'y') return true;
     if (ch == u'j' || ch == u'k' || ch == u'o') return true;
-    if (ch == u'd' || ch == u'y') return true;
+    if (ch == u'G' || ch == u'l' || ch == u'h') return true;
+    if (ch == u'n' || ch == u'N') return true;
+    if (ch == u'/') return true;
 
     return false;
 }
@@ -602,20 +705,20 @@ void VimHandler::jumpToRow(int row)
         QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
 
-void VimHandler::moveCursorHalfPage(int direction)
+int VimHandler::halfPageDelta() const
 {
     auto* view = m_viewLocator->activeView();
-    if (!view) {
-        qCWarning(VIM_LOG) << "moveCursorHalfPage: no active view";
-        return;
-    }
+    if (!view) return 1;
     const QModelIndex cur = view->currentIndex();
     int itemH = cur.isValid() ? view->visualRect(cur).height() : 0;
     if (itemH <= 0) itemH = 20;
-    const int halfPage = qMax(1, view->height() / itemH / 2);
+    return qMax(1, view->height() / itemH / 2);
+}
+
+void VimHandler::moveCursorHalfPage(int direction)
+{
+    const int halfPage = halfPageDelta();
     qCDebug(VIM_LOG) << "moveCursorHalfPage: direction=" << direction
-                     << "viewHeight=" << view->height()
-                     << "itemHeight=" << itemH
                      << "halfPage=" << halfPage
                      << "effective delta=" << (direction * halfPage);
     moveCursor(direction * halfPage);

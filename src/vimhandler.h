@@ -75,6 +75,7 @@ private:
     void jumpToLast();
     void jumpToRow(int row);
     void moveCursorHalfPage(int direction);
+    [[nodiscard]] int halfPageDelta() const;
     void activateCurrentRow();
     void nextMatch();
     void prevMatch();

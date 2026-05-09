@@ -50,9 +50,17 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 |---|---|
 | `j` / `k` | Extend selection down / up |
 | `[count]j` / `[count]k` | Extend selection N rows |
+| `gg` | Extend selection to first row |
+| `G` / `[count]G` | Extend selection to last row / row N (1-indexed) |
+| `Ctrl+d` | Extend selection half page down |
+| `Ctrl+u` | Extend selection half page up |
 | `o` | Toggle anchor — swap cursor between start and end |
+| `h` / `l` | Collapse/expand node (tree views) |
 | `d` | Delete selected range, return to Normal |
 | `y` | Yank selected range, return to Normal |
+| `n` / `N` | Next / previous search match (return to Normal) |
+| `/` | Enter Search mode (return to Normal) |
+| `g;` | Focus currently playing item (return to Normal) |
 | `Alt+j` / `Alt+k` | Move entire selection down / up in the playlist |
 | `[count]Alt+j` / `[count]Alt+k` | Move entire selection N positions down / up |
 | `Esc` | Cancel selection, return to Normal |
