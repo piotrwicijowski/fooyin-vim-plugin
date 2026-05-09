@@ -22,9 +22,11 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 {
     m_searchController = context.searchController;
+    m_actionManager = context.actionManager;
     qCInfo(VIM_LOG) << "VimMotionsPlugin: GUI initialising, installing event filter";
     m_vimHandler = new VimHandler(this);
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
+    m_vimHandler->setActionManager(m_actionManager);
     qApp->installEventFilter(m_vimHandler);
 }
 

@@ -14,6 +14,7 @@ class QKeyEvent;
 class QTreeView;
 
 namespace Fooyin {
+class ActionManager;
 class FyWidget;
 class Playlist;
 class PlaylistHandler;
@@ -38,6 +39,7 @@ public:
     [[nodiscard]] Mode mode() const;
 
     void setPlaylistHandler(Fooyin::PlaylistHandler* handler);
+    void setActionManager(Fooyin::ActionManager* manager);
 
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -65,6 +67,8 @@ private:
     void onSearchTextChanged(const QString& text);
     void buildMatchList(const QString& pattern);
     void jumpToMatch(int idx);
+
+    void focusNowPlaying();
 
     void moveCursor(int delta);
     void jumpToFirst();
@@ -119,8 +123,9 @@ private:
         int                       col{0};
     };
 
-    VimClipboard             m_clipboard;
-    Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
+    VimClipboard              m_clipboard;
+    Fooyin::ActionManager*    m_actionManager{nullptr};
+    Fooyin::PlaylistHandler*  m_playlistHandler{nullptr};
 
     std::vector<UndoEntry> m_undoStack;
     int                    m_undoIndex{-1};

@@ -9,6 +9,7 @@
 namespace Fooyin {
 struct CorePluginContext;
 struct GuiPluginContext;
+class ActionManager;
 class PlaylistHandler;
 class SearchController;
 
@@ -34,6 +35,7 @@ public:
     void shutdown() override;
 
 private:
+    ActionManager*    m_actionManager{nullptr};
     PlaylistHandler*  m_playlistHandler{nullptr};
     SearchController* m_searchController{nullptr};
     VimHandler*       m_vimHandler{nullptr};

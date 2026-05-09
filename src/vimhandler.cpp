@@ -7,6 +7,9 @@
 #include <core/playlist/playlist.h>
 #include <core/playlist/playlisthandler.h>
 #include <gui/fywidget.h>
+#include <gui/guiconstants.h>
+#include <utils/actions/actionmanager.h>
+#include <utils/actions/command.h>
 
 #include <QAbstractItemView>
 #include <QCoreApplication>
@@ -214,9 +217,10 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         const QChar pending = m_pendingKey;
         m_pendingKey = {};
         qCDebug(VIM_LOG) << "Normal: completing two-key seq '" << pending << "' + '" << ch << "'";
-        if (pending == u'g' && ch == u'g') { qCDebug(VIM_LOG) << "Normal: gg → jumpToFirst"; jumpToFirst();      return true; }
-        if (pending == u'd' && ch == u'd') { qCDebug(VIM_LOG) << "Normal: dd count=" << count; deleteRows(count); return true; }
-        if (pending == u'y' && ch == u'y') { qCDebug(VIM_LOG) << "Normal: yy count=" << count; yankRows(count);   return true; }
+        if (pending == u'g' && ch == u'g') { qCDebug(VIM_LOG) << "Normal: gg → jumpToFirst"; jumpToFirst();            return true; }
+        if (pending == u'g' && ch == u';') { qCDebug(VIM_LOG) << "Normal: g; → focusNowPlaying"; focusNowPlaying();      return true; }
+        if (pending == u'd' && ch == u'd') { qCDebug(VIM_LOG) << "Normal: dd count=" << count; deleteRows(count);       return true; }
+        if (pending == u'y' && ch == u'y') { qCDebug(VIM_LOG) << "Normal: yy count=" << count; yankRows(count);         return true; }
         qCDebug(VIM_LOG) << "Normal: incomplete two-key seq (pending='" << pending << "'), processing '" << ch << "' standalone";
     }
 
@@ -251,16 +255,11 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         return true;
     }
 
+    if (ch == u'o') { qCDebug(VIM_LOG) << "Normal: 'o' → focusNowPlaying"; focusNowPlaying(); return true; }
     if (ch == u'v') { qCDebug(VIM_LOG) << "Normal: 'v' → Visual mode";  enterVisual(); return true; }
     if (ch == u'p') { qCDebug(VIM_LOG) << "Normal: 'p' → pasteAfter";   pasteAfter();  return true; }
     if (ch == u'P') { qCDebug(VIM_LOG) << "Normal: 'P' → pasteBefore";  pasteBefore(); return true; }
     if (ch == u'u') { qCDebug(VIM_LOG) << "Normal: 'u' → undo";         undo();        return true; }
-
-    if (qtKey == Qt::Key_Return || qtKey == Qt::Key_Enter || ch == u'o') {
-        qCDebug(VIM_LOG) << "Normal: Enter/o → activateCurrentRow";
-        activateCurrentRow();
-        return true;
-    }
 
     if (ch == u'u') { qCDebug(VIM_LOG) << "Normal: 'u' → undo"; undo(); return true; }
 
@@ -414,11 +413,10 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
     if (!m_pendingKey.isNull()) return true;
 
     if (ch == u'g' || ch == u'd' || ch == u'y') return true;
-    if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'v') return true;
+    if (ch == u'j' || ch == u'k' || ch == u'G' || ch == u'o' || ch == u'v') return true;
     if (ch == u'l' || ch == u'h') return true;
-    if (ch == u'p' || ch == u'P' || ch == u'o') return true;
+    if (ch == u'p' || ch == u'P') return true;
     if (ch == u'u') return true;
-    if (key == Qt::Key_Return || key == Qt::Key_Enter) return true;
     if (ch == u'/' || ch == u'n' || ch == u'N') return true;
 
     return false;
@@ -769,6 +767,29 @@ void VimHandler::setPlaylistHandler(Fooyin::PlaylistHandler* handler)
 {
     qCDebug(VIM_LOG) << "setPlaylistHandler:" << (handler ? "set" : "cleared");
     m_playlistHandler = handler;
+}
+
+void VimHandler::setActionManager(Fooyin::ActionManager* manager)
+{
+    qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
+    m_actionManager = manager;
+}
+
+void VimHandler::focusNowPlaying()
+{
+    qCDebug(VIM_LOG) << "focusNowPlaying";
+    if (!m_actionManager) {
+        qCWarning(VIM_LOG) << "focusNowPlaying: no ActionManager";
+        return;
+    }
+
+    Fooyin::Command* cmd = m_actionManager->command(Fooyin::Id(Constants::Actions::ShowNowPlaying));
+    if (!cmd || !cmd->action()) {
+        qCWarning(VIM_LOG) << "focusNowPlaying: ShowNowPlaying action not found";
+        return;
+    }
+
+    cmd->action()->trigger();
 }
 
 Fooyin::Playlist* VimHandler::targetPlaylist() const

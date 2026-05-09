@@ -4,5 +4,8 @@
 - undo redo - done
 - make the playlist view the first that gets focus - done
 - dot for repeat
-- slash search
+- slash search - done
+- o and g; to move to currently playing song - done
+- save per-playlist cursor position when switching between playlists (fooyin by default does not have that, but the plugin could store it)
+- rework mapping logic into configuration-driven
 
