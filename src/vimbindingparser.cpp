@@ -158,7 +158,10 @@ bool KeyCombo::matches(QKeyEvent* ev) const
     if (modifiers != Qt::NoModifier) {
         if ((evMods & modifiers) != modifiers)
             return false;
-    } else if (evMods != Qt::NoModifier) {
+        return ev->key() == key;
+    }
+
+    if (evMods != Qt::NoModifier) {
         return false;
     }
 

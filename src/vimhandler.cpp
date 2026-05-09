@@ -1665,10 +1665,23 @@ void VimHandler::jumpToMatch(int idx)
 void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
 {
     m_settingsManager = manager;
-    if (manager) {
-        m_useConfigBindings = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
-        rebuildBindings();
+    if (!manager) return;
+
+    m_useConfigBindings = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
+
+    using namespace Settings::VimMotions;
+    manager->subscribe<UseConfigBindings>(this, [this](bool val) {
+        m_useConfigBindings = val;
+        if (val) rebuildBindings();
+    });
+
+    for (const auto& b : VimMotionsSettings::defaultBindings()) {
+        manager->subscribe(QString::fromLatin1(b.key), this, [this](const QVariant&) {
+            if (m_useConfigBindings) rebuildBindings();
+        });
     }
+
+    rebuildBindings();
 }
 
 int VimHandler::currentCount()

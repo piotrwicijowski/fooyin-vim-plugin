@@ -12,8 +12,8 @@
 | 4. CMakeLists.txt | Done |
 | 5. VimHandler integration | Done |
 | 6. wouldHandle predicates | Done (integrated into Chunk 5) |
-| 7. Runtime subscribe | Not started |
-| 8. README update | Not started |
+| 7. Runtime subscribe | Done |
+| 8. README update | Done |
 
 ## Decisions summary
 

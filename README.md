@@ -202,6 +202,100 @@ Pipe through `grep` to focus on a specific subsystem:
 QT_LOGGING_RULES="fy.vim.debug=true" fooyin 2>&1 | grep "fy.vim"
 ```
 
+## Configurable bindings (experimental)
+
+The plugin supports user-defined key bindings stored in fooyin's config file (`~/.config/fooyin/fooyin.conf`). This feature is **off by default** — the hardcoded bindings above are used unless you opt in.
+
+### Enabling
+
+Add (or change) this line in `fooyin.conf`:
+
+```ini
+[VimMotions]
+UseConfigBindings=true
+```
+
+When `true`, the plugin reads all keys under the `VimMotions/Bindings` group and dispatches key events through the config-driven system instead of the hardcoded handlers.
+
+### Binding format
+
+Each binding is a single INI entry:
+
+```ini
+[VimMotions]
+Bindings\Normal\j=moveCursor:+1
+Bindings\Normal\k=moveCursor:-1
+Bindings\Normal\gg=jumpToFirst
+Bindings\Normal\G=jumpToLast
+Bindings\Normal\dd=deleteRows
+Bindings\Visual\j=extendCursor:+1
+Bindings\Insert\Escape=leaveInsertMode
+```
+
+The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]`.
+
+**Key combo syntax:**
+- Single character: `j`, `k`, `G`, `/` (use `slash` for the `/` key to avoid INI group separator issues)
+- Named keys: `Escape`, `Return`, `Tab`, `Space`, `Home`, `End`, `PageUp`, `PageDown`, `Left`, `Right`, `Up`, `Down`
+- Modifier combos: `Ctrl+J`, `Alt+J`, `Ctrl+Shift+K`
+- Two-key sequences: `gg`, `dd`, `yy`, `g;`
+
+**Action name + args:**
+- No args: `undo`, `enterInsert`, `jumpToFirst`
+- With args: `moveCursor:+1`, `spatialMoveFocus:down`, `treeMoveSibling:-1`
+- The arg string is passed to the action handler; each action parses its own args
+
+### Available actions
+
+| Action | Args | Modes | Description |
+|---|---|---|---|
+| `moveCursor` | `+1` / `-1` | Normal | Move cursor by N rows |
+| `jumpToFirst` | — | Normal | Jump to first row |
+| `jumpToLast` | — | Normal | Jump to last row |
+| `jumpToRow` | `N` | Normal | Jump to row N (0-indexed) |
+| `moveCursorHalfPage` | `+1` / `-1` | Normal | Move cursor by half page |
+| `activateCurrentRow` | — | Normal | Activate (Enter) current row |
+| `treeMoveSibling` | `+1` / `-1` | Normal | Move to next/prev tree sibling |
+| `treeOpenOrDescend` | — | Normal, Visual | Expand node or descend to first child |
+| `treeCloseOrAscend` | — | Normal, Visual | Collapse node or ascend to parent |
+| `enterInsert` | — | Normal | Switch to Insert mode |
+| `enterVisual` | — | Normal | Switch to Visual mode |
+| `enterNormal` | — | Visual, Insert | Return to Normal mode |
+| `enterFilter` | — | Normal | Open incremental filter bar |
+| `enterSearch` | — | Normal | Open `/` search bar |
+| `nextMatch` | — | Normal | Jump to next search match |
+| `prevMatch` | — | Normal | Jump to previous search match |
+| `deleteRows` | — | Normal | Delete N rows from playlist |
+| `yankRows` | — | Normal | Yank N rows into vim clipboard |
+| `pasteAfter` | — | Normal | Paste after cursor |
+| `pasteBefore` | — | Normal | Paste before cursor |
+| `undo` | — | Normal | Undo last playlist change |
+| `redo` | — | Normal | Redo last undone change |
+| `focusNowPlaying` | — | Normal | Focus currently playing track |
+| `moveRows` | `+1` / `-1` | Normal | Move current row in playlist |
+| `extendCursor` | `+1` / `-1` | Visual | Extend visual selection by N rows |
+| `extendToFirst` | — | Visual | Extend selection to first row |
+| `extendToEnd` | — | Visual | Extend selection to last row |
+| `extendToRow` | `N` | Visual | Extend selection to row N |
+| `extendHalfPage` | `+1` / `-1` | Visual | Extend selection by half page |
+| `swapAnchor` | — | Visual | Swap visual anchor and cursor |
+| `deleteSelection` | — | Visual | Delete visual range, return to Normal |
+| `yankSelection` | — | Visual | Yank visual range, return to Normal |
+| `moveVisualSelection` | `+1` / `-1` | Visual | Move selected rows in playlist |
+| `nextMatchAndExit` | — | Visual | Next match, return to Normal |
+| `prevMatchAndExit` | — | Visual | Previous match, return to Normal |
+| `enterSearchAndExit` | — | Visual | Open search, return to Normal |
+| `spatialMoveFocus` | `up`/`down`/`left`/`right` | Normal | Move focus between panes |
+| `clearPending` | — | Normal | Clear count / pending two-key key |
+
+### Runtime changes
+
+Bindings are read from settings on startup and rebuilt automatically whenever any `VimMotions/Bindings/*` setting changes. You can edit `fooyin.conf` while fooyin is running and changes will take effect on the next keystroke — no restart needed.
+
+### Defaults
+
+When no bindings are configured (or `UseConfigBindings=false`), the hardcoded bindings documented in the tables above are used. The default config values match those hardcoded bindings exactly, so enabling `UseConfigBindings` without editing any binding keys produces identical behaviour.
+
 ## Notes
 
 - Yank/delete/paste (`dd`, `yy`, `p`, `P`) operate on playlist views only. They read and write tracks via fooyin's `PlaylistHandler`. Other views (library browser, file browser) are read-only for these operations but support all cursor-navigation and spatial-focus bindings.
