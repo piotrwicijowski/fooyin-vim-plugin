@@ -8,5 +8,5 @@
 - doing dd and undo changes line focus
 - focus on playlist organizer and doing dd deletes from current playlist
 - visual mode UseConfigBindings=true does not go to normal mode - fixed
-- when a track is playing, pasting above the playing track changes the selection to the currently playing track. This is a bug in both legacy and UseConfigBindings=true modes
+- when a track is playing, pasting above the playing track changes the selection to the currently playing track. This is a bug in both legacy and UseConfigBindings=true modes - fixed
 - bindings are not reloaded on config change

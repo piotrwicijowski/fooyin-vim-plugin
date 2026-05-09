@@ -585,10 +585,11 @@ void VimHandler::enterNormal()
             const int row = qMax(0, m_visualCursor);
             const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
             const QModelIndex idx = view->model()->index(row, col);
+            qCDebug(VIM_LOG) << "enterNormal (from Visual): collapsing selection to row" << row << "col" << col;
             view->selectionModel()->setCurrentIndex(
                 idx.isValid() ? idx : view->currentIndex(),
                 QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-        }
+}
     }
     m_mode = Mode::Normal;
     m_pendingKey = {};
@@ -956,42 +957,58 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
 }
 
 void VimHandler::scheduleIndexRestore(QAbstractItemView* view, int row, int col,
-                                      int expectedRowCount)
+                                       int expectedRowCount)
 {
     if (!view || !view->model() || !view->selectionModel()) return;
 
     QPointer<QAbstractItemView> viewPtr{view};
 
-    // Restore the cursor once the model reaches expectedRowCount rows.
-    // The row-count guard prevents firing prematurely if a stale signal arrives.
-    auto restore = [viewPtr, row, col, expectedRowCount]() {
-        if (!viewPtr || !viewPtr->model()) return;
-        if (viewPtr->model()->rowCount() != expectedRowCount) {
-            qCDebug(VIM_LOG) << "scheduleIndexRestore: rowCount"
-                             << viewPtr->model()->rowCount() << "!= expected"
-                             << expectedRowCount << ", skipping";
-            return;
-        }
+    qCDebug(VIM_LOG) << "scheduleIndexRestore: scheduling restore to row=" << row
+                     << "col=" << col << "expectedRowCount=" << expectedRowCount
+                     << "view=" << view->metaObject()->className();
+
+    auto tryRestore = [viewPtr, row, col]() -> bool {
+        if (!viewPtr || !viewPtr->model() || !viewPtr->selectionModel()) return false;
+        if (viewPtr->model()->rowCount() <= row) return false;
         const QModelIndex idx = viewPtr->model()->index(row, col);
-        if (!idx.isValid()) return;
+        if (!idx.isValid()) return false;
+        const int currentRow = viewPtr->currentIndex().isValid() ? viewPtr->currentIndex().row() : -1;
+        qCDebug(VIM_LOG) << "scheduleIndexRestore: cursor restoring row" << row
+                         << "(current was" << currentRow << ")";
         viewPtr->selectionModel()->setCurrentIndex(
             idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         qCDebug(VIM_LOG) << "scheduleIndexRestore: cursor restored to row" << row;
+        return true;
     };
 
     // Attempt 1: after the sync in-memory modelReset's handlers complete.
-    QTimer::singleShot(0, this, restore);
+    QTimer::singleShot(0, this, [tryRestore]() { tryRestore(); });
 
-    // Attempt 2: fooyin emits a second modelReset when the async DB write finishes.
-    // Catch it once and defer the restore by one more event-loop tick so the view
-    // finishes processing the reset before we set the index.
+    // Attempt 2: fooyin often defers the model reset (resetModelThrottled) and
+    // populates the model asynchronously via a populator thread.  The model emits
+    // modelReset (0 rows), then rowsInserted as groups are populated.  Wait for
+    // rowCount to reach expectedRowCount before restoring.
+    auto restoreAfterPopulation = [viewPtr, tryRestore, expectedRowCount]() {
+        if (!viewPtr || !viewPtr->model()) return;
+        qCDebug(VIM_LOG) << "scheduleIndexRestore: modelReset caught, waiting for rowsInserted"
+                         << "target rowCount=" << expectedRowCount;
+
+        auto guard = std::make_shared<bool>(false);
+        QObject::connect(viewPtr->model(), &QAbstractItemModel::rowsInserted,
+                         viewPtr, [viewPtr, tryRestore, expectedRowCount, guard]() {
+            if (!viewPtr || !viewPtr->model() || *guard) return;
+            const int rc = viewPtr->model()->rowCount();
+            if (rc < expectedRowCount) return;
+            qCDebug(VIM_LOG) << "scheduleIndexRestore: rowsInserted, rowCount=" << rc
+                             << "view currentIndex row="
+                             << (viewPtr->currentIndex().isValid() ? QString::number(viewPtr->currentIndex().row()) : QStringLiteral("invalid"));
+            tryRestore();
+            *guard = true;
+        });
+    };
+
     QObject::connect(view->model(), &QAbstractItemModel::modelReset,
-        view->model(),
-        [restore, viewPtr]() mutable {
-            qCDebug(VIM_LOG) << "scheduleIndexRestore: caught async modelReset, deferring restore";
-            QTimer::singleShot(0, viewPtr, restore);
-        },
-        Qt::SingleShotConnection);
+                     view->model(), restoreAfterPopulation, Qt::SingleShotConnection);
 }
 
 // ---------------------------------------------------------------------------
@@ -1231,6 +1248,9 @@ void VimHandler::pasteAfter()
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
     const int afterSize = static_cast<int>(all.size());
+    const int currentRowAfterReplace = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
+    qCDebug(VIM_LOG) << "pasteAfter: after replacePlaylistTracks, currentIndex row ="
+                     << currentRowAfterReplace << "(expected originalRow=" << originalRow << ")";
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
                   originalRow, originalRow, col);
     scheduleIndexRestore(view, originalRow, col, afterSize);
@@ -1264,6 +1284,9 @@ void VimHandler::pasteBefore()
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
     const int afterSize = static_cast<int>(all.size());
+    const int currentRowAfterReplace = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
+    qCDebug(VIM_LOG) << "pasteBefore: after replacePlaylistTracks, currentIndex row ="
+                     << currentRowAfterReplace << "(expected originalRow=" << originalRow << ")";
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(all),
                   originalRow, originalRow, col);
     scheduleIndexRestore(view, originalRow, col, afterSize);
