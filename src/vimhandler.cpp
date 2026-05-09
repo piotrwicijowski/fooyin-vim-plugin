@@ -488,24 +488,8 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
         return true;
     }
     if (ch == u'd') {
-        const int top = qMin(m_visualAnchor, m_visualCursor);
-        const int bot = qMax(m_visualAnchor, m_visualCursor);
-        const int numDeleted  = bot - top + 1;
-        auto* delView = m_viewLocator->activeView();
-        const int delCol = delView && delView->currentIndex().isValid()
-                           ? delView->currentIndex().column() : 0;
-        auto* delPlaylist = targetPlaylist();
-        const int expectedRows = delPlaylist ? delPlaylist->trackCount() - numDeleted : 0;
-
-        qCDebug(VIM_LOG) << "Visual: 'd' → deleteVisualSelection ["
-                         << top << "," << bot << "] → Normal, expectedRows=" << expectedRows;
+        qCDebug(VIM_LOG) << "Visual: 'd' → deleteVisualSelection → Normal";
         deleteVisualSelection();
-        enterNormal();
-
-        if (delView && expectedRows > 0) {
-            const int restoreRow = qMin(top, expectedRows - 1);
-            scheduleIndexRestore(delView, restoreRow, delCol, expectedRows);
-        }
         return true;
     }
     if (ch == u'y') {
@@ -1210,6 +1194,12 @@ void VimHandler::deleteVisualSelection()
                         snapshotAfter.begin() + std::min(bot + 1, size));
     pushUndoEntry(playlist->id(), std::move(snapshotBefore), std::move(snapshotAfter),
                   m_visualCursor, restoreRow, col);
+
+    enterNormal();
+
+    if (view && expectedRows > 0) {
+        scheduleIndexRestore(view, restoreRow, col, expectedRows);
+    }
 }
 
 void VimHandler::pasteAfter()
