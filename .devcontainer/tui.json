@@ -1,22 +1,14 @@
 {
   "$schema": "https://opencode.ai/tui.json",
-  "keymap": {
+  "keybinds": {
     "leader": "ctrl+x",
-    "leader_timeout": 2000,
-    "sections": {
-      "global": {
-        "app.exit": "ctrl+c,<leader>q",
-      },
-      "session": {
-        "session.half.page.up": "ctrl+u",
-        "session.half.page.down": "ctrl+d",
-      },
-      "input": {
-        "input.submit": "ctrl+return,alt+return",
-        "input.newline": "return,shift+return",
-        "input.delete.to.line.end": "ctrl+shift+k",
-        "input.delete.to.line.start": "ctrl+shift+u",
-      }
-    }
-  }
+    "app_exit": "ctrl+c,<leader>q",
+    "messages_half_page_up": "ctrl+u",
+    "messages_half_page_down": "ctrl+d",
+    "input_submit": "ctrl+return,alt+return",
+    "input_newline": "return,shift+return",
+    "input_delete_to_line_end": "ctrl+shift+k",
+    "input_delete_to_line_start": "ctrl+shift+u"
+  },
+  "leader_timeout": 2000
 }
