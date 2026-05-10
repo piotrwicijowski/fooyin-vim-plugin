@@ -9,10 +9,13 @@
 - allow for spatial navigation when in visual mode - the selection should be retained, on the new widget the mode should be normal - done
 - save per-playlist cursor position when switching between playlists (fooyin by default does not have that, but the plugin could store it) - need public API
 - search without wraparound - done
+- m - playlist local mark - done
+- Select-all visual style with one shortcut
 - visual mode exit without removing selection
 - shift+j/shift+k for extending selection in normal mode
 - shortcuts for "next playlist/previous playlist"
-- marks. M - global marks (regardless of playlist), m - playlist local mark. Any chance to add mark column?
+- marks. M - global marks (regardless of playlist)
+- mark column indicator
 - F2 (rename) - detect if we have text input and don't capture normal mode bindings
 - Move/copy this song right after the currently playing without moving focus there
 - Allow binding any fooyin action without needing to explicitly declare a function for it in vim plugin
@@ -20,4 +23,3 @@
 - Pending timeout
 - dot for repeat
 - Surround the bindings like apostrophe, slash, return with angled brackets
-- Select-all visual style with one shortcut
