@@ -3,6 +3,7 @@
 #include <optional>
 
 #include <QKeyEvent>
+#include <QStringList>
 
 namespace Fooyin::VimMotions {
 
@@ -18,25 +19,13 @@ struct NamedKeyEntry
 };
 
 constexpr NamedKeyEntry kNamedKeys[] = {
-    {"Escape", Qt::Key_Escape}, {"Return", Qt::Key_Return},       {"Enter", Qt::Key_Enter},
-    {"Tab", Qt::Key_Tab},       {"Backspace", Qt::Key_Backspace}, {"Space", Qt::Key_Space},
-    {"Delete", Qt::Key_Delete}, {"Insert", Qt::Key_Insert},       {"Home", Qt::Key_Home},
-    {"End", Qt::Key_End},       {"PageUp", Qt::Key_PageUp},       {"PageDown", Qt::Key_PageDown},
-    {"Left", Qt::Key_Left},     {"Right", Qt::Key_Right},         {"Up", Qt::Key_Up},
-    {"Down", Qt::Key_Down},
-};
-
-struct EncodedKeyEntry
-{
-    const char* encoded;
-    Qt::Key key;
-};
-
-constexpr EncodedKeyEntry kEncodedKeys[] = {
-    {"slash", Qt::Key_Slash},        {"semicolon", Qt::Key_Semicolon}, {"period", Qt::Key_Period},
-    {"dot", Qt::Key_Period},         {"comma", Qt::Key_Comma},         {"minus", Qt::Key_Minus},
-    {"equal", Qt::Key_Equal},        {"space", Qt::Key_Space},         {"apostrophe", Qt::Key_Apostrophe},
-    {"backtick", Qt::Key_QuoteLeft},
+    {"Esc", Qt::Key_Escape}, {"CR", Qt::Key_Return},     {"Enter", Qt::Key_Enter},
+    {"Tab", Qt::Key_Tab},    {"BS", Qt::Key_Backspace},  {"Space", Qt::Key_Space},
+    {"Del", Qt::Key_Delete}, {"Insert", Qt::Key_Insert}, {"Home", Qt::Key_Home},
+    {"End", Qt::Key_End},    {"PageUp", Qt::Key_PageUp}, {"PageDown", Qt::Key_PageDown},
+    {"Left", Qt::Key_Left},  {"Right", Qt::Key_Right},   {"Up", Qt::Key_Up},
+    {"Down", Qt::Key_Down},  {"Slash", Qt::Key_Slash},   {"Bslash", Qt::Key_Backslash},
+    {"Bar", Qt::Key_Bar},    {"Lt", Qt::Key_Less},
 };
 
 Qt::Key charToKey(QChar ch)
@@ -139,26 +128,75 @@ std::optional<Qt::Key> lookupNamedKey(const QString& name)
     return std::nullopt;
 }
 
-std::optional<Qt::Key> lookupEncodedKey(const QString& name)
+QStringList splitOutsideAngles(const QString& s, QChar separator)
 {
-    for(const auto& entry : kEncodedKeys) {
-        if(name == QLatin1String(entry.encoded))
-            return entry.key;
+    QStringList parts;
+    QString current;
+    int depth = 0;
+
+    for(const QChar ch : s) {
+        if(ch == u'<')
+            ++depth;
+        else if(ch == u'>' && depth > 0)
+            --depth;
+
+        if(ch == separator && depth == 0) {
+            parts.push_back(current);
+            current.clear();
+            continue;
+        }
+
+        current += ch;
     }
-    return std::nullopt;
+
+    parts.push_back(current);
+    return parts;
 }
 
-KeyCombo parseSingleKey(const QString& s)
+QStringList tokenizeKeySequence(const QString& s)
+{
+    QStringList tokens;
+    QString current;
+    bool inSpecial = false;
+
+    for(const QChar ch : s) {
+        if(inSpecial) {
+            current += ch;
+            if(ch == u'>') {
+                tokens.push_back(current);
+                current.clear();
+                inSpecial = false;
+            }
+            continue;
+        }
+
+        if(ch == u'<') {
+            if(!current.isEmpty())
+                return {};
+            current += ch;
+            inSpecial = true;
+            continue;
+        }
+
+        tokens.push_back(QString{ch});
+    }
+
+    if(inSpecial)
+        return {};
+
+    return tokens;
+}
+
+KeyCombo parseSingleKeyToken(const QString& s)
 {
     KeyCombo combo;
     combo.modifiers = Qt::NoModifier;
 
-    if(auto k = lookupNamedKey(s)) {
-        combo.key = *k;
-        return combo;
-    }
+    QString keyName = s;
+    if(s.startsWith(u'<') && s.endsWith(u'>') && s.size() >= 3)
+        keyName = s.mid(1, s.size() - 2);
 
-    if(auto k = lookupEncodedKey(s)) {
+    if(auto k = lookupNamedKey(keyName)) {
         combo.key = *k;
         return combo;
     }
@@ -185,8 +223,6 @@ bool KeyCombo::matches(QKeyEvent* ev) const
             return false;
         if(ev->key() == key)
             return true;
-        // On some X11 layouts modifier combos change the keysym;
-        // fall back to matching the text character (case-insensitive)
         if(!ch.isNull()) {
             const QString text = ev->text();
             if(!text.isEmpty())
@@ -196,9 +232,6 @@ bool KeyCombo::matches(QKeyEvent* ev) const
     }
 
     if(evMods != Qt::NoModifier) {
-        // Allow uppercase letters: when the binding has no modifiers
-        // but the event has ShiftModifier, try matching by text
-        // character (e.g. binding "G" should match Shift+G).
         if(evMods == Qt::ShiftModifier && !ch.isNull()) {
             const QString text = ev->text();
             if(!text.isEmpty() && text.front() == ch)
@@ -227,28 +260,22 @@ BindingEntry parseBindingString(const QString& keyStr, const QString& valueStr)
         entry.actionName = valueStr;
     }
 
-    const QStringList parts = keyStr.split(u'+');
+    const QStringList parts = splitOutsideAngles(keyStr, u'+');
 
     if(parts.size() > 1) {
         Qt::KeyboardModifiers mods = Qt::NoModifier;
-        for(int i = 0; i < parts.size() - 1; ++i) {
+        for(int i = 0; i < parts.size() - 1; ++i)
             mods |= parseModifier(parts[i].trimmed());
-        }
 
         const QString baseKey = parts.last().trimmed();
-        KeyCombo combo        = parseSingleKey(baseKey);
+        KeyCombo combo        = parseSingleKeyToken(baseKey);
         combo.modifiers       = mods;
-        entry.firstKey        = combo;
+        entry.keys.push_back(combo);
     }
     else {
-        if(keyStr.length() == 2 && !lookupNamedKey(keyStr) && !lookupEncodedKey(keyStr)) {
-            entry.isTwoKey  = true;
-            entry.firstKey  = parseSingleKey(keyStr.left(1));
-            entry.secondKey = parseSingleKey(keyStr.right(1));
-        }
-        else {
-            entry.firstKey = parseSingleKey(keyStr);
-        }
+        const QStringList tokens = tokenizeKeySequence(keyStr);
+        for(const QString& token : tokens)
+            entry.keys.push_back(parseSingleKeyToken(token));
     }
 
     return entry;

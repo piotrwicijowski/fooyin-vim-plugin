@@ -843,7 +843,7 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
 
 bool VimHandler::hasPendingInput() const
 {
-    return !m_pendingKey.isNull() || m_pendingMarkOp != PendingMarkOp::None;
+    return !m_pendingKey.isNull() || !m_pendingConfigSequence.isEmpty() || m_pendingMarkOp != PendingMarkOp::None;
 }
 
 // ---------------------------------------------------------------------------
@@ -2553,7 +2553,8 @@ void VimHandler::clearPendingState()
 
 void VimHandler::clearPendingInputState()
 {
-    m_pendingKey    = {};
+    m_pendingKey = {};
+    m_pendingConfigSequence.clear();
     m_pendingMarkOp = PendingMarkOp::None;
     m_pendingTimeoutTimer.stop();
 }
@@ -2820,13 +2821,48 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     m_dispatchCount    = m_count > 0 ? m_count : 1;
     m_count            = 0;
 
+    const auto& bindings = m_configBindings[mode];
+
+    if(!m_pendingConfigSequence.isEmpty()) {
+        const BindingEntry* completeMatch = nullptr;
+        QList<KeyCombo> nextPrefix;
+
+        for(const auto& b : bindings) {
+            if(!pendingConfigPrefixMatches(b))
+                continue;
+            if(b.keys.size() <= m_pendingConfigSequence.size())
+                continue;
+            if(!b.keys[m_pendingConfigSequence.size()].matches(ev))
+                continue;
+
+            nextPrefix = b.keys.mid(0, m_pendingConfigSequence.size() + 1);
+            if(b.keys.size() == nextPrefix.size()) {
+                completeMatch = &b;
+            }
+            else {
+                m_pendingConfigSequence = nextPrefix;
+                refreshPendingTimeout();
+                qCDebug(VIM_LOG) << "ConfigDispatch: sequence pending length" << m_pendingConfigSequence.size();
+                return true;
+            }
+        }
+
+        if(completeMatch) {
+            qCDebug(VIM_LOG) << "ConfigDispatch: sequence complete" << completeMatch->actionName;
+            clearPendingInputState();
+            executeAction(*completeMatch);
+            return true;
+        }
+
+        clearPendingInputState();
+    }
+
     if(!m_pendingKey.isNull()) {
         QChar pending = m_pendingKey;
         clearPendingInputState();
 
-        const auto& bindings = m_configBindings[mode];
         for(const auto& b : bindings) {
-            if(b.isTwoKey && b.firstKey.ch == pending && b.secondKey.matches(ev)) {
+            if(b.keys.size() == 2 && b.keys[0].ch == pending && b.keys[1].matches(ev)) {
                 qCDebug(VIM_LOG) << "ConfigDispatch: two-key complete '" << pending << ch << "'";
                 executeAction(b);
                 return true;
@@ -2834,17 +2870,15 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
         }
     }
 
-    const auto& bindings = m_configBindings[mode];
-
     const BindingEntry* best = nullptr;
     int bestModCount         = -1;
 
     for(const auto& b : bindings) {
-        if(b.isTwoKey)
+        if(b.keys.size() != 1)
             continue;
-        if(b.firstKey.matches(ev)) {
+        if(b.keys.front().matches(ev)) {
             int mc = 0;
-            auto m = b.firstKey.modifiers;
+            auto m = b.keys.front().modifiers;
             if(m & Qt::ControlModifier)
                 ++mc;
             if(m & Qt::AltModifier)
@@ -2862,9 +2896,9 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
 
     if(!best) {
         for(const auto& b : bindings) {
-            if(!b.isTwoKey)
+            if(b.keys.size() < 2)
                 continue;
-            if(b.firstKey.matches(ev)) {
+            if(b.keys.front().matches(ev)) {
                 best         = &b;
                 bestModCount = -2;
                 break;
@@ -2877,9 +2911,10 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
         return false;
     }
 
-    if(best->isTwoKey) {
-        setPendingKey(best->firstKey.ch);
-        qCDebug(VIM_LOG) << "ConfigDispatch: two-key start '" << m_pendingKey << "'";
+    if(best->keys.size() > 1) {
+        m_pendingConfigSequence = {best->keys.front()};
+        refreshPendingTimeout();
+        qCDebug(VIM_LOG) << "ConfigDispatch: sequence start length" << m_pendingConfigSequence.size();
         return true;
     }
 
@@ -2910,25 +2945,43 @@ bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
 
     const auto& bindings = m_configBindings.value(mode);
 
+    if(!m_pendingConfigSequence.isEmpty()) {
+        for(const auto& b : bindings) {
+            if(!pendingConfigPrefixMatches(b))
+                continue;
+            if(b.keys.size() <= m_pendingConfigSequence.size())
+                continue;
+            if(b.keys[m_pendingConfigSequence.size()].matches(ev))
+                return true;
+        }
+    }
+
     if(!m_pendingKey.isNull()) {
         for(const auto& b : bindings) {
-            if(b.isTwoKey && b.firstKey.ch == m_pendingKey && b.secondKey.matches(ev))
+            if(b.keys.size() == 2 && b.keys[0].ch == m_pendingKey && b.keys[1].matches(ev))
                 return true;
         }
     }
 
     for(const auto& b : bindings) {
-        if(b.isTwoKey) {
-            if(b.firstKey.matches(ev))
-                return true;
-        }
-        else {
-            if(b.firstKey.matches(ev))
-                return true;
-        }
+        if(!b.keys.isEmpty() && b.keys.front().matches(ev))
+            return true;
     }
 
     return false;
+}
+
+bool VimHandler::pendingConfigPrefixMatches(const BindingEntry& entry) const
+{
+    if(entry.keys.size() < m_pendingConfigSequence.size())
+        return false;
+
+    for(qsizetype i = 0; i < m_pendingConfigSequence.size(); ++i) {
+        if(entry.keys[i] != m_pendingConfigSequence[i])
+            return false;
+    }
+
+    return true;
 }
 
 } // namespace Fooyin::VimMotions

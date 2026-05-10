@@ -264,18 +264,18 @@ Bindings\Normal\gg=jumpToFirst
 Bindings\Normal\G=jumpToLast
 Bindings\Normal\dd=deleteRows
 Bindings\Visual\j=extendCursor:+1
-Bindings\Insert\Escape=leaveInsertMode
+Bindings\Insert\<Esc>=leaveInsertMode
 ```
 
 The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]`.
 
 **Key combo syntax:**
-- Single character: `j`, `k`, `G`, `/` (use `slash` for the `/` key to avoid INI group separator issues)
-- Encoded punctuation keys: `slash`, `semicolon`, `apostrophe`, `backtick`
-- Named keys: `Escape`, `Return`, `Tab`, `Space`, `Home`, `End`, `PageUp`, `PageDown`, `Left`, `Right`, `Up`, `Down`
+- Single character: `j`, `k`, `G`, `;`, `'`, `` ` ``
+- Special keys: `<Esc>`, `<CR>`, `<Tab>`, `<BS>`, `<Space>`, `<Home>`, `<End>`, `<PageUp>`, `<PageDown>`, `<Left>`, `<Right>`, `<Up>`, `<Down>`
+- Special punctuation keys that need explicit names in config paths: `<Slash>`, `<Bslash>`, `<Bar>`, `<Lt>`
 - Modifier combos: `Ctrl+J`, `Alt+J`, `Ctrl+Shift+K`
-- Two-key sequences: `gg`, `dd`, `yy`, `g;`
-- Operator-pending prefixes: `m`, `apostrophe`, `backtick` can be bound to mark actions that consume the next lowercase letter
+- Multi-key sequences: `gg`, `dd`, `yy`, `g;`, `g<Space>`, `<Space><Space>`
+- Operator-pending prefixes: `m`, `'`, `` ` `` can be bound to mark actions that consume the next lowercase letter
 
 **Action name + args:**
 - No args: `undo`, `enterInsert`, `jumpToFirst`
@@ -343,7 +343,7 @@ Use `fooyinAction:<Action.Id>` when you want a vim binding to trigger an existin
 ```ini
 [VimMotions]
 UseConfigBindings=true
-Bindings\Normal\space=fooyinAction:Playback.PlayPause
+Bindings\Normal\<Space>=fooyinAction:Playback.PlayPause
 Bindings\Normal\x=fooyinAction:Playback.Next
 Bindings\Normal\z=fooyinAction:View.ShowNowPlaying
 ```
@@ -379,7 +379,7 @@ To remove (unmap) a default binding, set its value to an empty string:
 ```ini
 [VimMotions]
 Bindings\Normal\j=
-Bindings\Visual\Escape=
+Bindings\Visual\<Esc>=
 ```
 
 This prevents the key from triggering any action in that mode. The key will fall through to fooyin's normal shortcut handling.
@@ -409,16 +409,16 @@ Bindings\Normal\l=treeOpenOrDescend
 Bindings\Normal\o=focusNowPlaying
 Bindings\Normal\g;=focusNowPlaying
 Bindings\Normal\m=beginSetMark
-Bindings\Normal\apostrophe=beginJumpToMark
-Bindings\Normal\backtick=beginJumpToMark
+Bindings\Normal\'=beginJumpToMark
+Bindings\Normal\`=beginJumpToMark
 Bindings\Normal\p=pasteAfter
 Bindings\Normal\P=pasteBefore
 Bindings\Normal\a=organiserCreatePlaylist
 Bindings\Normal\A=organiserCreateGroup
-Bindings\Normal\slash=enterSearch
+Bindings\Normal\<Slash>=enterSearch
 Bindings\Normal\n=nextMatch
 Bindings\Normal\N=prevMatch
-Bindings\Normal\Escape=clearPending
+Bindings\Normal\<Esc>=clearPending
 Bindings\Normal\Ctrl+J=spatialMoveFocus:down
 Bindings\Normal\Ctrl+K=spatialMoveFocus:up
 Bindings\Normal\Ctrl+H=spatialMoveFocus:left
@@ -440,13 +440,13 @@ Bindings\Visual\o=swapAnchor
 Bindings\Visual\v=leaveVisualMode
 Bindings\Visual\d=deleteSelection
 Bindings\Visual\y=yankSelection
-Bindings\Visual\Escape=leaveVisualMode
+Bindings\Visual\<Esc>=leaveVisualMode
 Bindings\Visual\n=nextMatchAndExit
 Bindings\Visual\N=prevMatchAndExit
-Bindings\Visual\slash=enterSearchAndExit
+Bindings\Visual\<Slash>=enterSearchAndExit
 Bindings\Visual\m=beginSetMark
-Bindings\Visual\apostrophe=beginJumpToMark
-Bindings\Visual\backtick=beginJumpToMark
+Bindings\Visual\'=beginJumpToMark
+Bindings\Visual\`=beginJumpToMark
 Bindings\Visual\Ctrl+D=extendHalfPage:+1
 Bindings\Visual\Ctrl+U=extendHalfPage:-1
 Bindings\Visual\Ctrl+J=spatialMoveFocus:down
@@ -460,7 +460,7 @@ Bindings\Visual\l=treeOpenOrDescend
 Bindings\Visual\g;=focusNowPlayingAndExit
 
 ; -- Insert mode --
-Bindings\Insert\Escape=leaveInsertMode
+Bindings\Insert\<Esc>=leaveInsertMode
 ```
 
 When adding new default configurable bindings to the plugin code, the entries above must also be added to this section to keep documentation in sync.

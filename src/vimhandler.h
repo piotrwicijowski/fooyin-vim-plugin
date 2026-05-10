@@ -147,6 +147,7 @@ private:
     [[nodiscard]] bool wouldHandleVisual(QKeyEvent* ev) const;
     [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
     [[nodiscard]] bool hasPendingInput() const;
+    [[nodiscard]] bool pendingConfigPrefixMatches(const BindingEntry& entry) const;
 
     bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
     void executeAction(const BindingEntry& entry);
@@ -237,6 +238,7 @@ private:
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};
     QHash<Mode, QList<BindingEntry>> m_configBindings;
+    QList<KeyCombo> m_pendingConfigSequence;
     int m_pendingSequenceTimeoutMs{0};
     QTimer m_pendingTimeoutTimer;
 };

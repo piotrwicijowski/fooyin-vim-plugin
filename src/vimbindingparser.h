@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QList>
 #include <QString>
 #include <Qt>
 
@@ -29,11 +30,14 @@ inline size_t qHash(const KeyCombo& k, size_t seed = 0)
 
 struct BindingEntry
 {
-    KeyCombo firstKey;
-    KeyCombo secondKey;
-    bool isTwoKey{false};
+    QList<KeyCombo> keys;
     QString actionName;
     QString args;
+
+    [[nodiscard]] bool isMultiKey() const
+    {
+        return keys.size() > 1;
+    }
 };
 
 BindingEntry parseBindingString(const QString& keyStr, const QString& valueStr);
