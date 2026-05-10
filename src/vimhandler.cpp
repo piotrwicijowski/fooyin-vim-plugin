@@ -76,6 +76,12 @@ static QModelIndex lastVisibleDescendant(QTreeView* tree, QModelIndex index)
     return index;
 }
 
+static bool isEmptyGroup(QTreeView* tree, const QModelIndex& index)
+{
+    return tree && index.isValid() && tree->model() && tree->model()->hasChildren(index)
+        && tree->model()->rowCount(index) == 0;
+}
+
 static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, const QModelIndex& current,
                                                              const QModelIndex& target, int direction)
 {
@@ -85,6 +91,12 @@ static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, co
     if(direction < 0) {
         if(isAncestorIndex(target, current))
             return {target.parent(), target.row()};
+
+        if(isEmptyGroup(tree, target)) {
+            if(current.parent() != target.parent() && target.parent().isValid())
+                return {target.parent(), target.row() + 1};
+            return {target, 0};
+        }
 
         if(const QModelIndex targetParent = target.parent();
            targetParent.isValid() && tree->indexBelow(lastVisibleDescendant(tree, targetParent)) == current) {
@@ -101,7 +113,7 @@ static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, co
         return {currentParent.parent(), currentParent.row() + 1};
     }
 
-    if(tree->isExpanded(target) && tree->model()->rowCount(target) > 0)
+    if(isEmptyGroup(tree, target) || (tree->isExpanded(target) && tree->model()->rowCount(target) > 0))
         return {target, 0};
 
     return {target.parent(), target.row() + 1};

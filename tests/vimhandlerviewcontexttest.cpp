@@ -95,6 +95,8 @@ private:
 class RecordingTreeModel : public QStandardItemModel
 {
 public:
+    static inline constexpr int GroupRole = Qt::UserRole + 100;
+
     struct DropCall
     {
         int row{-1};
@@ -120,6 +122,11 @@ public:
     [[nodiscard]] Qt::ItemFlags flags(const QModelIndex& index) const override
     {
         return QStandardItemModel::flags(index) | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
+    }
+
+    [[nodiscard]] bool hasChildren(const QModelIndex& parent = QModelIndex()) const override
+    {
+        return QStandardItemModel::hasChildren(parent) || parent.data(GroupRole).toBool();
     }
 
     [[nodiscard]] QMimeData* mimeData(const QModelIndexList& indexes) const override
@@ -242,6 +249,13 @@ void focusTree(QTreeView* tree)
     qApp->processEvents();
 }
 
+QStandardItem* makeGroupItem(const QString& text)
+{
+    auto* item = new QStandardItem(text);
+    item->setData(true, RecordingTreeModel::GroupRole);
+    return item;
+}
+
 } // namespace
 
 using namespace Fooyin::VimMotions;
@@ -265,6 +279,9 @@ private Q_SLOTS:
     void organiserMoveUpPastNestedGroupStaysInOuterGroup();
     void organiserMoveUpIntoNestedGroupWhenSharingOuterParent();
     void organiserMoveDownMovesLastChildGroupOutOfParent();
+    void organiserMoveDownIntoEmptyGroup();
+    void organiserMoveUpIntoEmptyGroup();
+    void organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -322,7 +339,7 @@ void TestVimHandlerViewContext::organiserMoveDownTargetsExpandedGroupContents()
     RecordingTreeModel model;
 
     model.appendRow(new QStandardItem(QStringLiteral("A")));
-    auto* group = new QStandardItem(QStringLiteral("Group"));
+    auto* group = makeGroupItem(QStringLiteral("Group"));
     group->appendRow(new QStandardItem(QStringLiteral("Child")));
     model.appendRow(group);
     model.appendRow(new QStandardItem(QStringLiteral("Tail")));
@@ -346,7 +363,7 @@ void TestVimHandlerViewContext::organiserMoveDownSkipsInvalidDescendantTargets()
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group = new QStandardItem(QStringLiteral("Group"));
+    auto* group = makeGroupItem(QStringLiteral("Group"));
     group->appendRow(new QStandardItem(QStringLiteral("Child1")));
     group->appendRow(new QStandardItem(QStringLiteral("Child2")));
     model.appendRow(group);
@@ -371,7 +388,7 @@ void TestVimHandlerViewContext::organiserMoveUpTargetsEndOfGroup()
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group = new QStandardItem(QStringLiteral("Group"));
+    auto* group = makeGroupItem(QStringLiteral("Group"));
     group->appendRow(new QStandardItem(QStringLiteral("Item 1")));
     group->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     model.appendRow(group);
@@ -398,7 +415,7 @@ void TestVimHandlerViewContext::organiserMoveDownExitsGroupAfterParent()
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group = new QStandardItem(QStringLiteral("Group"));
+    auto* group = makeGroupItem(QStringLiteral("Group"));
     group->appendRow(new QStandardItem(QStringLiteral("Item 1")));
     group->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     model.appendRow(group);
@@ -424,9 +441,9 @@ void TestVimHandlerViewContext::organiserMoveDownNestsRootGroupIntoNextGroup()
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    auto* group1 = makeGroupItem(QStringLiteral("Group 1"));
     group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
-    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    auto* group2 = makeGroupItem(QStringLiteral("Group 2"));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     model.appendRow(group1);
     model.appendRow(group2);
@@ -452,7 +469,7 @@ void TestVimHandlerViewContext::organiserMoveDownExitsLastGroupAtEndOfTree()
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group = new QStandardItem(QStringLiteral("Group 1"));
+    auto* group = makeGroupItem(QStringLiteral("Group 1"));
     group->appendRow(new QStandardItem(QStringLiteral("Item 1")));
     group->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     model.appendRow(group);
@@ -477,9 +494,9 @@ void TestVimHandlerViewContext::organiserMoveUpPastNestedGroupStaysInOuterGroup(
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    auto* group1 = makeGroupItem(QStringLiteral("Group 1"));
     group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
-    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    auto* group2 = makeGroupItem(QStringLiteral("Group 2"));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 3")));
     group1->appendRow(group2);
@@ -507,9 +524,9 @@ void TestVimHandlerViewContext::organiserMoveUpIntoNestedGroupWhenSharingOuterPa
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    auto* group1 = makeGroupItem(QStringLiteral("Group 1"));
     group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
-    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    auto* group2 = makeGroupItem(QStringLiteral("Group 2"));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 3")));
     group1->appendRow(group2);
@@ -537,9 +554,9 @@ void TestVimHandlerViewContext::organiserMoveDownMovesLastChildGroupOutOfParent(
     FakeOrganiserWidget organiser;
     RecordingTreeModel model;
 
-    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    auto* group1 = makeGroupItem(QStringLiteral("Group 1"));
     group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
-    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    auto* group2 = makeGroupItem(QStringLiteral("Group 2"));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
     group2->appendRow(new QStandardItem(QStringLiteral("Item 3")));
     group1->appendRow(group2);
@@ -558,6 +575,76 @@ void TestVimHandlerViewContext::organiserMoveDownMovesLastChildGroupOutOfParent(
     QCOMPARE(drop.count, 1);
     QCOMPARE(drop.parentLabel, QStringLiteral("<root>"));
     QCOMPARE(drop.row, 1);
+}
+
+void TestVimHandlerViewContext::organiserMoveDownIntoEmptyGroup()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    model.appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    model.appendRow(makeGroupItem(QStringLiteral("Empty Group")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->setCurrentIndex(model.index(0, 0));
+
+    focusTree(organiser.view());
+    handler.moveRows(+1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("Empty Group"));
+    QCOMPARE(drop.row, 0);
+}
+
+void TestVimHandlerViewContext::organiserMoveUpIntoEmptyGroup()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    model.appendRow(makeGroupItem(QStringLiteral("Empty Group")));
+    model.appendRow(new QStandardItem(QStringLiteral("Item 1")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->setCurrentIndex(model.index(1, 0));
+
+    focusTree(organiser.view());
+    handler.moveRows(-1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("Empty Group"));
+    QCOMPARE(drop.row, 0);
+}
+
+void TestVimHandlerViewContext::organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    auto* group1 = makeGroupItem(QStringLiteral("Group 1"));
+    group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    group1->appendRow(makeGroupItem(QStringLiteral("Group 2")));
+    model.appendRow(group1);
+    model.appendRow(new QStandardItem(QStringLiteral("Item 2")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(0, 0));
+    organiser.view()->setCurrentIndex(model.index(1, 0));
+
+    focusTree(organiser.view());
+    handler.moveRows(-1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("Group 1"));
+    QCOMPARE(drop.row, 2);
 }
 
 QTEST_MAIN(TestVimHandlerViewContext)
