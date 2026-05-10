@@ -17,6 +17,7 @@ private Q_SLOTS:
     void testCtrlR();
     void testCtrlShiftJ();
     void testAltJ();
+    void testVisualCtrlJ();
     void testNamedKey();
     void testEncodedKey();
     void testSlashKey();
@@ -83,6 +84,14 @@ void TestParseBinding::testAltJ()
     QCOMPARE(e.actionName, QStringLiteral("moveRows"));
     QCOMPARE(e.args, QStringLiteral("+1"));
     QCOMPARE(e.firstKey.modifiers, Qt::AltModifier);
+}
+
+void TestParseBinding::testVisualCtrlJ()
+{
+    auto e = parseBindingString(QStringLiteral("Ctrl+J"), QStringLiteral("spatialMoveFocus:down"));
+    QCOMPARE(e.actionName, QStringLiteral("spatialMoveFocus"));
+    QCOMPARE(e.args, QStringLiteral("down"));
+    QCOMPARE(e.firstKey.modifiers, Qt::ControlModifier);
 }
 
 void TestParseBinding::testNamedKey()

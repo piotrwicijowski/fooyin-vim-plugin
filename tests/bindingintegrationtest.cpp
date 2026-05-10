@@ -71,6 +71,7 @@ private Q_SLOTS:
             "Bindings\\Normal\\d=deleteRows\n"
             "Bindings\\Normal\\f=deleteRows\n"
             "Bindings\\Visual\\j=extendCursor:+1\n"
+            "Bindings\\Visual\\Ctrl+J=spatialMoveFocus:down\n"
         );
         file.close();
     }
@@ -80,19 +81,20 @@ private Q_SLOTS:
     void testAllBindings()
     {
         auto bindings = loadParsedBindings({}, false);
-        QCOMPARE(bindings.size(), 5);
+        QCOMPARE(bindings.size(), 6);
         QVERIFY(bindings.contains(QStringLiteral("[Normal] j = moveCursor")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] k = moveCursor")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] d = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] f = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] j = extendCursor")));
+        QVERIFY(bindings.contains(QStringLiteral("[Visual] Ctrl+J = spatialMoveFocus")));
     }
 
     // Empty values should be skipped when skipEmpty=true
     void testSkipEmptyValues()
     {
         auto bindings = loadParsedBindings({}, true);
-        QCOMPARE(bindings.size(), 5); // same as without skipEmpty for this file
+        QCOMPARE(bindings.size(), 6); // same as without skipEmpty for this file
     }
 
     // UseDefaultBindings=false: skip default keys
@@ -104,8 +106,8 @@ private Q_SLOTS:
         auto bindings = loadParsedBindings(defaults, true);
 
         // j should be skipped (it's in defaults),
-        // leaving k, d, f, and Visual/j
-        QCOMPARE(bindings.size(), 4);
+        // leaving k, d, f, Visual/j, and Visual/Ctrl+J
+        QCOMPARE(bindings.size(), 5);
     }
 
     // Skip all known keys: no custom bindings remain
@@ -118,6 +120,7 @@ private Q_SLOTS:
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/d"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/f"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Visual/j"));
+        skipAll.insert(QStringLiteral("VimMotions/Bindings/Visual/Ctrl+J"));
 
         auto bindings = loadParsedBindings(skipAll, true);
         QCOMPARE(bindings.size(), 0);
@@ -132,10 +135,11 @@ private Q_SLOTS:
 
         auto bindings = loadParsedBindings(defaults, true);
 
-        // j, k skipped (defaults); d, f parsed; Visual/j not in defaults
-        QCOMPARE(bindings.size(), 3);
+        // j, k skipped (defaults); d, f parsed; Visual bindings not in defaults
+        QCOMPARE(bindings.size(), 4);
         QVERIFY(bindings.contains(QStringLiteral("[Normal] d = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] f = deleteRows")));
+        QVERIFY(bindings.contains(QStringLiteral("[Visual] Ctrl+J = spatialMoveFocus")));
     }
 };
 

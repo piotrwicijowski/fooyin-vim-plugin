@@ -56,11 +56,15 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
         {"VimMotions/Bindings/Visual/slash", "enterSearchAndExit"},
         {"VimMotions/Bindings/Visual/Ctrl+D","extendHalfPage:+1"},
         {"VimMotions/Bindings/Visual/Ctrl+U","extendHalfPage:-1"},
+        {"VimMotions/Bindings/Visual/Ctrl+J","spatialMoveFocus:down"},
+        {"VimMotions/Bindings/Visual/Ctrl+K","spatialMoveFocus:up"},
+        {"VimMotions/Bindings/Visual/Ctrl+H","spatialMoveFocus:left"},
+        {"VimMotions/Bindings/Visual/Ctrl+L","spatialMoveFocus:right"},
         {"VimMotions/Bindings/Visual/Alt+J", "moveVisualSelection:+1"},
         {"VimMotions/Bindings/Visual/Alt+K", "moveVisualSelection:-1"},
         {"VimMotions/Bindings/Visual/h",     "treeCloseOrAscend"},
         {"VimMotions/Bindings/Visual/l",     "treeOpenOrDescend"},
-{"VimMotions/Bindings/Visual/g;",    "focusNowPlayingAndExit"},
+        {"VimMotions/Bindings/Visual/g;",    "focusNowPlayingAndExit"},
 
         // -- Insert mode --
         {"VimMotions/Bindings/Insert/Escape","leaveInsertMode"},

@@ -287,7 +287,7 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 | `nextMatchAndExit` | — | Visual | Next match, return to Normal |
 | `prevMatchAndExit` | — | Visual | Previous match, return to Normal |
 | `enterSearchAndExit` | — | Visual | Open search, return to Normal |
-| `spatialMoveFocus` | `up`/`down`/`left`/`right` | Normal | Move focus between panes |
+| `spatialMoveFocus` | `up`/`down`/`left`/`right` | Normal, Visual | Move focus between panes; from Visual, keep the old selection and return to Normal |
 | `clearPending` | — | Normal | Clear count / pending two-key key |
 
 ### Runtime changes
@@ -382,6 +382,10 @@ Bindings\Visual\N=prevMatchAndExit
 Bindings\Visual\slash=enterSearchAndExit
 Bindings\Visual\Ctrl+D=extendHalfPage:+1
 Bindings\Visual\Ctrl+U=extendHalfPage:-1
+Bindings\Visual\Ctrl+J=spatialMoveFocus:down
+Bindings\Visual\Ctrl+K=spatialMoveFocus:up
+Bindings\Visual\Ctrl+H=spatialMoveFocus:left
+Bindings\Visual\Ctrl+L=spatialMoveFocus:right
 Bindings\Visual\Alt+J=moveVisualSelection:+1
 Bindings\Visual\Alt+K=moveVisualSelection:-1
 Bindings\Visual\h=treeCloseOrAscend
@@ -399,3 +403,4 @@ When adding new default configurable bindings to the plugin code, the entries ab
 - Yank/delete/paste (`dd`, `yy`, `p`, `P`) operate on playlist views only. They read and write tracks via fooyin's `PlaylistHandler`. Other views (library browser, file browser) are read-only for these operations but support all cursor-navigation and spatial-focus bindings.
 - `gg`, `dd`, and `yy` are two-keystroke sequences handled internally by the key parser; they do not appear as individual entries in Settings → Shortcuts.
 - Spatial focus (`Ctrl+j/k/h/l`) follows fooyin's `QSplitter` layout tree and remembers the last-focused pane per splitter, so returning to a split lands on the same widget you left.
+- From Visual mode, spatial focus exits to Normal on the newly focused pane but preserves the original selection in the old pane.

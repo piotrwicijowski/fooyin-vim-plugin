@@ -324,6 +324,22 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     // Ctrl combinations — Ctrl+D/U for half-page scroll extending selection
     if (mods & Qt::ControlModifier) {
         switch (qtKey) {
+            case Qt::Key_J:
+                qCDebug(VIM_LOG) << "Visual: Ctrl+J → focus Down (preserve selection, exit visual)";
+                moveSpatialFocus(Direction::Down);
+                return true;
+            case Qt::Key_K:
+                qCDebug(VIM_LOG) << "Visual: Ctrl+K → focus Up (preserve selection, exit visual)";
+                moveSpatialFocus(Direction::Up);
+                return true;
+            case Qt::Key_H:
+                qCDebug(VIM_LOG) << "Visual: Ctrl+H → focus Left (preserve selection, exit visual)";
+                moveSpatialFocus(Direction::Left);
+                return true;
+            case Qt::Key_L:
+                qCDebug(VIM_LOG) << "Visual: Ctrl+L → focus Right (preserve selection, exit visual)";
+                moveSpatialFocus(Direction::Right);
+                return true;
             case Qt::Key_D: {
                 qCDebug(VIM_LOG) << "Visual: Ctrl+D → half page down";
                 auto* view = m_viewLocator->activeView();
@@ -548,7 +564,8 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
     const QChar ch = kev->text().isEmpty() ? QChar{} : kev->text().front();
 
     if (mods & Qt::ControlModifier)
-        return key == Qt::Key_D || key == Qt::Key_U;
+        return key == Qt::Key_D || key == Qt::Key_U || key == Qt::Key_J
+            || key == Qt::Key_K || key == Qt::Key_H || key == Qt::Key_L;
 
     if (key == Qt::Key_Escape) return true;
     if (!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) return true;
@@ -1729,7 +1746,23 @@ void VimHandler::clearPendingState()
 
 void VimHandler::moveSpatialFocus(Direction dir)
 {
-    m_spatialNavigator->moveFocus(dir, m_viewLocator->activeView());
+    auto* startView = m_viewLocator->activeView();
+    if (!startView) {
+        qCWarning(VIM_LOG) << "moveSpatialFocus: no active view";
+        return;
+    }
+
+    if (m_mode == Mode::Visual) {
+        qCDebug(VIM_LOG) << "moveSpatialFocus: leaving Visual mode without collapsing selection";
+        m_mode = Mode::Normal;
+        m_pendingKey = {};
+        m_count = 0;
+        m_visualAnchor = -1;
+        m_visualCursor = -1;
+        emit modeChanged(m_mode);
+    }
+
+    m_spatialNavigator->moveFocus(dir, startView);
 }
 
 void VimHandler::extendVisualCursor(int delta)
