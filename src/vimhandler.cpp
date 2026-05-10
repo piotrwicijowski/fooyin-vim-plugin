@@ -1829,6 +1829,44 @@ void VimHandler::moveRows(int delta)
             QModelIndex candidate = direction < 0 ? tree->indexAbove(current) : tree->indexBelow(current);
             bool moved            = false;
 
+            if(direction > 0 && !candidate.isValid() && current.parent().isValid()) {
+                const QModelIndex currentParent = current.parent();
+                const auto dropTarget           = OrganiserDropTarget{currentParent.parent(), currentParent.row() + 1};
+                qCDebug(VIM_LOG) << "moveRows: organiser end-of-tree dropParent="
+                                 << organiserIndexPath(dropTarget.parent) << "dropRow=" << dropTarget.row
+                                 << "source=" << organiserIndexPath(current);
+                if(tree->model()->canDropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0, dropTarget.parent)
+                   && tree->model()->dropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0,
+                                                  dropTarget.parent)) {
+                    if(const QModelIndex movedIndex
+                       = organiserMovedIndexAfterDrop(tree, sourceParent, sourceRow, dropTarget);
+                       movedIndex.isValid()) {
+                        tree->selectionModel()->setCurrentIndex(movedIndex, QItemSelectionModel::ClearAndSelect
+                                                                                | QItemSelectionModel::Rows);
+                        tree->scrollTo(movedIndex);
+
+                        QPointer<QTreeView> treePtr{tree};
+                        const QPersistentModelIndex movedPersistentIndex{movedItem};
+                        const QPersistentModelIndex restoreIndex{movedIndex};
+                        QTimer::singleShot(0, this, [treePtr, movedPersistentIndex, restoreIndex]() {
+                            if(!treePtr || !treePtr->selectionModel())
+                                return;
+
+                            const QModelIndex targetIndex = movedPersistentIndex.isValid()
+                                                              ? QModelIndex(movedPersistentIndex)
+                                                              : QModelIndex(restoreIndex);
+                            if(!targetIndex.isValid())
+                                return;
+
+                            treePtr->selectionModel()->setCurrentIndex(targetIndex, QItemSelectionModel::ClearAndSelect
+                                                                                        | QItemSelectionModel::Rows);
+                            treePtr->scrollTo(targetIndex);
+                        });
+                    }
+                    return;
+                }
+            }
+
             while(candidate.isValid()) {
                 if(direction > 0 && isAncestorIndex(current, candidate)) {
                     qCDebug(VIM_LOG) << "moveRows: organiser skipping descendant candidate"
