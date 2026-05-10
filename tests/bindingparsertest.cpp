@@ -28,6 +28,7 @@ private Q_SLOTS:
     void testOrganiserAddPlaylistAction();
     void testOrganiserAddGroupAction();
     void testSelectAllAction();
+    void testFooyinAction();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -179,6 +180,15 @@ void TestParseBinding::testSelectAllAction()
     QCOMPARE(e.isTwoKey, false);
     QCOMPARE(e.firstKey.modifiers, Qt::ControlModifier);
     QCOMPARE(e.firstKey.ch, QChar(u'A'));
+}
+
+void TestParseBinding::testFooyinAction()
+{
+    auto e = parseBindingString(QStringLiteral("space"), QStringLiteral("fooyinAction:Playback.Next"));
+    QCOMPARE(e.actionName, QStringLiteral("fooyinAction"));
+    QCOMPARE(e.args, QStringLiteral("Playback.Next"));
+    QCOMPARE(e.isTwoKey, false);
+    QCOMPARE(e.firstKey.key, Qt::Key_Space);
 }
 
 QTEST_MAIN(TestParseBinding)

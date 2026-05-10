@@ -1,12 +1,18 @@
 #include "vimhandler.h"
 #include "vimmotionssettings.h"
 
+#include <utils/actions/actionmanager.h>
 #include <utils/settings/settingsmanager.h>
 
+#include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QKeyEvent>
+#include <QMainWindow>
+#include <QSettings>
+#include <QSignalSpy>
 #include <QStandardItemModel>
+#include <QStandardPaths>
 #include <QTest>
 #include <QTreeView>
 
@@ -65,6 +71,7 @@ private Q_SLOTS:
     void hardcodedMarkTimeoutClearsPendingMark();
     void configTwoKeyTimeoutClearsPendingSequence();
     void configMarkTimeoutClearsPendingMark();
+    void configBindingTriggersFooyinAction();
 };
 
 void TestVimHandlerTimeout::hardcodedTwoKeyTimeoutClearsPendingSequence()
@@ -167,6 +174,43 @@ void TestVimHandlerTimeout::configMarkTimeoutClearsPendingMark()
     QVERIFY(dispatchShortcutOverride(handler, &view, u'z'));
     QTest::qWait(50);
     QVERIFY(!dispatchShortcutOverride(handler, &view, u'z'));
+}
+
+void TestVimHandlerTimeout::configBindingTriggersFooyinAction()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_fooyin_action.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+
+    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QVERIFY(QDir{}.mkpath(configDir));
+    QSettings fileSettings(configDir + QStringLiteral("/fooyin.conf"), QSettings::IniFormat);
+    fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/x"), QStringLiteral("fooyinAction:Test.Action"));
+    fileSettings.sync();
+
+    QMainWindow window;
+    ActionManager actionManager(&settings);
+    actionManager.setMainWindow(&window);
+
+    QAction action(QStringLiteral("Test Action"), &window);
+    actionManager.registerAction(&action, Id(QStringLiteral("Test.Action")));
+    QSignalSpy triggeredSpy(&action, &QAction::triggered);
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+    handler.setActionManager(&actionManager);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    QVERIFY(dispatchKey(handler, &view, u'x'));
+    QCOMPARE(triggeredSpy.count(), 1);
 }
 
 QTEST_MAIN(TestVimHandlerTimeout)

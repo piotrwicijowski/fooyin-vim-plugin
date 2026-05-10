@@ -280,6 +280,7 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 **Action name + args:**
 - No args: `undo`, `enterInsert`, `jumpToFirst`
 - With args: `moveCursor:+1`, `spatialMoveFocus:down`, `treeMoveSibling:-1`
+- Trigger any fooyin command by ID: `fooyinAction:Playback.Next`, `fooyinAction:View.ShowNowPlaying`
 - The arg string is passed to the action handler; each action parses its own args
 
 ### Available actions
@@ -312,6 +313,7 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 | `undo` | — | Normal | Undo last playlist change |
 | `redo` | — | Normal | Redo last undone change |
 | `focusNowPlaying` | — | Normal | Focus currently playing track |
+| `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
 | `beginSetMark` | — | Normal | Begin setting a local mark; the next lowercase letter chooses the mark |
 | `beginJumpToMark` | — | Normal | Begin jumping to a local mark; the next lowercase letter chooses the mark |
 | `moveRows` | `+1` / `-1` | Normal | Move current row in playlist |
@@ -333,6 +335,22 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 ### Runtime changes
 
 Bindings are read on startup. If you edit `fooyin.conf`, restart fooyin for those vim-binding changes to apply.
+
+### Binding fooyin actions directly
+
+Use `fooyinAction:<Action.Id>` when you want a vim binding to trigger an existing fooyin command without adding a plugin-specific wrapper:
+
+```ini
+[VimMotions]
+UseConfigBindings=true
+Bindings\Normal\space=fooyinAction:Playback.PlayPause
+Bindings\Normal\x=fooyinAction:Playback.Next
+Bindings\Normal\z=fooyinAction:View.ShowNowPlaying
+```
+
+There is no default binding for `fooyinAction`; it is only available for custom config bindings.
+
+You can discover action IDs in **Settings -> Shortcuts**. The command ID is shown alongside each shortcut entry, for example `Playback.Next` or `View.ShowNowPlaying`.
 
 ### UseDefaultBindings
 

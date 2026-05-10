@@ -104,6 +104,7 @@ public:
     void redo();
 
     void focusNowPlaying();
+    void triggerFooyinAction(const QStringView& actionId);
     void beginSetMark();
     void beginJumpToMark();
 

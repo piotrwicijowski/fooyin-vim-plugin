@@ -1299,6 +1299,16 @@ void VimHandler::focusNowPlaying()
     cmd->action()->trigger();
 }
 
+void VimHandler::triggerFooyinAction(const QStringView& actionId)
+{
+    if(actionId.isEmpty()) {
+        qCWarning(VIM_LOG) << "triggerFooyinAction: empty action id";
+        return;
+    }
+
+    triggerCurrentContextAction(Fooyin::Id(actionId.toString()));
+}
+
 Fooyin::Playlist* VimHandler::selectedPlaylist() const
 {
     if(!m_playlistHandler)
