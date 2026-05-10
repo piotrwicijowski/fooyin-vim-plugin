@@ -11,6 +11,7 @@
 - search without wraparound - done
 - m - playlist local mark - done
 - Select-all visual style with one shortcut - done
+- Pending timeout - done
 - visual mode exit without removing selection
 - shift+j/shift+k for extending selection in normal mode
 - shortcuts for "next playlist/previous playlist"
@@ -20,6 +21,5 @@
 - Move/copy this song right after the currently playing without moving focus there
 - Allow binding any fooyin action without needing to explicitly declare a function for it in vim plugin
 - Mode indicator
-- Pending timeout
 - dot for repeat
 - Surround the bindings like apostrophe, slash, return with angled brackets

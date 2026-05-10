@@ -144,6 +144,11 @@ VimHandler::VimHandler(QObject* parent)
     , m_viewLocator{new ViewLocator(this)}
     , m_spatialNavigator{new SpatialNavigator(this)}
 {
+    m_pendingTimeoutTimer.setSingleShot(true);
+    connect(&m_pendingTimeoutTimer, &QTimer::timeout, this, [this]() {
+        qCDebug(VIM_LOG) << "Pending input timeout expired; clearing pending state";
+        clearPendingInputState();
+    });
     m_actions.registerAll();
     qCDebug(VIM_LOG) << "VimHandler created";
 }
@@ -323,8 +328,8 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     if(qtKey == Qt::Key_Escape) {
         qCDebug(VIM_LOG) << "Normal: Esc → clear pending/count (was pendingKey=" << m_pendingKey << "count=" << m_count
                          << ")";
-        m_pendingKey = {};
-        m_count      = 0;
+        clearPendingInputState();
+        m_count = 0;
         return true;
     }
 
@@ -376,7 +381,7 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     // Two-key sequence completion
     if(!m_pendingKey.isNull()) {
         const QChar pending = m_pendingKey;
-        m_pendingKey        = {};
+        clearPendingInputState();
         qCDebug(VIM_LOG) << "Normal: completing two-key seq '" << pending << "' + '" << ch << "'";
         if(pending == u'g' && ch == u'g') {
             qCDebug(VIM_LOG) << "Normal: gg → jumpToFirst";
@@ -405,7 +410,7 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     // Start of two-key sequences
     if(ch == u'g' || ch == u'd' || ch == u'y') {
         qCDebug(VIM_LOG) << "Normal: first key of two-key seq: '" << ch << "'";
-        m_pendingKey = ch;
+        setPendingKey(ch);
         return true;
     }
 
@@ -620,7 +625,7 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     // Two-key sequence completion
     if(!m_pendingKey.isNull()) {
         const QChar pending = m_pendingKey;
-        m_pendingKey        = {};
+        clearPendingInputState();
         qCDebug(VIM_LOG) << "Visual: completing two-key seq '" << pending << "' + '" << ch << "'";
         if(pending == u'g' && ch == u'g') {
             qCDebug(VIM_LOG) << "Visual: gg → extend selection to first row";
@@ -641,7 +646,7 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
     // Start of two-key sequences
     if(ch == u'g') {
         qCDebug(VIM_LOG) << "Visual: first key of two-key seq: '" << ch << "'";
-        m_pendingKey = ch;
+        setPendingKey(ch);
         return true;
     }
 
@@ -836,6 +841,11 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
     return false;
 }
 
+bool VimHandler::hasPendingInput() const
+{
+    return !m_pendingKey.isNull() || m_pendingMarkOp != PendingMarkOp::None;
+}
+
 // ---------------------------------------------------------------------------
 // Mode transitions
 // ---------------------------------------------------------------------------
@@ -856,30 +866,28 @@ void VimHandler::enterNormal()
                                                     QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         }
     }
-    m_mode          = Mode::Normal;
-    m_pendingKey    = {};
-    m_pendingMarkOp = PendingMarkOp::None;
-    m_count         = 0;
-    m_visualAnchor  = -1;
-    m_visualCursor  = -1;
+    m_mode = Mode::Normal;
+    clearPendingInputState();
+    m_count        = 0;
+    m_visualAnchor = -1;
+    m_visualCursor = -1;
     emit modeChanged(m_mode);
 }
 
 void VimHandler::enterInsert()
 {
     qCInfo(VIM_LOG) << "Mode → Insert";
-    m_mode          = Mode::Insert;
-    m_pendingKey    = {};
-    m_pendingMarkOp = PendingMarkOp::None;
-    m_count         = 0;
+    m_mode = Mode::Insert;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
 }
 
 void VimHandler::enterVisual()
 {
-    m_mode          = Mode::Visual;
-    m_pendingMarkOp = PendingMarkOp::None;
-    auto* view      = m_viewLocator->activeView();
+    m_mode = Mode::Visual;
+    clearPendingInputState();
+    auto* view = m_viewLocator->activeView();
     if(view && view->currentIndex().isValid()) {
         m_visualAnchor = view->currentIndex().row();
         m_visualCursor = m_visualAnchor;
@@ -907,12 +915,11 @@ void VimHandler::selectAll()
         return;
     }
 
-    m_mode          = Mode::Visual;
-    m_pendingKey    = {};
-    m_pendingMarkOp = PendingMarkOp::None;
-    m_count         = 0;
-    m_visualAnchor  = 0;
-    m_visualCursor  = last;
+    m_mode = Mode::Visual;
+    clearPendingInputState();
+    m_count        = 0;
+    m_visualAnchor = 0;
+    m_visualCursor = last;
     qCInfo(VIM_LOG) << "Mode → Visual, select all rows [0," << last << "]";
     updateVisualSelection();
     emit modeChanged(m_mode);
@@ -1237,17 +1244,15 @@ void VimHandler::setActionManager(Fooyin::ActionManager* manager)
 void VimHandler::beginSetMark()
 {
     qCDebug(VIM_LOG) << "beginSetMark";
-    m_pendingKey    = {};
-    m_pendingMarkOp = PendingMarkOp::Set;
-    m_count         = 0;
+    setPendingMarkOp(PendingMarkOp::Set);
+    m_count = 0;
 }
 
 void VimHandler::beginJumpToMark()
 {
     qCDebug(VIM_LOG) << "beginJumpToMark";
-    m_pendingKey    = {};
-    m_pendingMarkOp = PendingMarkOp::Jump;
-    m_count         = 0;
+    setPendingMarkOp(PendingMarkOp::Jump);
+    m_count = 0;
 }
 
 bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
@@ -1257,14 +1262,14 @@ bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
 
     if(ev->key() == Qt::Key_Escape && ev->modifiers() == Qt::NoModifier) {
         qCDebug(VIM_LOG) << "handlePendingMarkOp: cancelled";
-        m_pendingMarkOp = PendingMarkOp::None;
+        clearPendingInputState();
         return true;
     }
 
     const QChar ch = ev->text().isEmpty() ? QChar{} : ev->text().front();
     if(ev->modifiers() == Qt::NoModifier && !ch.isNull() && ch.isLower()) {
         const PendingMarkOp op = m_pendingMarkOp;
-        m_pendingMarkOp        = PendingMarkOp::None;
+        clearPendingInputState();
         if(op == PendingMarkOp::Set)
             setLocalMark(ch);
         else
@@ -1273,7 +1278,7 @@ bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
     }
 
     qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-lowercase completion";
-    m_pendingMarkOp = PendingMarkOp::None;
+    clearPendingInputState();
     return true;
 }
 
@@ -2110,9 +2115,9 @@ void VimHandler::enterFilter()
     if(!m_lastFilter.isEmpty())
         m_filterBar->prefillText(m_lastFilter);
 
-    m_mode       = Mode::Filter;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode = Mode::Filter;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
 
     m_filterBar->show();
@@ -2130,9 +2135,9 @@ void VimHandler::commitFilter()
     if(m_filterTarget)
         m_filterTarget->setFocus(Qt::OtherFocusReason);
 
-    m_mode       = Mode::Normal;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode = Mode::Normal;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
     qCInfo(VIM_LOG) << "Filter committed: '" << m_lastFilter << "' → Normal";
 }
@@ -2149,9 +2154,9 @@ void VimHandler::cancelFilter()
     if(m_filterTarget)
         m_filterTarget->setFocus(Qt::OtherFocusReason);
 
-    m_mode       = Mode::Normal;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode = Mode::Normal;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
     qCInfo(VIM_LOG) << "Filter cancelled → Normal";
 }
@@ -2343,9 +2348,9 @@ void VimHandler::enterSearch()
     m_searchMatches.clear();
     m_searchMatchIdx = -1;
 
-    m_mode       = Mode::Search;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode = Mode::Search;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
 
     m_searchBar->show();
@@ -2362,9 +2367,9 @@ void VimHandler::commitSearch()
     if(m_searchView)
         m_searchView->setFocus(Qt::OtherFocusReason);
 
-    m_mode       = Mode::Normal;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode = Mode::Normal;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
     qCInfo(VIM_LOG) << "Search committed: '" << m_lastSearchPattern << "' matchCount=" << m_searchMatches.size();
 }
@@ -2388,9 +2393,9 @@ void VimHandler::cancelSearch()
     if(view)
         view->setFocus(Qt::OtherFocusReason);
 
-    m_mode       = Mode::Normal;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode = Mode::Normal;
+    clearPendingInputState();
+    m_count = 0;
     emit modeChanged(m_mode);
     qCInfo(VIM_LOG) << "Search cancelled, cursor restored to row" << m_preSearchRow;
 }
@@ -2479,9 +2484,10 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
     if(!manager)
         return;
 
-    m_useConfigBindings  = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
-    m_useDefaultBindings = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
-    m_wrapScan           = manager->value(QStringLiteral("VimMotions/WrapScan")).toBool();
+    m_useConfigBindings        = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
+    m_useDefaultBindings       = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
+    m_wrapScan                 = manager->value(QStringLiteral("VimMotions/WrapScan")).toBool();
+    m_pendingSequenceTimeoutMs = qMax(0, manager->value(QStringLiteral("VimMotions/PendingSequenceTimeout")).toInt());
 
     using namespace Settings::VimMotions;
     manager->subscribe<UseConfigBindings>(this, [this](bool val) {
@@ -2497,6 +2503,11 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
     });
 
     manager->subscribe<WrapScan>(this, [this](bool val) { m_wrapScan = val; });
+
+    manager->subscribe<PendingSequenceTimeout>(this, [this](int val) {
+        m_pendingSequenceTimeoutMs = qMax(0, val);
+        refreshPendingTimeout();
+    });
 
     for(const auto& b : VimMotionsSettings::defaultBindings()) {
         manager->subscribe(QString::fromLatin1(b.key), this, [this](const QVariant&) {
@@ -2526,9 +2537,39 @@ bool VimHandler::hadExplicitCount() const
 
 void VimHandler::clearPendingState()
 {
-    m_count         = 0;
+    m_count = 0;
+    clearPendingInputState();
+}
+
+void VimHandler::clearPendingInputState()
+{
     m_pendingKey    = {};
     m_pendingMarkOp = PendingMarkOp::None;
+    m_pendingTimeoutTimer.stop();
+}
+
+void VimHandler::setPendingKey(QChar key)
+{
+    clearPendingInputState();
+    m_pendingKey = key;
+    refreshPendingTimeout();
+}
+
+void VimHandler::setPendingMarkOp(PendingMarkOp op)
+{
+    clearPendingInputState();
+    m_pendingMarkOp = op;
+    refreshPendingTimeout();
+}
+
+void VimHandler::refreshPendingTimeout()
+{
+    if(m_pendingSequenceTimeoutMs <= 0 || !hasPendingInput()) {
+        m_pendingTimeoutTimer.stop();
+        return;
+    }
+
+    m_pendingTimeoutTimer.start(m_pendingSequenceTimeoutMs);
 }
 
 void VimHandler::moveSpatialFocus(Direction dir)
@@ -2541,8 +2582,8 @@ void VimHandler::moveSpatialFocus(Direction dir)
 
     if(m_mode == Mode::Visual) {
         qCDebug(VIM_LOG) << "moveSpatialFocus: leaving Visual mode without collapsing selection";
-        m_mode         = Mode::Normal;
-        m_pendingKey   = {};
+        m_mode = Mode::Normal;
+        clearPendingInputState();
         m_count        = 0;
         m_visualAnchor = -1;
         m_visualCursor = -1;
@@ -2745,9 +2786,8 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     if(mode == Mode::Normal || mode == Mode::Visual) {
         if(qtKey == Qt::Key_Escape && mods == Qt::NoModifier) {
             qCDebug(VIM_LOG) << "ConfigDispatch: Esc → clear";
-            m_pendingKey    = {};
-            m_pendingMarkOp = PendingMarkOp::None;
-            m_count         = 0;
+            clearPendingInputState();
+            m_count = 0;
             if(mode == Mode::Visual)
                 enterNormal();
             return true;
@@ -2772,7 +2812,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
 
     if(!m_pendingKey.isNull()) {
         QChar pending = m_pendingKey;
-        m_pendingKey  = {};
+        clearPendingInputState();
 
         const auto& bindings = m_configBindings[mode];
         for(const auto& b : bindings) {
@@ -2828,7 +2868,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     }
 
     if(best->isTwoKey) {
-        m_pendingKey = best->firstKey.ch;
+        setPendingKey(best->firstKey.ch);
         qCDebug(VIM_LOG) << "ConfigDispatch: two-key start '" << m_pendingKey << "'";
         return true;
     }

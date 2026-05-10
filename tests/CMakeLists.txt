@@ -59,3 +59,25 @@ target_link_libraries(test_vimhandler_viewcontext PRIVATE
     Qt6::Sql
 )
 add_test(NAME test_vimhandler_viewcontext COMMAND test_vimhandler_viewcontext)
+
+add_executable(test_vimhandler_timeout
+    vimhandlertimeouttest.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimactions.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimsearchbar.cpp
+    ${CMAKE_SOURCE_DIR}/src/viewlocator.cpp
+    ${CMAKE_SOURCE_DIR}/src/spatialnavigator.cpp
+)
+target_include_directories(test_vimhandler_timeout PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(test_vimhandler_timeout PRIVATE
+    Fooyin::Gui
+    Qt6::Test
+    Qt6::Widgets
+    Qt6::Sql
+)
+add_test(NAME test_vimhandler_timeout COMMAND test_vimhandler_timeout)

@@ -243,6 +243,15 @@ Set it to `false` to stop at the last or first match instead:
 WrapScan=false
 ```
 
+Pending multi-key input timeout is controlled by `PendingSequenceTimeout`. The value is in milliseconds and applies to both two-key bindings like `gg`/`dd` and mark-pending actions like `m` followed by a letter.
+
+If the setting is omitted, it defaults to `0`. A value of `0` disables the timeout and preserves the current behavior.
+
+```ini
+[VimMotions]
+PendingSequenceTimeout=300
+```
+
 ### Binding format
 
 Each binding is a single INI entry:

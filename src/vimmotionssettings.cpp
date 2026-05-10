@@ -91,6 +91,8 @@ VimMotionsSettings::VimMotionsSettings(SettingsManager* settingsManager)
 
     settingsManager->createSetting<WrapScan>(true, u"VimMotions/WrapScan"_s);
 
+    settingsManager->createSetting<PendingSequenceTimeout>(0, u"VimMotions/PendingSequenceTimeout"_s);
+
     for(const auto& b : defaultBindings()) {
         settingsManager->createSetting(QString::fromLatin1(b.key), QVariant{QString::fromLatin1(b.value)});
     }

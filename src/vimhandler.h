@@ -7,6 +7,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QTimer>
 #include <core/playlist/playlist.h>
 #include <utils/id.h>
 
@@ -131,16 +132,28 @@ signals:
     void modeChanged(Mode newMode);
 
 private:
+    enum class PendingMarkOp
+    {
+        None,
+        Set,
+        Jump,
+    };
+
     bool handleKeyPress(QKeyEvent* ev);
     bool handleNormalKey(QKeyEvent* ev);
     bool handleVisualKey(QKeyEvent* ev);
     [[nodiscard]] bool wouldHandleNormal(QKeyEvent* ev) const;
     [[nodiscard]] bool wouldHandleVisual(QKeyEvent* ev) const;
     [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
+    [[nodiscard]] bool hasPendingInput() const;
 
     bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
     void executeAction(const BindingEntry& entry);
     bool handlePendingMarkOp(QKeyEvent* ev);
+    void clearPendingInputState();
+    void setPendingKey(QChar key);
+    void setPendingMarkOp(PendingMarkOp op);
+    void refreshPendingTimeout();
 
     void commitFilter();
     void cancelFilter();
@@ -199,13 +212,6 @@ private:
     Fooyin::SettingsManager* m_settingsManager{nullptr};
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
 
-    enum class PendingMarkOp
-    {
-        None,
-        Set,
-        Jump,
-    };
-
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
 
@@ -230,6 +236,8 @@ private:
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};
     QHash<Mode, QList<BindingEntry>> m_configBindings;
+    int m_pendingSequenceTimeoutMs{0};
+    QTimer m_pendingTimeoutTimer;
 };
 
 } // namespace Fooyin::VimMotions

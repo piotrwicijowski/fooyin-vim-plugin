@@ -56,6 +56,15 @@ private:
         return result;
     }
 
+    int loadPendingSequenceTimeout() const
+    {
+        QSettings settings(m_filePath, QSettings::IniFormat);
+        settings.beginGroup(QStringLiteral("VimMotions"));
+        const int timeout = settings.value(QStringLiteral("PendingSequenceTimeout"), 0).toInt();
+        settings.endGroup();
+        return timeout;
+    }
+
 private Q_SLOTS:
     void initTestCase()
     {
@@ -164,6 +173,19 @@ private Q_SLOTS:
         QVERIFY(bindings.contains(QStringLiteral("[Normal] A = organiserCreateGroup")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] v = leaveVisualMode")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] Ctrl+J = spatialMoveFocus")));
+    }
+
+    void testPendingSequenceTimeoutDefaultsToZero()
+    {
+        QCOMPARE(loadPendingSequenceTimeout(), 0);
+    }
+
+    void testPendingSequenceTimeoutReadsMilliseconds()
+    {
+        QSettings settings(m_filePath, QSettings::IniFormat);
+        settings.setValue(QStringLiteral("VimMotions/PendingSequenceTimeout"), 250);
+        settings.sync();
+        QCOMPARE(loadPendingSequenceTimeout(), 250);
     }
 };
 
