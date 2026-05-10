@@ -57,8 +57,8 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 ENV DEVCONTAINER=true
 
 # Create workspace and config directories and set permissions
-RUN mkdir -p /workspace /home/node/.claude && \
-  chown -R node:node /workspace /home/node/.claude
+RUN mkdir -p /workspace && \
+  chown -R node:node /workspace
 
 WORKDIR /workspace
 
@@ -73,14 +73,8 @@ ENV PATH=$PATH:/usr/local/share/npm-global/bin
 ENV EDITOR=vim
 ENV VISUAL=vim
 
-# Install Claude
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
 # Install opencode
 RUN curl -fsSL https://opencode.ai/install | bash
-
-# Install Opencode with Claude
-RUN npm install -g opencode-with-claude
 
 # Opencode configuration
 COPY --chown=node:node opencode.json tui.json /home/node/.config/opencode/
