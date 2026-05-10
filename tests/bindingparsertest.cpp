@@ -18,6 +18,7 @@ private Q_SLOTS:
     void testCtrlShiftJ();
     void testAltJ();
     void testVisualCtrlJ();
+    void testVisualV();
     void testNamedKey();
     void testEncodedKey();
     void testSlashKey();
@@ -95,6 +96,16 @@ void TestParseBinding::testVisualCtrlJ()
     QCOMPARE(e.actionName, QStringLiteral("spatialMoveFocus"));
     QCOMPARE(e.args, QStringLiteral("down"));
     QCOMPARE(e.firstKey.modifiers, Qt::ControlModifier);
+}
+
+void TestParseBinding::testVisualV()
+{
+    auto e = parseBindingString(QStringLiteral("v"), QStringLiteral("leaveVisualMode"));
+    QCOMPARE(e.actionName, QStringLiteral("leaveVisualMode"));
+    QCOMPARE(e.args, QStringLiteral(""));
+    QCOMPARE(e.isTwoKey, false);
+    QCOMPARE(e.firstKey.ch, QChar(u'v'));
+    QCOMPARE(e.firstKey.modifiers, Qt::NoModifier);
 }
 
 void TestParseBinding::testNamedKey()

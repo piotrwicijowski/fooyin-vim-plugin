@@ -58,6 +58,7 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `Ctrl+d` | Extend selection half page down |
 | `Ctrl+u` | Extend selection half page up |
 | `o` | Toggle anchor — swap cursor between start and end |
+| `v` | Exit Visual mode |
 | `h` / `l` | Collapse/expand node (tree views) |
 | `d` | Delete selected range, return to Normal |
 | `y` | Yank selected range, return to Normal |
@@ -403,6 +404,7 @@ Bindings\Visual\k=extendCursor:-1
 Bindings\Visual\gg=extendToFirst
 Bindings\Visual\G=extendToEnd
 Bindings\Visual\o=swapAnchor
+Bindings\Visual\v=leaveVisualMode
 Bindings\Visual\d=deleteSelection
 Bindings\Visual\y=yankSelection
 Bindings\Visual\Escape=leaveVisualMode

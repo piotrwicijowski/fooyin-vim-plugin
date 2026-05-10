@@ -51,6 +51,7 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
         {"VimMotions/Bindings/Visual/gg", "extendToFirst"},
         {"VimMotions/Bindings/Visual/G", "extendToEnd"},
         {"VimMotions/Bindings/Visual/o", "swapAnchor"},
+        {"VimMotions/Bindings/Visual/v", "leaveVisualMode"},
         {"VimMotions/Bindings/Visual/d", "deleteSelection"},
         {"VimMotions/Bindings/Visual/y", "yankSelection"},
         {"VimMotions/Bindings/Visual/Escape", "leaveVisualMode"},
