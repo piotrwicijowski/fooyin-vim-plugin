@@ -81,6 +81,3 @@ RUN curl -fsSL https://opencode.ai/install | bash
 
 # Opencode configuration
 COPY --chown=node:node opencode.json tui.json /home/node/.config/opencode/
-
-# Install codex usage plugin
-RUN opencode plugin opencode-plugin-codex-usage
