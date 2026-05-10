@@ -73,6 +73,8 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 
 All actions are registered in **Settings → Shortcuts** under the "Vim Motions" category and can be rebound there.
 
+`selectAll` is available for custom config bindings, but it is not part of the default bindings because there is no close standard Vim equivalent.
+
 ## Requirements
 
 - fooyin (source tree or installed with `-DINSTALL_HEADERS=ON`)
@@ -283,6 +285,7 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 | `treeCloseOrAscend` | — | Normal, Visual | Collapse node or ascend to parent |
 | `enterInsert` | — | Normal | Switch to Insert mode |
 | `enterVisual` | — | Normal | Switch to Visual mode |
+| `selectAll` | — | Normal, Visual | Enter Visual mode and select the full row range, leaving the cursor on the last row |
 | `enterNormal` | — | Visual, Insert | Return to Normal mode |
 | `enterFilter` | — | Normal | Open incremental filter bar |
 | `enterSearch` | — | Normal | Open `/` search bar |

@@ -79,6 +79,7 @@ public:
 
     void enterInsert();
     void enterVisual();
+    void selectAll();
     void enterNormal();
     void enterFilter();
 

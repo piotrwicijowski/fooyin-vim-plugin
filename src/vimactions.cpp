@@ -43,6 +43,7 @@ void VimActions::registerAll()
     registerAction(u"enterInsert"_s, [](VimHandler& h, const QStringView&) { h.enterInsert(); });
     registerAction(u"leaveInsertMode"_s, [](VimHandler& h, const QStringView&) { h.enterNormal(); });
     registerAction(u"enterVisual"_s, [](VimHandler& h, const QStringView&) { h.enterVisual(); });
+    registerAction(u"selectAll"_s, [](VimHandler& h, const QStringView&) { h.selectAll(); });
     registerAction(u"leaveVisualMode"_s, [](VimHandler& h, const QStringView&) { h.enterNormal(); });
 
     // -- Yank / delete / paste --

@@ -24,6 +24,7 @@ private Q_SLOTS:
     void testSemicolon();
     void testApostrophe();
     void testBacktick();
+    void testSelectAllAction();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -135,6 +136,16 @@ void TestParseBinding::testBacktick()
     auto e = parseBindingString(QStringLiteral("backtick"), QStringLiteral("beginJumpToMark"));
     QCOMPARE(e.actionName, QStringLiteral("beginJumpToMark"));
     QCOMPARE(e.firstKey.key, Qt::Key_QuoteLeft);
+}
+
+void TestParseBinding::testSelectAllAction()
+{
+    auto e = parseBindingString(QStringLiteral("Ctrl+A"), QStringLiteral("selectAll"));
+    QCOMPARE(e.actionName, QStringLiteral("selectAll"));
+    QCOMPARE(e.args, QStringLiteral(""));
+    QCOMPARE(e.isTwoKey, false);
+    QCOMPARE(e.firstKey.modifiers, Qt::ControlModifier);
+    QCOMPARE(e.firstKey.ch, QChar(u'A'));
 }
 
 QTEST_MAIN(TestParseBinding)

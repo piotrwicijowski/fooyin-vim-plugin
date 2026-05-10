@@ -777,6 +777,31 @@ void VimHandler::enterVisual()
     emit modeChanged(m_mode);
 }
 
+void VimHandler::selectAll()
+{
+    auto* view = m_viewLocator->activeView();
+    if(!view || !view->model() || !view->selectionModel()) {
+        qCWarning(VIM_LOG) << "selectAll: no active view / model / selectionModel";
+        return;
+    }
+
+    const int last = view->model()->rowCount() - 1;
+    if(last < 0) {
+        qCDebug(VIM_LOG) << "selectAll: view is empty";
+        return;
+    }
+
+    m_mode          = Mode::Visual;
+    m_pendingKey    = {};
+    m_pendingMarkOp = PendingMarkOp::None;
+    m_count         = 0;
+    m_visualAnchor  = 0;
+    m_visualCursor  = last;
+    qCInfo(VIM_LOG) << "Mode → Visual, select all rows [0," << last << "]";
+    updateVisualSelection();
+    emit modeChanged(m_mode);
+}
+
 // ---------------------------------------------------------------------------
 // Cursor navigation
 // ---------------------------------------------------------------------------
