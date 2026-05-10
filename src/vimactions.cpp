@@ -90,6 +90,8 @@ void VimActions::registerAll()
         h.enterNormal();
         h.focusNowPlaying();
     });
+    registerAction(u"beginSetMark"_s, [](VimHandler& h, const QStringView&) { h.beginSetMark(); });
+    registerAction(u"beginJumpToMark"_s, [](VimHandler& h, const QStringView&) { h.beginJumpToMark(); });
 
     // -- Search / filter --
     registerAction(u"enterSearch"_s, [](VimHandler& h, const QStringView&) { h.enterSearch(); });

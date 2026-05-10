@@ -67,6 +67,9 @@ private Q_SLOTS:
         file.write("[VimMotions]\n"
                    "Bindings\\Normal\\j=moveCursor:+1\n"
                    "Bindings\\Normal\\k=moveCursor:-1\n"
+                   "Bindings\\Normal\\m=beginSetMark\n"
+                   "Bindings\\Normal\\apostrophe=beginJumpToMark\n"
+                   "Bindings\\Normal\\backtick=beginJumpToMark\n"
                    "Bindings\\Normal\\dd=\n"
                    "Bindings\\Normal\\d=deleteRows\n"
                    "Bindings\\Normal\\f=deleteRows\n"
@@ -80,9 +83,12 @@ private Q_SLOTS:
     void testAllBindings()
     {
         auto bindings = loadParsedBindings({}, false);
-        QCOMPARE(bindings.size(), 6);
+        QCOMPARE(bindings.size(), 9);
         QVERIFY(bindings.contains(QStringLiteral("[Normal] j = moveCursor")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] k = moveCursor")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] m = beginSetMark")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] apostrophe = beginJumpToMark")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] backtick = beginJumpToMark")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] d = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] f = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] j = extendCursor")));
@@ -93,7 +99,7 @@ private Q_SLOTS:
     void testSkipEmptyValues()
     {
         auto bindings = loadParsedBindings({}, true);
-        QCOMPARE(bindings.size(), 6); // same as without skipEmpty for this file
+        QCOMPARE(bindings.size(), 9); // same as without skipEmpty for this file
     }
 
     // UseDefaultBindings=false: skip default keys
@@ -104,9 +110,7 @@ private Q_SLOTS:
 
         auto bindings = loadParsedBindings(defaults, true);
 
-        // j should be skipped (it's in defaults),
-        // leaving k, d, f, Visual/j, and Visual/Ctrl+J
-        QCOMPARE(bindings.size(), 5);
+        QCOMPARE(bindings.size(), 8);
     }
 
     // Skip all known keys: no custom bindings remain
@@ -115,6 +119,9 @@ private Q_SLOTS:
         QSet<QString> skipAll;
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/j"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/k"));
+        skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/m"));
+        skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/apostrophe"));
+        skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/backtick"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/dd"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/d"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/f"));
@@ -134,10 +141,12 @@ private Q_SLOTS:
 
         auto bindings = loadParsedBindings(defaults, true);
 
-        // j, k skipped (defaults); d, f parsed; Visual bindings not in defaults
-        QCOMPARE(bindings.size(), 4);
+        QCOMPARE(bindings.size(), 7);
         QVERIFY(bindings.contains(QStringLiteral("[Normal] d = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] f = deleteRows")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] m = beginSetMark")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] apostrophe = beginJumpToMark")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] backtick = beginJumpToMark")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] Ctrl+J = spatialMoveFocus")));
     }
 };

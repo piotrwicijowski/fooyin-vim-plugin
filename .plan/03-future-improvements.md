@@ -19,3 +19,4 @@
 - Mode indicator
 - Pending timeout
 - dot for repeat
+- Surround the bindings like apostrophe, slash, return with angled brackets

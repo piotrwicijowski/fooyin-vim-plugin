@@ -22,6 +22,8 @@ private Q_SLOTS:
     void testEncodedKey();
     void testSlashKey();
     void testSemicolon();
+    void testApostrophe();
+    void testBacktick();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -119,6 +121,20 @@ void TestParseBinding::testSemicolon()
 {
     auto e = parseBindingString(QStringLiteral("semicolon"), QStringLiteral("enterSearch"));
     QCOMPARE(e.firstKey.key, Qt::Key_Semicolon);
+}
+
+void TestParseBinding::testApostrophe()
+{
+    auto e = parseBindingString(QStringLiteral("apostrophe"), QStringLiteral("beginJumpToMark"));
+    QCOMPARE(e.actionName, QStringLiteral("beginJumpToMark"));
+    QCOMPARE(e.firstKey.key, Qt::Key_Apostrophe);
+}
+
+void TestParseBinding::testBacktick()
+{
+    auto e = parseBindingString(QStringLiteral("backtick"), QStringLiteral("beginJumpToMark"));
+    QCOMPARE(e.actionName, QStringLiteral("beginJumpToMark"));
+    QCOMPARE(e.firstKey.key, Qt::Key_QuoteLeft);
 }
 
 QTEST_MAIN(TestParseBinding)

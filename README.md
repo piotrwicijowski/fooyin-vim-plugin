@@ -24,6 +24,9 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `G` / `[count]G` | Jump to last row / row N (1-indexed) |
 | `o` | Focus currently playing item |
 | `g;` | Focus currently playing item |
+| `m` + `a-z` | Set a local mark on the current playlist item |
+| `'` + `a-z` | Jump to a local mark in the current playlist |
+| `` ` `` + `a-z` | Jump to a local mark in the current playlist |
 | `Ctrl+d` | Half page down |
 | `Ctrl+u` | Half page up |
 | `v` | Enter Visual mode |
@@ -251,9 +254,11 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 
 **Key combo syntax:**
 - Single character: `j`, `k`, `G`, `/` (use `slash` for the `/` key to avoid INI group separator issues)
+- Encoded punctuation keys: `slash`, `semicolon`, `apostrophe`, `backtick`
 - Named keys: `Escape`, `Return`, `Tab`, `Space`, `Home`, `End`, `PageUp`, `PageDown`, `Left`, `Right`, `Up`, `Down`
 - Modifier combos: `Ctrl+J`, `Alt+J`, `Ctrl+Shift+K`
 - Two-key sequences: `gg`, `dd`, `yy`, `g;`
+- Operator-pending prefixes: `m`, `apostrophe`, `backtick` can be bound to mark actions that consume the next lowercase letter
 
 **Action name + args:**
 - No args: `undo`, `enterInsert`, `jumpToFirst`
@@ -287,6 +292,8 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 | `undo` | — | Normal | Undo last playlist change |
 | `redo` | — | Normal | Redo last undone change |
 | `focusNowPlaying` | — | Normal | Focus currently playing track |
+| `beginSetMark` | — | Normal | Begin setting a local mark; the next lowercase letter chooses the mark |
+| `beginJumpToMark` | — | Normal | Begin jumping to a local mark; the next lowercase letter chooses the mark |
 | `moveRows` | `+1` / `-1` | Normal | Move current row in playlist |
 | `extendCursor` | `+1` / `-1` | Visual | Extend visual selection by N rows |
 | `extendToFirst` | — | Visual | Extend selection to first row |
@@ -363,6 +370,9 @@ Bindings\Normal\h=treeCloseOrAscend
 Bindings\Normal\l=treeOpenOrDescend
 Bindings\Normal\o=focusNowPlaying
 Bindings\Normal\g;=focusNowPlaying
+Bindings\Normal\m=beginSetMark
+Bindings\Normal\apostrophe=beginJumpToMark
+Bindings\Normal\backtick=beginJumpToMark
 Bindings\Normal\p=pasteAfter
 Bindings\Normal\P=pasteBefore
 Bindings\Normal\slash=enterSearch

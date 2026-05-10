@@ -22,6 +22,7 @@ class FyWidget;
 class Playlist;
 class PlaylistHandler;
 class SettingsManager;
+class TrackSelectionController;
 } // namespace Fooyin
 
 namespace Fooyin::VimMotions {
@@ -54,6 +55,7 @@ public:
     void setPlaylistHandler(Fooyin::PlaylistHandler* handler);
     void setActionManager(Fooyin::ActionManager* manager);
     void setSettingsManager(Fooyin::SettingsManager* manager);
+    void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -88,6 +90,8 @@ public:
     void redo();
 
     void focusNowPlaying();
+    void beginSetMark();
+    void beginJumpToMark();
 
     void enterSearch();
     void nextMatch();
@@ -123,6 +127,7 @@ private:
 
     bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
     void executeAction(const BindingEntry& entry);
+    bool handlePendingMarkOp(QKeyEvent* ev);
 
     void commitFilter();
     void cancelFilter();
@@ -140,6 +145,12 @@ private:
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
                        int cursorBefore, int cursorAfter, int col);
 
+    void setLocalMark(QChar mark);
+    void jumpToLocalMark(QChar mark);
+    [[nodiscard]] Fooyin::Playlist* selectedPlaylist() const;
+    [[nodiscard]] Fooyin::UId currentTrackEntryId() const;
+    [[nodiscard]] std::vector<VimClipboard::MarkTransfer> takeCutMarks(Fooyin::Playlist* playlist, int startRow,
+                                                                       int endRow);
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
 
@@ -169,6 +180,17 @@ private:
     Fooyin::ActionManager* m_actionManager{nullptr};
     Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
     Fooyin::SettingsManager* m_settingsManager{nullptr};
+    Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
+
+    enum class PendingMarkOp
+    {
+        None,
+        Set,
+        Jump,
+    };
+
+    PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
+    QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
 
     std::vector<UndoEntry> m_undoStack;
     int m_undoIndex{-1};

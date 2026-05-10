@@ -13,6 +13,7 @@ class ActionManager;
 class PlaylistHandler;
 class SearchController;
 class SettingsManager;
+class TrackSelectionController;
 
 namespace VimMotions {
 
@@ -39,6 +40,7 @@ private:
     ActionManager* m_actionManager{nullptr};
     PlaylistHandler* m_playlistHandler{nullptr};
     SearchController* m_searchController{nullptr};
+    TrackSelectionController* m_trackSelection{nullptr};
     SettingsManager* m_settingsManager{nullptr};
     VimHandler* m_vimHandler{nullptr};
 };

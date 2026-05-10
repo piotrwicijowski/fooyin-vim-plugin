@@ -11,6 +11,7 @@
 #include <core/plugins/coreplugincontext.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
+#include <gui/trackselectioncontroller.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/actions/command.h>
 #include <utils/settings/settingsmanager.h>
@@ -147,6 +148,9 @@ bool VimHandler::handleKeyPress(QKeyEvent* ev)
 
 bool VimHandler::handleNormalKey(QKeyEvent* ev)
 {
+    if(handlePendingMarkOp(ev))
+        return true;
+
     const Qt::KeyboardModifiers mods = ev->modifiers();
     const int qtKey                  = ev->key();
     const QString text               = ev->text();
@@ -342,6 +346,16 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
     if(ch == u'o') {
         qCDebug(VIM_LOG) << "Normal: 'o' → focusNowPlaying";
         focusNowPlaying();
+        return true;
+    }
+    if(ch == u'm') {
+        qCDebug(VIM_LOG) << "Normal: 'm' → beginSetMark";
+        beginSetMark();
+        return true;
+    }
+    if(ch == u'\'' || ch == u'`') {
+        qCDebug(VIM_LOG) << "Normal: quote/backtick → beginJumpToMark";
+        beginJumpToMark();
         return true;
     }
     if(ch == u'v') {
@@ -610,6 +624,9 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
     const int key                    = kev->key();
     const QChar ch                   = kev->text().isEmpty() ? QChar{} : kev->text().front();
 
+    if(m_pendingMarkOp != PendingMarkOp::None)
+        return true;
+
     if(mods & Qt::ControlModifier)
         return key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H || key == Qt::Key_L || key == Qt::Key_D
             || key == Qt::Key_U || key == Qt::Key_R || key == Qt::Key_I;
@@ -633,7 +650,7 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
 
     if(ch == u'g' || ch == u'd' || ch == u'y')
         return true;
-    if(ch == u'j' || ch == u'k' || ch == u'G' || ch == u'o' || ch == u'v')
+    if(ch == u'j' || ch == u'k' || ch == u'G' || ch == u'o' || ch == u'v' || ch == u'm' || ch == u'\'' || ch == u'`')
         return true;
     if(ch == u'l' || ch == u'h')
         return true;
@@ -705,27 +722,30 @@ void VimHandler::enterNormal()
                                                     QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         }
     }
-    m_mode         = Mode::Normal;
-    m_pendingKey   = {};
-    m_count        = 0;
-    m_visualAnchor = -1;
-    m_visualCursor = -1;
+    m_mode          = Mode::Normal;
+    m_pendingKey    = {};
+    m_pendingMarkOp = PendingMarkOp::None;
+    m_count         = 0;
+    m_visualAnchor  = -1;
+    m_visualCursor  = -1;
     emit modeChanged(m_mode);
 }
 
 void VimHandler::enterInsert()
 {
     qCInfo(VIM_LOG) << "Mode → Insert";
-    m_mode       = Mode::Insert;
-    m_pendingKey = {};
-    m_count      = 0;
+    m_mode          = Mode::Insert;
+    m_pendingKey    = {};
+    m_pendingMarkOp = PendingMarkOp::None;
+    m_count         = 0;
     emit modeChanged(m_mode);
 }
 
 void VimHandler::enterVisual()
 {
-    m_mode     = Mode::Visual;
-    auto* view = m_viewLocator->activeView();
+    m_mode          = Mode::Visual;
+    m_pendingMarkOp = PendingMarkOp::None;
+    auto* view      = m_viewLocator->activeView();
     if(view && view->currentIndex().isValid()) {
         m_visualAnchor = view->currentIndex().row();
         m_visualCursor = m_visualAnchor;
@@ -1013,10 +1033,59 @@ void VimHandler::setPlaylistHandler(Fooyin::PlaylistHandler* handler)
     m_playlistHandler = handler;
 }
 
+void VimHandler::setTrackSelectionController(Fooyin::TrackSelectionController* controller)
+{
+    qCDebug(VIM_LOG) << "setTrackSelectionController:" << (controller ? "set" : "cleared");
+    m_trackSelectionController = controller;
+}
+
 void VimHandler::setActionManager(Fooyin::ActionManager* manager)
 {
     qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
     m_actionManager = manager;
+}
+
+void VimHandler::beginSetMark()
+{
+    qCDebug(VIM_LOG) << "beginSetMark";
+    m_pendingKey    = {};
+    m_pendingMarkOp = PendingMarkOp::Set;
+    m_count         = 0;
+}
+
+void VimHandler::beginJumpToMark()
+{
+    qCDebug(VIM_LOG) << "beginJumpToMark";
+    m_pendingKey    = {};
+    m_pendingMarkOp = PendingMarkOp::Jump;
+    m_count         = 0;
+}
+
+bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
+{
+    if(m_pendingMarkOp == PendingMarkOp::None)
+        return false;
+
+    if(ev->key() == Qt::Key_Escape && ev->modifiers() == Qt::NoModifier) {
+        qCDebug(VIM_LOG) << "handlePendingMarkOp: cancelled";
+        m_pendingMarkOp = PendingMarkOp::None;
+        return true;
+    }
+
+    const QChar ch = ev->text().isEmpty() ? QChar{} : ev->text().front();
+    if(ev->modifiers() == Qt::NoModifier && !ch.isNull() && ch.isLower()) {
+        const PendingMarkOp op = m_pendingMarkOp;
+        m_pendingMarkOp        = PendingMarkOp::None;
+        if(op == PendingMarkOp::Set)
+            setLocalMark(ch);
+        else
+            jumpToLocalMark(ch);
+        return true;
+    }
+
+    qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-lowercase completion";
+    m_pendingMarkOp = PendingMarkOp::None;
+    return true;
 }
 
 void VimHandler::focusNowPlaying()
@@ -1036,10 +1105,141 @@ void VimHandler::focusNowPlaying()
     cmd->action()->trigger();
 }
 
+Fooyin::Playlist* VimHandler::selectedPlaylist() const
+{
+    if(!m_playlistHandler)
+        return nullptr;
+
+    auto* view = m_viewLocator->activeView();
+    if(!view || QLatin1String(view->metaObject()->className()) != QLatin1String("Fooyin::PlaylistView"))
+        return nullptr;
+
+    if(m_trackSelectionController) {
+        if(const auto* selection = m_trackSelectionController->selectedSelection();
+           selection && selection->playlistId && selection->playlistId->isValid()) {
+            if(auto* playlist = m_playlistHandler->playlistById(*selection->playlistId)) {
+                qCDebug(VIM_LOG) << "selectedPlaylist: from TrackSelection =" << playlist->name();
+                return playlist;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+Fooyin::UId VimHandler::currentTrackEntryId() const
+{
+    if(auto* playlist = selectedPlaylist()) {
+        if(m_trackSelectionController) {
+            if(const auto* selection = m_trackSelectionController->selectedSelection();
+               selection && selection->playlistId && *selection->playlistId == playlist->id()
+               && !selection->playlistEntryIds.empty()) {
+                const Fooyin::UId entryId = selection->playlistEntryIds.front();
+                if(entryId.isValid())
+                    return entryId;
+            }
+        }
+    }
+
+    auto* view     = m_viewLocator->activeView();
+    auto* playlist = targetPlaylist();
+    if(!view || !view->currentIndex().isValid() || !playlist)
+        return {};
+
+    if(const auto playlistTrack = playlist->playlistTrack(view->currentIndex().row()))
+        return playlistTrack->entryId;
+
+    return {};
+}
+
+void VimHandler::setLocalMark(QChar mark)
+{
+    auto* playlist = targetPlaylist();
+    if(!playlist) {
+        qCWarning(VIM_LOG) << "setLocalMark: no playlist found";
+        return;
+    }
+
+    const Fooyin::UId entryId = currentTrackEntryId();
+    if(!entryId.isValid()) {
+        qCWarning(VIM_LOG) << "setLocalMark: no current playlist entry";
+        return;
+    }
+
+    m_localMarks[playlist->id()][mark] = entryId;
+    qCDebug(VIM_LOG) << "setLocalMark:" << mark << "playlist=" << playlist->name() << "entryId=" << entryId;
+}
+
+void VimHandler::jumpToLocalMark(QChar mark)
+{
+    auto* playlist = targetPlaylist();
+    auto* view     = m_viewLocator->activeView();
+    if(!playlist || !view || !view->model() || !view->selectionModel()) {
+        qCWarning(VIM_LOG) << "jumpToLocalMark: no playlist/view context";
+        return;
+    }
+
+    const auto playlistMarks = m_localMarks.constFind(playlist->id());
+    if(playlistMarks == m_localMarks.cend() || !playlistMarks->contains(mark)) {
+        qCDebug(VIM_LOG) << "jumpToLocalMark: mark not set" << mark;
+        return;
+    }
+
+    const Fooyin::UId entryId = playlistMarks->value(mark);
+    const int row             = playlist->indexOfTrackEntry(entryId);
+    if(row < 0) {
+        qCDebug(VIM_LOG) << "jumpToLocalMark: stale mark cleared" << mark;
+        m_localMarks[playlist->id()].remove(mark);
+        if(m_localMarks[playlist->id()].isEmpty())
+            m_localMarks.remove(playlist->id());
+        return;
+    }
+
+    const int col         = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    const QModelIndex idx = view->model()->index(row, col);
+    if(!idx.isValid())
+        return;
+
+    view->selectionModel()->setCurrentIndex(idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    view->scrollTo(idx);
+    qCDebug(VIM_LOG) << "jumpToLocalMark:" << mark << "row=" << row;
+}
+
+std::vector<VimClipboard::MarkTransfer> VimHandler::takeCutMarks(Fooyin::Playlist* playlist, int startRow, int endRow)
+{
+    std::vector<VimClipboard::MarkTransfer> transfers;
+    if(!playlist || startRow >= endRow)
+        return transfers;
+
+    auto playlistIt = m_localMarks.find(playlist->id());
+    if(playlistIt == m_localMarks.end())
+        return transfers;
+
+    auto& marks = playlistIt.value();
+    for(auto it = marks.begin(); it != marks.end();) {
+        const int row = playlist->indexOfTrackEntry(it.value());
+        if(row >= startRow && row < endRow) {
+            transfers.push_back({row - startRow, it.key()});
+            it = marks.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
+    if(marks.isEmpty())
+        m_localMarks.erase(playlistIt);
+
+    return transfers;
+}
+
 Fooyin::Playlist* VimHandler::targetPlaylist() const
 {
     if(!m_playlistHandler)
         return nullptr;
+
+    if(auto* playlist = selectedPlaylist())
+        return playlist;
 
     // Prefer the playlist the active view is currently displaying, identified
     // by matching its row count. This ensures yank/paste target what the user
@@ -1241,10 +1441,11 @@ void VimHandler::deleteRows(int count)
     const int restoreRow   = (expectedRows > 0) ? qMin(row, expectedRows - 1) : 0;
 
     Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
+    const auto cutMarks                      = takeCutMarks(playlist, row, end);
 
     qCDebug(VIM_LOG) << "deleteRows: playlist=" << playlist->name() << "rows [" << row << "," << (end - 1) << "]"
                      << "count=" << numDeleted << "restoreRow=" << restoreRow;
-    yankRows(count);
+    m_clipboard.cut(Fooyin::TrackList(playlist->tracks().begin() + row, playlist->tracks().begin() + end), cutMarks);
     std::vector<int> indices;
     indices.reserve(static_cast<size_t>(numDeleted));
     for(int i = row; i < end; ++i)
@@ -1307,10 +1508,12 @@ void VimHandler::deleteVisualSelection()
     const int restoreRow   = (expectedRows > 0) ? qMin(top, expectedRows - 1) : 0;
 
     Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
+    const auto cutMarks                      = takeCutMarks(playlist, top, std::min(bot + 1, size));
 
     qCDebug(VIM_LOG) << "deleteVisualSelection: playlist=" << playlist->name() << "rows [" << top << ","
                      << qMin(bot, size - 1) << "]";
-    yankVisualSelection();
+    m_clipboard.cut(Fooyin::TrackList(playlist->tracks().begin() + top, playlist->tracks().begin() + top + numDeleted),
+                    cutMarks);
     std::vector<int> indices;
     for(int i = top; i <= bot && i < size; ++i)
         indices.push_back(i);
@@ -1349,11 +1552,18 @@ void VimHandler::pasteAfter()
     Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
     Fooyin::PlaylistTrackList all            = snapshotBefore;
     const int insertPos                      = std::clamp(targetRow, 0, static_cast<int>(all.size()));
-    const auto newEntries                    = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
+    auto newEntries                          = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
+    const auto markTransfers                 = m_clipboard.markTransfers();
+    for(const auto& transfer : markTransfers) {
+        if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size()))
+            m_localMarks[playlist->id()][transfer.mark] = newEntries[static_cast<size_t>(transfer.offset)].entryId;
+    }
     qCDebug(VIM_LOG) << "pasteAfter: playlist=" << playlist->name() << "originalRow=" << originalRow
                      << "insertPos=" << insertPos << "trackCount=" << newEntries.size();
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    if(!markTransfers.empty())
+        m_clipboard.clearMarkTransfers();
     const int afterSize              = static_cast<int>(all.size());
     const int currentRowAfterReplace = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
     qCDebug(VIM_LOG) << "pasteAfter: after replacePlaylistTracks, currentIndex row =" << currentRowAfterReplace
@@ -1383,11 +1593,18 @@ void VimHandler::pasteBefore()
     Fooyin::PlaylistTrackList snapshotBefore = playlist->playlistTracks();
     Fooyin::PlaylistTrackList all            = snapshotBefore;
     const int insertPos                      = std::clamp(originalRow, 0, static_cast<int>(all.size()));
-    const auto newEntries                    = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
+    auto newEntries                          = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
+    const auto markTransfers                 = m_clipboard.markTransfers();
+    for(const auto& transfer : markTransfers) {
+        if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size()))
+            m_localMarks[playlist->id()][transfer.mark] = newEntries[static_cast<size_t>(transfer.offset)].entryId;
+    }
     qCDebug(VIM_LOG) << "pasteBefore: playlist=" << playlist->name() << "originalRow=" << originalRow
                      << "insertPos=" << insertPos << "trackCount=" << newEntries.size();
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    if(!markTransfers.empty())
+        m_clipboard.clearMarkTransfers();
     const int afterSize              = static_cast<int>(all.size());
     const int currentRowAfterReplace = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
     qCDebug(VIM_LOG) << "pasteBefore: after replacePlaylistTracks, currentIndex row =" << currentRowAfterReplace
@@ -1857,8 +2074,9 @@ bool VimHandler::hadExplicitCount() const
 
 void VimHandler::clearPendingState()
 {
-    m_count      = 0;
-    m_pendingKey = {};
+    m_count         = 0;
+    m_pendingKey    = {};
+    m_pendingMarkOp = PendingMarkOp::None;
 }
 
 void VimHandler::moveSpatialFocus(Direction dir)
@@ -2075,12 +2293,16 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     if(mode == Mode::Normal || mode == Mode::Visual) {
         if(qtKey == Qt::Key_Escape && mods == Qt::NoModifier) {
             qCDebug(VIM_LOG) << "ConfigDispatch: Esc → clear";
-            m_pendingKey = {};
-            m_count      = 0;
+            m_pendingKey    = {};
+            m_pendingMarkOp = PendingMarkOp::None;
+            m_count         = 0;
             if(mode == Mode::Visual)
                 enterNormal();
             return true;
         }
+
+        if(mode == Mode::Normal && handlePendingMarkOp(ev))
+            return true;
 
         if(!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) {
             const int digit = ch.digitValue();
@@ -2174,6 +2396,9 @@ bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
         const int qtKey = ev->key();
         const auto mods = ev->modifiers();
         if(qtKey == Qt::Key_Escape && mods == Qt::NoModifier)
+            return true;
+
+        if(mode == Mode::Normal && m_pendingMarkOp != PendingMarkOp::None)
             return true;
 
         const QChar ch = ev->text().isEmpty() ? QChar{} : ev->text().front();

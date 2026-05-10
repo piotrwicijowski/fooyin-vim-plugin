@@ -33,8 +33,10 @@ struct EncodedKeyEntry
 };
 
 constexpr EncodedKeyEntry kEncodedKeys[] = {
-    {"slash", Qt::Key_Slash}, {"semicolon", Qt::Key_Semicolon}, {"period", Qt::Key_Period}, {"dot", Qt::Key_Period},
-    {"comma", Qt::Key_Comma}, {"minus", Qt::Key_Minus},         {"equal", Qt::Key_Equal},   {"space", Qt::Key_Space},
+    {"slash", Qt::Key_Slash},        {"semicolon", Qt::Key_Semicolon}, {"period", Qt::Key_Period},
+    {"dot", Qt::Key_Period},         {"comma", Qt::Key_Comma},         {"minus", Qt::Key_Minus},
+    {"equal", Qt::Key_Equal},        {"space", Qt::Key_Space},         {"apostrophe", Qt::Key_Apostrophe},
+    {"backtick", Qt::Key_QuoteLeft},
 };
 
 Qt::Key charToKey(QChar ch)
