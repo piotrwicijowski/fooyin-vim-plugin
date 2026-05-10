@@ -407,6 +407,9 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
 
 bool VimHandler::handleVisualKey(QKeyEvent* ev)
 {
+    if(handlePendingMarkOp(ev))
+        return true;
+
     const Qt::KeyboardModifiers mods = ev->modifiers();
     const int qtKey                  = ev->key();
     const QString text               = ev->text();
@@ -597,6 +600,16 @@ bool VimHandler::handleVisualKey(QKeyEvent* ev)
         enterSearch();
         return true;
     }
+    if(ch == u'm') {
+        qCDebug(VIM_LOG) << "Visual: 'm' → beginSetMark";
+        beginSetMark();
+        return true;
+    }
+    if(ch == u'\'' || ch == u'`') {
+        qCDebug(VIM_LOG) << "Visual: quote/backtick → beginJumpToMark";
+        beginJumpToMark();
+        return true;
+    }
     if(ch == u'd') {
         qCDebug(VIM_LOG) << "Visual: 'd' → deleteVisualSelection → Normal";
         deleteVisualSelection();
@@ -670,6 +683,9 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
     const int key                    = kev->key();
     const QChar ch                   = kev->text().isEmpty() ? QChar{} : kev->text().front();
 
+    if(m_pendingMarkOp != PendingMarkOp::None)
+        return true;
+
     if(mods & Qt::ControlModifier)
         return key == Qt::Key_D || key == Qt::Key_U || key == Qt::Key_J || key == Qt::Key_K || key == Qt::Key_H
             || key == Qt::Key_L;
@@ -697,6 +713,8 @@ bool VimHandler::wouldHandleVisual(QKeyEvent* kev) const
     if(ch == u'n' || ch == u'N')
         return true;
     if(ch == u'/')
+        return true;
+    if(ch == u'm' || ch == u'\'' || ch == u'`')
         return true;
 
     return false;
@@ -1199,6 +1217,14 @@ void VimHandler::jumpToLocalMark(QChar mark)
     const QModelIndex idx = view->model()->index(row, col);
     if(!idx.isValid())
         return;
+
+    if(m_mode == Mode::Visual) {
+        qCDebug(VIM_LOG) << "jumpToLocalMark (visual):" << mark << "row=" << row;
+        m_visualCursor = row;
+        updateVisualSelection();
+        view->scrollTo(idx);
+        return;
+    }
 
     view->selectionModel()->setCurrentIndex(idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     view->scrollTo(idx);
@@ -2301,7 +2327,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
             return true;
         }
 
-        if(mode == Mode::Normal && handlePendingMarkOp(ev))
+        if((mode == Mode::Normal || mode == Mode::Visual) && handlePendingMarkOp(ev))
             return true;
 
         if(!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) {
@@ -2398,7 +2424,7 @@ bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
         if(qtKey == Qt::Key_Escape && mods == Qt::NoModifier)
             return true;
 
-        if(mode == Mode::Normal && m_pendingMarkOp != PendingMarkOp::None)
+        if((mode == Mode::Normal || mode == Mode::Visual) && m_pendingMarkOp != PendingMarkOp::None)
             return true;
 
         const QChar ch = ev->text().isEmpty() ? QChar{} : ev->text().front();

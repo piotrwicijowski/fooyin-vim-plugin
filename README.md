@@ -63,6 +63,9 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `y` | Yank selected range, return to Normal |
 | `n` / `N` | Next / previous search match (return to Normal) |
 | `/` | Enter Search mode (return to Normal) |
+| `m` + `a-z` | Set a local mark on the current playlist item |
+| `'` + `a-z` | Jump to a local mark, extending the selection |
+| `` ` `` + `a-z` | Jump to a local mark, extending the selection |
 | `g;` | Focus currently playing item (return to Normal) |
 | `Alt+j` / `Alt+k` | Move entire selection down / up in the playlist |
 | `[count]Alt+j` / `[count]Alt+k` | Move entire selection N positions down / up |
@@ -403,6 +406,9 @@ Bindings\Visual\Escape=leaveVisualMode
 Bindings\Visual\n=nextMatchAndExit
 Bindings\Visual\N=prevMatchAndExit
 Bindings\Visual\slash=enterSearchAndExit
+Bindings\Visual\m=beginSetMark
+Bindings\Visual\apostrophe=beginJumpToMark
+Bindings\Visual\backtick=beginJumpToMark
 Bindings\Visual\Ctrl+D=extendHalfPage:+1
 Bindings\Visual\Ctrl+U=extendHalfPage:-1
 Bindings\Visual\Ctrl+J=spatialMoveFocus:down
