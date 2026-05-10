@@ -219,6 +219,8 @@ When `true`, the plugin reads all keys under the `VimMotions/Bindings` group and
 
 By default, all built-in bindings are active when `UseConfigBindings=true`. Use `UseDefaultBindings` (see below) to start from a clean slate.
 
+After changing `fooyin.conf`, restart fooyin before expecting vim-binding changes to apply.
+
 ### Search options
 
 Slash-search wraparound is controlled by `WrapScan`, similar to Vim's `wrapscan` option. It defaults to `true`, which preserves the current behavior: `/`, `n`, and `N` wrap to the start or end when needed.
@@ -303,7 +305,7 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 
 ### Runtime changes
 
-Bindings are read from settings on startup and rebuilt automatically whenever any `VimMotions/Bindings/*` setting changes. You can edit `fooyin.conf` while fooyin is running and changes will take effect on the next keystroke — no restart needed.
+Bindings are read on startup. If you edit `fooyin.conf`, restart fooyin for those vim-binding changes to apply.
 
 ### UseDefaultBindings
 
@@ -323,7 +325,7 @@ Bindings\Normal\G=jumpToLast
 
 With this config, only `j`, `k`, `gg`, and `G` are active in Normal mode — all other defaults are ignored. See the [Explicit default configuration](#explicit-default-configuration) section for the full list of all default bindings.
 
-Changes take effect immediately — no restart needed (see [Runtime changes](#runtime-changes)).
+After updating `fooyin.conf`, restart fooyin (see [Runtime changes](#runtime-changes)).
 
 ### Unmapping bindings
 
