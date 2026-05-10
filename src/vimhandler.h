@@ -47,6 +47,14 @@ public:
         Search
     };
 
+    enum class ViewContext
+    {
+        None,
+        PlaylistView,
+        PlaylistOrganiser,
+        Other
+    };
+
     explicit VimHandler(QObject* parent = nullptr);
     ~VimHandler() override;
 
@@ -61,6 +69,7 @@ public:
 
     // Testing support
     void rebuildBindings();
+    [[nodiscard]] ViewContext viewContext(QAbstractItemView* view) const;
     [[nodiscard]] const QHash<Mode, QList<BindingEntry>>& configBindings() const
     {
         return m_configBindings;
@@ -152,8 +161,10 @@ private:
     [[nodiscard]] Fooyin::UId currentTrackEntryId() const;
     [[nodiscard]] std::vector<VimClipboard::MarkTransfer> takeCutMarks(Fooyin::Playlist* playlist, int startRow,
                                                                        int endRow);
+    [[nodiscard]] ViewContext activeViewContext() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
+    bool triggerCurrentContextAction(const Fooyin::Id& id) const;
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
 

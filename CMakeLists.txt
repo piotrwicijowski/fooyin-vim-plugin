@@ -63,18 +63,29 @@ else()
         NAMES fooyin_gui
         PATHS "${_fooyin_lib_dir}"
         NO_DEFAULT_PATH)
+    find_library(FOOYIN_UTILS_LIB
+        NAMES fooyin_utils
+        PATHS "${_fooyin_lib_dir}"
+        NO_DEFAULT_PATH)
 
-    if(NOT FOOYIN_CORE_LIB OR NOT FOOYIN_GUI_LIB)
+    if(NOT FOOYIN_CORE_LIB OR NOT FOOYIN_GUI_LIB OR NOT FOOYIN_UTILS_LIB)
         message(FATAL_ERROR
-            "Could not find fooyin_core/fooyin_gui in ${_fooyin_lib_dir}.\n"
+            "Could not find fooyin_core/fooyin_gui/fooyin_utils in ${_fooyin_lib_dir}.\n"
             "Ensure fooyin is fully built.")
     endif()
+
+    add_library(Fooyin::Utils SHARED IMPORTED)
+    set_target_properties(Fooyin::Utils PROPERTIES
+        IMPORTED_LOCATION "${FOOYIN_UTILS_LIB}"
+        INTERFACE_INCLUDE_DIRECTORIES
+            "${FOOYIN_SRC_DIR}/include;${_fooyin_gen_dirs}")
 
     add_library(Fooyin::Core SHARED IMPORTED)
     set_target_properties(Fooyin::Core PROPERTIES
         IMPORTED_LOCATION "${FOOYIN_CORE_LIB}"
         INTERFACE_INCLUDE_DIRECTORIES
-            "${FOOYIN_SRC_DIR}/include;${_fooyin_gen_dirs}")
+            "${FOOYIN_SRC_DIR}/include;${_fooyin_gen_dirs}"
+        INTERFACE_LINK_LIBRARIES Fooyin::Utils)
 
     add_library(Fooyin::Gui SHARED IMPORTED)
     set_target_properties(Fooyin::Gui PROPERTIES

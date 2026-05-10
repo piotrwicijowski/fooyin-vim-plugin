@@ -17,9 +17,12 @@
 #include <utils/settings/settingsmanager.h>
 
 #include <QAbstractItemView>
+#include <QAction>
 #include <QCoreApplication>
 #include <QItemSelection>
 #include <QKeyEvent>
+#include <QMimeData>
+#include <QPersistentModelIndex>
 #include <QPointer>
 #include <QSet>
 #include <QSettings>
@@ -36,6 +39,34 @@ namespace Fooyin::VimMotions {
 static QTreeView* asTreeView(QAbstractItemView* v)
 {
     return qobject_cast<QTreeView*>(v);
+}
+
+struct OrganiserDropTarget
+{
+    QModelIndex parent;
+    int row{-1};
+};
+
+static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, const QModelIndex& target, int direction)
+{
+    Q_ASSERT(tree);
+    Q_ASSERT(direction == -1 || direction == +1);
+
+    if(direction < 0)
+        return {target.parent(), target.row()};
+
+    if(tree->isExpanded(target) && tree->model()->rowCount(target) > 0)
+        return {target, 0};
+
+    return {target.parent(), target.row() + 1};
+}
+
+static QModelIndex movedIndexFromTarget(QTreeView* tree, const QPersistentModelIndex& target, int direction)
+{
+    if(!tree || !target.isValid())
+        return {};
+
+    return direction < 0 ? tree->indexAbove(target) : tree->indexBelow(target);
 }
 
 VimHandler::VimHandler(QObject* parent)
@@ -1154,7 +1185,7 @@ Fooyin::Playlist* VimHandler::selectedPlaylist() const
         return nullptr;
 
     auto* view = m_viewLocator->activeView();
-    if(!view || QLatin1String(view->metaObject()->className()) != QLatin1String("Fooyin::PlaylistView"))
+    if(viewContext(view) != ViewContext::PlaylistView)
         return nullptr;
 
     if(m_trackSelectionController) {
@@ -1172,6 +1203,9 @@ Fooyin::Playlist* VimHandler::selectedPlaylist() const
 
 Fooyin::UId VimHandler::currentTrackEntryId() const
 {
+    if(activeViewContext() != ViewContext::PlaylistView)
+        return {};
+
     if(auto* playlist = selectedPlaylist()) {
         if(m_trackSelectionController) {
             if(const auto* selection = m_trackSelectionController->selectedSelection();
@@ -1288,6 +1322,11 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
 {
     if(!m_playlistHandler)
         return nullptr;
+
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "targetPlaylist: active view is not a playlist view";
+        return nullptr;
+    }
 
     if(auto* playlist = selectedPlaylist())
         return playlist;
@@ -1447,6 +1486,11 @@ void VimHandler::redo()
 
 void VimHandler::yankRows(int count)
 {
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "yankRows: ignored outside playlist view";
+        return;
+    }
+
     auto* view = m_viewLocator->activeView();
     if(!view || !m_playlistHandler) {
         qCWarning(VIM_LOG) << "yankRows: no active view or no PlaylistHandler";
@@ -1473,6 +1517,12 @@ void VimHandler::yankRows(int count)
 
 void VimHandler::deleteRows(int count)
 {
+    if(activeViewContext() == ViewContext::PlaylistOrganiser) {
+        qCDebug(VIM_LOG) << "deleteRows: routing delete to playlist organiser";
+        triggerCurrentContextAction(Fooyin::Id(Constants::Actions::Remove));
+        return;
+    }
+
     auto* view = m_viewLocator->activeView();
     if(!view || !m_playlistHandler) {
         qCWarning(VIM_LOG) << "deleteRows: no active view or no PlaylistHandler";
@@ -1513,6 +1563,11 @@ void VimHandler::deleteRows(int count)
 
 void VimHandler::yankVisualSelection()
 {
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "yankVisualSelection: ignored outside playlist view";
+        return;
+    }
+
     if(!m_playlistHandler) {
         qCWarning(VIM_LOG) << "yankVisualSelection: no PlaylistHandler";
         return;
@@ -1539,6 +1594,11 @@ void VimHandler::yankVisualSelection()
 
 void VimHandler::deleteVisualSelection()
 {
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "deleteVisualSelection: ignored outside playlist view";
+        return;
+    }
+
     if(!m_playlistHandler) {
         qCWarning(VIM_LOG) << "deleteVisualSelection: no PlaylistHandler";
         return;
@@ -1583,6 +1643,11 @@ void VimHandler::deleteVisualSelection()
 
 void VimHandler::pasteAfter()
 {
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "pasteAfter: ignored outside playlist view";
+        return;
+    }
+
     if(!m_clipboard.hasData() || !m_playlistHandler) {
         qCWarning(VIM_LOG) << "pasteAfter: clipboard empty or no PlaylistHandler";
         return;
@@ -1625,6 +1690,11 @@ void VimHandler::pasteAfter()
 
 void VimHandler::pasteBefore()
 {
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "pasteBefore: ignored outside playlist view";
+        return;
+    }
+
     if(!m_clipboard.hasData() || !m_playlistHandler) {
         qCWarning(VIM_LOG) << "pasteBefore: clipboard empty or no PlaylistHandler";
         return;
@@ -1670,6 +1740,68 @@ void VimHandler::pasteBefore()
 
 void VimHandler::moveRows(int delta)
 {
+    if(activeViewContext() == ViewContext::PlaylistOrganiser) {
+        auto* tree = asTreeView(m_viewLocator->activeView());
+        if(!tree || !tree->model() || !tree->selectionModel()) {
+            qCWarning(VIM_LOG) << "moveRows: organiser has no active tree/model/selectionModel";
+            return;
+        }
+
+        QModelIndex current = tree->currentIndex();
+        if(!current.isValid()) {
+            qCDebug(VIM_LOG) << "moveRows: organiser has no current index";
+            return;
+        }
+
+        const int direction = delta < 0 ? -1 : +1;
+        const int steps     = std::abs(delta);
+        for(int step = 0; step < steps; ++step) {
+            current = tree->currentIndex();
+            if(!current.isValid())
+                return;
+
+            auto* mimeData = tree->model()->mimeData({current});
+            if(!mimeData) {
+                qCWarning(VIM_LOG) << "moveRows: organiser mimeData unavailable";
+                return;
+            }
+
+            std::unique_ptr<QMimeData> dragData{mimeData};
+            QModelIndex candidate = direction < 0 ? tree->indexAbove(current) : tree->indexBelow(current);
+            bool moved            = false;
+
+            while(candidate.isValid()) {
+                const QPersistentModelIndex target{candidate};
+                const auto dropTarget = organiserDropTargetForVisibleMove(tree, candidate, direction);
+                if(tree->model()->canDropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0, dropTarget.parent)
+                   && tree->model()->dropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0,
+                                                  dropTarget.parent)) {
+                    const QModelIndex movedIndex = movedIndexFromTarget(tree, target, direction);
+                    if(movedIndex.isValid()) {
+                        tree->selectionModel()->setCurrentIndex(movedIndex, QItemSelectionModel::ClearAndSelect
+                                                                                | QItemSelectionModel::Rows);
+                        tree->scrollTo(movedIndex);
+                    }
+                    moved = true;
+                    break;
+                }
+
+                candidate = direction < 0 ? tree->indexAbove(candidate) : tree->indexBelow(candidate);
+            }
+
+            if(!moved) {
+                qCDebug(VIM_LOG) << "moveRows: organiser has no valid visible-row move target";
+                return;
+            }
+        }
+        return;
+    }
+
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "moveRows: ignored outside playlist view";
+        return;
+    }
+
     if(!m_playlistHandler) {
         qCWarning(VIM_LOG) << "moveRows: no PlaylistHandler";
         return;
@@ -1711,6 +1843,11 @@ void VimHandler::moveRows(int delta)
 
 void VimHandler::moveVisualSelection(int delta)
 {
+    if(activeViewContext() != ViewContext::PlaylistView) {
+        qCDebug(VIM_LOG) << "moveVisualSelection: ignored outside playlist view";
+        return;
+    }
+
     if(!m_playlistHandler) {
         qCWarning(VIM_LOG) << "moveVisualSelection: no PlaylistHandler";
         return;
@@ -1910,6 +2047,42 @@ Fooyin::FyWidget* VimHandler::findEnclosingFyWidget(QAbstractItemView* view) con
         w = w->parentWidget();
     }
     return nullptr;
+}
+
+VimHandler::ViewContext VimHandler::viewContext(QAbstractItemView* view) const
+{
+    if(!view)
+        return ViewContext::None;
+
+    if(QLatin1String(view->metaObject()->className()) == QLatin1String("Fooyin::PlaylistView"))
+        return ViewContext::PlaylistView;
+
+    if(auto* fy = findEnclosingFyWidget(view); fy && fy->layoutName() == QStringLiteral("PlaylistOrganiser"))
+        return ViewContext::PlaylistOrganiser;
+
+    return ViewContext::Other;
+}
+
+VimHandler::ViewContext VimHandler::activeViewContext() const
+{
+    return viewContext(m_viewLocator->activeView());
+}
+
+bool VimHandler::triggerCurrentContextAction(const Fooyin::Id& id) const
+{
+    if(!m_actionManager) {
+        qCWarning(VIM_LOG) << "triggerCurrentContextAction: no ActionManager";
+        return false;
+    }
+
+    Fooyin::Command* cmd = m_actionManager->command(id);
+    if(!cmd || !cmd->action()) {
+        qCWarning(VIM_LOG) << "triggerCurrentContextAction: action not found" << id.name();
+        return false;
+    }
+
+    cmd->action()->trigger();
+    return true;
 }
 
 // ---------------------------------------------------------------------------
