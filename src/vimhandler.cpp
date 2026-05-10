@@ -18,6 +18,7 @@
 
 #include <QAbstractItemView>
 #include <QAction>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QItemSelection>
 #include <QKeyEvent>
@@ -163,6 +164,9 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
         return false;
 
     const auto type = event->type();
+
+    if((type == QEvent::ShortcutOverride || type == QEvent::KeyPress) && organiserEditorActive(watched))
+        return false;
 
     // Qt sends ShortcutOverride before it would activate a matching QShortcut.
     // If the receiver (or its filter) returns true here, Qt skips the shortcut
@@ -473,6 +477,16 @@ bool VimHandler::handleNormalKey(QKeyEvent* ev)
         pasteBefore();
         return true;
     }
+    if(ch == u'a' && activeViewContext() == ViewContext::PlaylistOrganiser) {
+        qCDebug(VIM_LOG) << "Normal: 'a' → organiserCreatePlaylist";
+        organiserCreatePlaylist();
+        return true;
+    }
+    if(ch == u'A' && activeViewContext() == ViewContext::PlaylistOrganiser) {
+        qCDebug(VIM_LOG) << "Normal: 'A' → organiserCreateGroup";
+        organiserCreateGroup();
+        return true;
+    }
     if(ch == u'u') {
         qCDebug(VIM_LOG) << "Normal: 'u' → undo";
         undo();
@@ -764,6 +778,8 @@ bool VimHandler::wouldHandleNormal(QKeyEvent* kev) const
     if(ch == u'g' || ch == u'd' || ch == u'y')
         return true;
     if(ch == u'j' || ch == u'k' || ch == u'G' || ch == u'o' || ch == u'v' || ch == u'm' || ch == u'\'' || ch == u'`')
+        return true;
+    if(activeViewContext() == ViewContext::PlaylistOrganiser && (ch == u'a' || ch == u'A'))
         return true;
     if(ch == u'l' || ch == u'h')
         return true;
@@ -1138,6 +1154,22 @@ void VimHandler::treeCloseOrAscend()
             qCDebug(VIM_LOG) << "treeCloseOrAscend: already at root, no-op";
         }
     }
+}
+
+void VimHandler::organiserCreatePlaylist()
+{
+    if(activeViewContext() != ViewContext::PlaylistOrganiser)
+        return;
+
+    triggerCurrentContextAction(Fooyin::Id(Constants::Actions::NewPlaylist));
+}
+
+void VimHandler::organiserCreateGroup()
+{
+    if(activeViewContext() != ViewContext::PlaylistOrganiser)
+        return;
+
+    triggerCurrentContextAction(Fooyin::Id("PlaylistOrganiser.NewGroup"));
 }
 
 // ---------------------------------------------------------------------------
@@ -2187,6 +2219,27 @@ Fooyin::FyWidget* VimHandler::findEnclosingFyWidget(QAbstractItemView* view) con
         w = w->parentWidget();
     }
     return nullptr;
+}
+
+bool VimHandler::organiserEditorActive(QObject* watched) const
+{
+    auto* view = m_viewLocator->activeView();
+    if(viewContext(view) != ViewContext::PlaylistOrganiser)
+        return false;
+
+    auto* widget = qobject_cast<QWidget*>(watched);
+    while(widget) {
+        if(widget != view && widget != view->viewport() && view->isAncestorOf(widget))
+            return true;
+        widget = widget->parentWidget();
+    }
+
+    if(auto* focus = QApplication::focusWidget();
+       focus && focus != view && focus != view->viewport() && view->isAncestorOf(focus)) {
+        return true;
+    }
+
+    return false;
 }
 
 VimHandler::ViewContext VimHandler::viewContext(QAbstractItemView* view) const

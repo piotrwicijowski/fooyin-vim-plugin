@@ -25,6 +25,8 @@ private Q_SLOTS:
     void testSemicolon();
     void testApostrophe();
     void testBacktick();
+    void testOrganiserAddPlaylistAction();
+    void testOrganiserAddGroupAction();
     void testSelectAllAction();
 };
 
@@ -147,6 +149,26 @@ void TestParseBinding::testBacktick()
     auto e = parseBindingString(QStringLiteral("backtick"), QStringLiteral("beginJumpToMark"));
     QCOMPARE(e.actionName, QStringLiteral("beginJumpToMark"));
     QCOMPARE(e.firstKey.key, Qt::Key_QuoteLeft);
+}
+
+void TestParseBinding::testOrganiserAddPlaylistAction()
+{
+    auto e = parseBindingString(QStringLiteral("a"), QStringLiteral("organiserCreatePlaylist"));
+    QCOMPARE(e.actionName, QStringLiteral("organiserCreatePlaylist"));
+    QCOMPARE(e.args, QStringLiteral(""));
+    QCOMPARE(e.isTwoKey, false);
+    QCOMPARE(e.firstKey.ch, QChar(u'a'));
+    QCOMPARE(e.firstKey.modifiers, Qt::NoModifier);
+}
+
+void TestParseBinding::testOrganiserAddGroupAction()
+{
+    auto e = parseBindingString(QStringLiteral("A"), QStringLiteral("organiserCreateGroup"));
+    QCOMPARE(e.actionName, QStringLiteral("organiserCreateGroup"));
+    QCOMPARE(e.args, QStringLiteral(""));
+    QCOMPARE(e.isTwoKey, false);
+    QCOMPARE(e.firstKey.ch, QChar(u'A'));
+    QCOMPARE(e.firstKey.modifiers, Qt::NoModifier);
 }
 
 void TestParseBinding::testSelectAllAction()

@@ -81,7 +81,7 @@ QAbstractItemView* ViewLocator::activeView() const
         }
     }
 
-    qCWarning(VIM_LOG) << "ViewLocator::activeView: no QAbstractItemView found anywhere";
+    qCDebug(VIM_LOG) << "ViewLocator::activeView: no QAbstractItemView found anywhere";
     return nullptr;
 }
 

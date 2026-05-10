@@ -38,6 +38,9 @@ void VimActions::registerAll()
     registerAction(u"treeMoveSibling"_s, [](VimHandler& h, const QStringView& a) { h.treeMoveSibling(a.toInt()); });
     registerAction(u"treeOpenOrDescend"_s, [](VimHandler& h, const QStringView&) { h.treeOpenOrDescend(); });
     registerAction(u"treeCloseOrAscend"_s, [](VimHandler& h, const QStringView&) { h.treeCloseOrAscend(); });
+    registerAction(u"organiserCreatePlaylist"_s,
+                   [](VimHandler& h, const QStringView&) { h.organiserCreatePlaylist(); });
+    registerAction(u"organiserCreateGroup"_s, [](VimHandler& h, const QStringView&) { h.organiserCreateGroup(); });
 
     // -- Mode switching --
     registerAction(u"enterInsert"_s, [](VimHandler& h, const QStringView&) { h.enterInsert(); });

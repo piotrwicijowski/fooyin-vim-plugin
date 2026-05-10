@@ -33,6 +33,8 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | `dd` / `[count]dd` | Delete row(s) from playlist |
 | `yy` / `[count]yy` | Yank row(s) into vim clipboard |
 | `p` / `P` | Paste yanked rows after / before cursor |
+| `a` | Create a new playlist in the playlist organiser |
+| `A` | Create a new group in the playlist organiser |
 | `u` | Undo last playlist change (dd, p, P, Alt+j/k) |
 | `Ctrl+r` | Redo last undone change |
 | `i` | Enter Insert mode |
@@ -284,6 +286,8 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 | `treeMoveSibling` | `+1` / `-1` | Normal | Move to next/prev tree sibling |
 | `treeOpenOrDescend` | — | Normal, Visual | Expand node or descend to first child |
 | `treeCloseOrAscend` | — | Normal, Visual | Collapse node or ascend to parent |
+| `organiserCreatePlaylist` | — | Normal | Create a new playlist in the playlist organiser |
+| `organiserCreateGroup` | — | Normal | Create a new group in the playlist organiser |
 | `enterInsert` | — | Normal | Switch to Insert mode |
 | `enterVisual` | — | Normal | Switch to Visual mode |
 | `selectAll` | — | Normal, Visual | Enter Visual mode and select the full row range, leaving the cursor on the last row |
@@ -382,6 +386,8 @@ Bindings\Normal\apostrophe=beginJumpToMark
 Bindings\Normal\backtick=beginJumpToMark
 Bindings\Normal\p=pasteAfter
 Bindings\Normal\P=pasteBefore
+Bindings\Normal\a=organiserCreatePlaylist
+Bindings\Normal\A=organiserCreateGroup
 Bindings\Normal\slash=enterSearch
 Bindings\Normal\n=nextMatch
 Bindings\Normal\N=prevMatch

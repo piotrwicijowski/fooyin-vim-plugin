@@ -29,6 +29,8 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
         {"VimMotions/Bindings/Normal/backtick", "beginJumpToMark"},
         {"VimMotions/Bindings/Normal/p", "pasteAfter"},
         {"VimMotions/Bindings/Normal/P", "pasteBefore"},
+        {"VimMotions/Bindings/Normal/a", "organiserCreatePlaylist"},
+        {"VimMotions/Bindings/Normal/A", "organiserCreateGroup"},
         {"VimMotions/Bindings/Normal/slash", "enterSearch"},
         {"VimMotions/Bindings/Normal/n", "nextMatch"},
         {"VimMotions/Bindings/Normal/N", "prevMatch"},

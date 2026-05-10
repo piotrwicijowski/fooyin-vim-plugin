@@ -15,6 +15,7 @@
 class QAbstractItemView;
 class QKeyEvent;
 class QTreeView;
+class QWidget;
 
 namespace Fooyin {
 class ActionManager;
@@ -85,6 +86,8 @@ public:
     void treeMoveSibling(int delta);
     void treeOpenOrDescend();
     void treeCloseOrAscend();
+    void organiserCreatePlaylist();
+    void organiserCreateGroup();
 
     void enterInsert();
     void enterVisual();
@@ -164,6 +167,7 @@ private:
     [[nodiscard]] ViewContext activeViewContext() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
+    [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);

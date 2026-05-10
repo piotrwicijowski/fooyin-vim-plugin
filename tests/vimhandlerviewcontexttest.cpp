@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QDataStream>
+#include <QLineEdit>
 #include <QMimeData>
 #include <QStandardItemModel>
 #include <QTest>
@@ -282,6 +283,7 @@ private Q_SLOTS:
     void organiserMoveDownIntoEmptyGroup();
     void organiserMoveUpIntoEmptyGroup();
     void organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup();
+    void organiserInlineEditorSuspendsVimCapture();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -645,6 +647,36 @@ void TestVimHandlerViewContext::organiserMoveUpPastEmptyNestedGroupStaysInOuterG
     QCOMPARE(drop.count, 1);
     QCOMPARE(drop.parentLabel, QStringLiteral("Group 1"));
     QCOMPARE(drop.row, 2);
+}
+
+void TestVimHandlerViewContext::organiserInlineEditorSuspendsVimCapture()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    QStandardItemModel model;
+
+    model.appendRow(new QStandardItem(QStringLiteral("Playlist")));
+    organiser.view()->setModel(&model);
+
+    focusTree(organiser.view());
+    organiser.view()->edit(model.index(0, 0));
+    qApp->processEvents();
+
+    auto* editor = organiser.view()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QVERIFY(editor->hasFocus());
+
+    qApp->installEventFilter(&handler);
+    editor->setFocus();
+    editor->clear();
+    QTest::keyClicks(editor, QStringLiteral("aj"));
+    qApp->processEvents();
+    qApp->removeEventFilter(&handler);
+
+    QCOMPARE(editor->text(), QStringLiteral("aj"));
+
+    QTest::keyClick(editor, Qt::Key_Return);
+    qApp->processEvents();
 }
 
 QTEST_MAIN(TestVimHandlerViewContext)
