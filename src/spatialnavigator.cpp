@@ -19,18 +19,17 @@ SpatialNavigator::SpatialNavigator(QObject* parent)
 void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
 {
     QWidget* current = startFrom ? startFrom : QApplication::focusWidget();
-    if (!current) {
+    if(!current) {
         qCWarning(VIM_LOG) << "SpatialNavigator::moveFocus: no starting widget";
         return;
     }
 
-    const Qt::Orientation orientation = (dir == Direction::Left || dir == Direction::Right)
-                                            ? Qt::Horizontal : Qt::Vertical;
+    const Qt::Orientation orientation
+        = (dir == Direction::Left || dir == Direction::Right) ? Qt::Horizontal : Qt::Vertical;
     const int step = (dir == Direction::Right || dir == Direction::Down) ? +1 : -1;
 
     qCDebug(VIM_LOG) << "SpatialNavigator::moveFocus: dir=" << static_cast<int>(dir)
-                     << "orientation=" << (orientation == Qt::Horizontal ? "H" : "V")
-                     << "step=" << step
+                     << "orientation=" << (orientation == Qt::Horizontal ? "H" : "V") << "step=" << step
                      << "from=" << current->metaObject()->className()
                      << "(startFrom=" << (startFrom ? startFrom->metaObject()->className() : "null") << ")";
 
@@ -38,30 +37,30 @@ void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
     QWidget* child  = current;
     QWidget* parent = current->parentWidget();
 
-    while (parent) {
-        if (auto* splitter = qobject_cast<QSplitter*>(parent)) {
-            if (splitter->orientation() == orientation) {
+    while(parent) {
+        if(auto* splitter = qobject_cast<QSplitter*>(parent)) {
+            if(splitter->orientation() == orientation) {
                 const int idx    = splitter->indexOf(child);
                 const int newIdx = idx + step;
-                qCDebug(VIM_LOG) << "SpatialNavigator: found matching splitter"
-                                 << splitter->metaObject()->className()
+                qCDebug(VIM_LOG) << "SpatialNavigator: found matching splitter" << splitter->metaObject()->className()
                                  << "childIdx=" << idx << "targetIdx=" << newIdx
                                  << "splitterCount=" << splitter->count();
-                if (idx >= 0 && newIdx >= 0 && newIdx < splitter->count()) {
+                if(idx >= 0 && newIdx >= 0 && newIdx < splitter->count()) {
                     QWidget* target = resolveLastVisited(splitter->widget(newIdx));
-                    if (target) {
-                        qCDebug(VIM_LOG) << "SpatialNavigator: focusing"
-                                         << target->metaObject()->className()
+                    if(target) {
+                        qCDebug(VIM_LOG) << "SpatialNavigator: focusing" << target->metaObject()->className()
                                          << "(lastVisited[splitter]=" << newIdx << ")";
                         m_lastVisited[splitter] = newIdx;
                         target->setFocus(Qt::OtherFocusReason);
                         return;
                     }
                     qCDebug(VIM_LOG) << "SpatialNavigator: resolveLastVisited returned null for idx" << newIdx;
-                } else {
+                }
+                else {
                     qCDebug(VIM_LOG) << "SpatialNavigator: at edge in this splitter, continuing up";
                 }
-            } else {
+            }
+            else {
                 qCDebug(VIM_LOG) << "SpatialNavigator: splitter orientation mismatch, skipping";
             }
         }
@@ -74,18 +73,18 @@ void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
 
 void SpatialNavigator::onFocusChanged(QWidget* /*old*/, QWidget* now)
 {
-    if (!now) return;
+    if(!now)
+        return;
 
     // Record the direct-child index in every QSplitter ancestor.
     QWidget* child  = now;
     QWidget* parent = now->parentWidget();
-    while (parent) {
-        if (auto* splitter = qobject_cast<QSplitter*>(parent)) {
+    while(parent) {
+        if(auto* splitter = qobject_cast<QSplitter*>(parent)) {
             const int idx = splitter->indexOf(child);
-            if (idx >= 0) {
-                qCDebug(VIM_LOG) << "SpatialNavigator: lastVisited["
-                                 << splitter->metaObject()->className() << "] =" << idx
-                                 << "(focus →" << now->metaObject()->className() << ")";
+            if(idx >= 0) {
+                qCDebug(VIM_LOG) << "SpatialNavigator: lastVisited[" << splitter->metaObject()->className()
+                                 << "] =" << idx << "(focus →" << now->metaObject()->className() << ")";
                 m_lastVisited[splitter] = idx;
             }
         }
@@ -96,45 +95,43 @@ void SpatialNavigator::onFocusChanged(QWidget* /*old*/, QWidget* now)
 
 QWidget* SpatialNavigator::resolveLastVisited(QWidget* widget)
 {
-    if (!widget || !widget->isVisible())
+    if(!widget || !widget->isVisible())
         return nullptr;
 
     // If this node is a splitter, recurse into the last-visited child.
-    if (auto* splitter = qobject_cast<QSplitter*>(widget)) {
+    if(auto* splitter = qobject_cast<QSplitter*>(widget)) {
         const int count = splitter->count();
-        if (count == 0) return nullptr;
+        if(count == 0)
+            return nullptr;
         const int idx = std::clamp(m_lastVisited.value(splitter, 0), 0, count - 1);
-        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: descending into splitter child"
-                         << idx << "/" << count;
+        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: descending into splitter child" << idx << "/"
+                         << count;
         return resolveLastVisited(splitter->widget(idx));
     }
 
-    qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: examining"
-                     << widget->metaObject()->className()
-                     << "focusPolicy=" << widget->focusPolicy()
-                     << "visible=" << widget->isVisible()
+    qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: examining" << widget->metaObject()->className()
+                     << "focusPolicy=" << widget->focusPolicy() << "visible=" << widget->isVisible()
                      << "children=" << widget->children().count();
 
     // Prefer a QAbstractItemView: return immediately if this IS one.
     // This avoids surfacing viewport or other internal children of the view.
-    if (qobject_cast<QAbstractItemView*>(widget)) {
-        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: view target ="
-                         << widget->metaObject()->className();
+    if(qobject_cast<QAbstractItemView*>(widget)) {
+        qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: view target =" << widget->metaObject()->className();
         return widget;
     }
 
     // Recurse into visible children first so that a QAbstractItemView nested
     // inside a focusable container (e.g. EditableTabWidget) is found before
     // the container itself is returned as a fallback.
-    for (QObject* obj : widget->children()) {
-        if (auto* w = qobject_cast<QWidget*>(obj)) {
-            if (QWidget* found = resolveLastVisited(w))
+    for(QObject* obj : widget->children()) {
+        if(auto* w = qobject_cast<QWidget*>(obj)) {
+            if(QWidget* found = resolveLastVisited(w))
                 return found;
         }
     }
 
     // Fall back: return this widget if it can receive keyboard focus.
-    if (widget->focusPolicy() != Qt::NoFocus) {
+    if(widget->focusPolicy() != Qt::NoFocus) {
         qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: focusable fallback ="
                          << widget->metaObject()->className();
         return widget;

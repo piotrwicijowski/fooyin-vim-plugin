@@ -5,9 +5,9 @@
 #include "vimbindingparser.h"
 #include "vimclipboard.h"
 
-#include <core/playlist/playlist.h>
 #include <QObject>
 #include <QPointer>
+#include <core/playlist/playlist.h>
 #include <utils/id.h>
 
 #include <vector>
@@ -37,7 +37,14 @@ class VimHandler : public QObject
     Q_OBJECT
 
 public:
-    enum class Mode { Normal, Visual, Insert, Filter, Search };
+    enum class Mode
+    {
+        Normal,
+        Visual,
+        Insert,
+        Filter,
+        Search
+    };
 
     explicit VimHandler(QObject* parent = nullptr);
     ~VimHandler() override;
@@ -130,51 +137,52 @@ private:
     [[nodiscard]] int halfPageDelta() const;
     void treeMoveCursor(QTreeView* tree, int delta);
 
-    void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before,
-                       Fooyin::PlaylistTrackList after, int cursorBefore, int cursorAfter, int col);
+    void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
+                       int cursorBefore, int cursorAfter, int col);
 
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
 
-    Mode  m_mode{Mode::Normal};
-    int   m_count{0};
+    Mode m_mode{Mode::Normal};
+    int m_count{0};
     QChar m_pendingKey;
-    int   m_visualAnchor{-1};
-    int   m_visualCursor{-1};
-    bool  m_suppressFilter{false};
+    int m_visualAnchor{-1};
+    int m_visualCursor{-1};
+    bool m_suppressFilter{false};
 
-    ViewLocator*      m_viewLocator{nullptr};
+    ViewLocator* m_viewLocator{nullptr};
     SpatialNavigator* m_spatialNavigator{nullptr};
 
-    struct UndoEntry {
-        Fooyin::UId               playlistId;
+    struct UndoEntry
+    {
+        Fooyin::UId playlistId;
         Fooyin::PlaylistTrackList before;
         Fooyin::PlaylistTrackList after;
-        int                       cursorBefore{-1};
-        int                       cursorAfter{-1};
-        int                       col{0};
+        int cursorBefore{-1};
+        int cursorAfter{-1};
+        int col{0};
     };
 
-    VimClipboard              m_clipboard;
-    Fooyin::ActionManager*    m_actionManager{nullptr};
-    Fooyin::PlaylistHandler*  m_playlistHandler{nullptr};
-    Fooyin::SettingsManager*  m_settingsManager{nullptr};
+    VimClipboard m_clipboard;
+    Fooyin::ActionManager* m_actionManager{nullptr};
+    Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
+    Fooyin::SettingsManager* m_settingsManager{nullptr};
 
     std::vector<UndoEntry> m_undoStack;
-    int                    m_undoIndex{-1};
+    int m_undoIndex{-1};
 
-    QPointer<VimSearchBar>     m_filterBar;
+    QPointer<VimSearchBar> m_filterBar;
     QPointer<Fooyin::FyWidget> m_filterTarget;
-    QString                    m_lastFilter;
+    QString m_lastFilter;
 
-    QPointer<VimSearchBar>      m_searchBar;
+    QPointer<VimSearchBar> m_searchBar;
     QPointer<QAbstractItemView> m_searchView;
-    std::vector<int>            m_searchMatches;
-    int                         m_searchMatchIdx{-1};
-    int                         m_preSearchRow{-1};
-    QString                     m_lastSearchPattern;
+    std::vector<int> m_searchMatches;
+    int m_searchMatchIdx{-1};
+    int m_preSearchRow{-1};
+    QString m_lastSearchPattern;
 
     VimActions m_actions;
     bool m_useConfigBindings{false};

@@ -32,13 +32,13 @@ void VimSearchBar::setLabel(const QString& text)
 
 void VimSearchBar::attachTo(QWidget* anchor)
 {
-    if (m_anchor)
+    if(m_anchor)
         m_anchor->removeEventFilter(this);
 
     m_anchor = anchor;
     setParent(anchor);
 
-    if (m_anchor) {
+    if(m_anchor) {
         m_anchor->installEventFilter(this);
         reposition();
     }
@@ -62,14 +62,14 @@ QString VimSearchBar::text() const
 
 bool VimSearchBar::eventFilter(QObject* watched, QEvent* ev)
 {
-    if (watched == m_anchor && ev->type() == QEvent::Resize)
+    if(watched == m_anchor && ev->type() == QEvent::Resize)
         reposition();
     return false;
 }
 
 void VimSearchBar::keyPressEvent(QKeyEvent* ev)
 {
-    switch (ev->key()) {
+    switch(ev->key()) {
         case Qt::Key_Return:
         case Qt::Key_Enter:
             emit confirmed();
@@ -85,7 +85,7 @@ void VimSearchBar::keyPressEvent(QKeyEvent* ev)
 
 void VimSearchBar::reposition()
 {
-    if (!m_anchor)
+    if(!m_anchor)
         return;
     const int h = sizeHint().height();
     setGeometry(0, m_anchor->height() - h, m_anchor->width(), h);

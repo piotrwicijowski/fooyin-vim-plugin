@@ -8,7 +8,13 @@ class QWidget;
 
 namespace Fooyin::VimMotions {
 
-enum class Direction { Up, Down, Left, Right };
+enum class Direction
+{
+    Up,
+    Down,
+    Left,
+    Right
+};
 
 class SpatialNavigator : public QObject
 {

@@ -36,11 +36,11 @@ public:
     void shutdown() override;
 
 private:
-    ActionManager*    m_actionManager{nullptr};
-    PlaylistHandler*  m_playlistHandler{nullptr};
+    ActionManager* m_actionManager{nullptr};
+    PlaylistHandler* m_playlistHandler{nullptr};
     SearchController* m_searchController{nullptr};
-    SettingsManager*  m_settingsManager{nullptr};
-    VimHandler*       m_vimHandler{nullptr};
+    SettingsManager* m_settingsManager{nullptr};
+    VimHandler* m_vimHandler{nullptr};
 };
 
 } // namespace VimMotions

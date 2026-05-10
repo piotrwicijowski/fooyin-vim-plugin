@@ -33,9 +33,9 @@ protected:
 private:
     void reposition();
 
-    QLabel*    m_prefix;
+    QLabel* m_prefix;
     QLineEdit* m_edit;
-    QWidget*   m_anchor{nullptr};
+    QWidget* m_anchor{nullptr};
 };
 
 } // namespace Fooyin::VimMotions

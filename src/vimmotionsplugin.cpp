@@ -1,7 +1,7 @@
 #include "vimmotionsplugin.h"
 #include "vimhandler.h"
-#include "vimmotionssettings.h"
 #include "vimlog.h"
+#include "vimmotionssettings.h"
 
 #include <core/plugins/coreplugincontext.h>
 #include <gui/plugins/guiplugincontext.h>
@@ -10,7 +10,7 @@
 
 namespace Fooyin::VimMotions {
 
-VimMotionsPlugin::VimMotionsPlugin() = default;
+VimMotionsPlugin::VimMotionsPlugin()  = default;
 VimMotionsPlugin::~VimMotionsPlugin() = default;
 
 void VimMotionsPlugin::initialise(const CorePluginContext& context)
@@ -26,7 +26,7 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 {
     m_searchController = context.searchController;
-    m_actionManager = context.actionManager;
+    m_actionManager    = context.actionManager;
     qCInfo(VIM_LOG) << "VimMotionsPlugin: GUI initialising, installing event filter";
     m_vimHandler = new VimHandler(this);
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
@@ -38,7 +38,7 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 void VimMotionsPlugin::shutdown()
 {
     qCInfo(VIM_LOG) << "VimMotionsPlugin: shutting down";
-    if (m_vimHandler) {
+    if(m_vimHandler) {
         qApp->removeEventFilter(m_vimHandler);
         m_vimHandler = nullptr;
     }

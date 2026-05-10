@@ -63,15 +63,15 @@ void TestSearchNavigation::nextMatchStopsWithoutWrap()
 
 void TestSearchNavigation::nextMatchStaysAtEdgeWithoutWrap()
 {
-    int currentIdx = 2;
+    int currentIdx    = 2;
     const int nextIdx = nextSearchMatchIndex(currentIdx, 3, false);
-    if (nextIdx >= 0)
+    if(nextIdx >= 0)
         currentIdx = nextIdx;
 
     QCOMPARE(currentIdx, 2);
 
     const int secondNextIdx = nextSearchMatchIndex(currentIdx, 3, false);
-    if (secondNextIdx >= 0)
+    if(secondNextIdx >= 0)
         currentIdx = secondNextIdx;
 
     QCOMPARE(currentIdx, 2);
@@ -103,15 +103,15 @@ void TestSearchNavigation::prevMatchStopsWithoutWrap()
 
 void TestSearchNavigation::prevMatchStaysAtEdgeWithoutWrap()
 {
-    int currentIdx = 0;
+    int currentIdx    = 0;
     const int prevIdx = prevSearchMatchIndex(currentIdx, 3, false);
-    if (prevIdx >= 0)
+    if(prevIdx >= 0)
         currentIdx = prevIdx;
 
     QCOMPARE(currentIdx, 0);
 
     const int secondPrevIdx = prevSearchMatchIndex(currentIdx, 3, false);
-    if (secondPrevIdx >= 0)
+    if(secondPrevIdx >= 0)
         currentIdx = secondPrevIdx;
 
     QCOMPARE(currentIdx, 0);

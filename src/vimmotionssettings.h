@@ -24,7 +24,8 @@ Q_ENUM_NS(VimMotionsSetting)
 
 namespace Fooyin::VimMotions {
 
-struct BindingDefault {
+struct BindingDefault
+{
     const char* key;
     const char* value;
 };

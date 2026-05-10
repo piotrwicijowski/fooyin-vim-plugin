@@ -24,8 +24,7 @@ private:
     // - skips empty values when skipEmpty=true
     // - parses via parseBindingString
     // Returns formatted entries: "[Mode] keyCombo = actionName"
-    QStringList loadParsedBindings(const QSet<QString>& skipDefaults = {},
-                                   bool skipEmpty = false)
+    QStringList loadParsedBindings(const QSet<QString>& skipDefaults = {}, bool skipEmpty = false)
     {
         static const QString group = QStringLiteral("VimMotions");
 
@@ -34,21 +33,23 @@ private:
         const QStringList allKeys = settings.allKeys();
         QStringList result;
 
-        for (const QString& key : allKeys) {
-            if (!key.startsWith(QStringLiteral("Bindings/"))) continue;
+        for(const QString& key : allKeys) {
+            if(!key.startsWith(QStringLiteral("Bindings/")))
+                continue;
 
             const QString fullKey = group + u'/' + key;
-            if (skipDefaults.contains(fullKey)) continue;
+            if(skipDefaults.contains(fullKey))
+                continue;
 
             const QString val = settings.value(key).toString();
-            if (skipEmpty && val.isEmpty()) continue;
+            if(skipEmpty && val.isEmpty())
+                continue;
 
-            auto entry = parseBindingString(
-                key.section(u'/', -1), val);
-            if (entry.actionName.isEmpty()) continue;
+            auto entry = parseBindingString(key.section(u'/', -1), val);
+            if(entry.actionName.isEmpty())
+                continue;
 
-            result.append(u'[' + key.section(u'/', 1, 1)
-                          + QStringLiteral("] ") + key.section(u'/', -1)
+            result.append(u'[' + key.section(u'/', 1, 1) + QStringLiteral("] ") + key.section(u'/', -1)
                           + QStringLiteral(" = ") + entry.actionName);
         }
         settings.endGroup();
@@ -63,16 +64,14 @@ private Q_SLOTS:
 
         QFile file(m_filePath);
         QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
-        file.write(
-            "[VimMotions]\n"
-            "Bindings\\Normal\\j=moveCursor:+1\n"
-            "Bindings\\Normal\\k=moveCursor:-1\n"
-            "Bindings\\Normal\\dd=\n"
-            "Bindings\\Normal\\d=deleteRows\n"
-            "Bindings\\Normal\\f=deleteRows\n"
-            "Bindings\\Visual\\j=extendCursor:+1\n"
-            "Bindings\\Visual\\Ctrl+J=spatialMoveFocus:down\n"
-        );
+        file.write("[VimMotions]\n"
+                   "Bindings\\Normal\\j=moveCursor:+1\n"
+                   "Bindings\\Normal\\k=moveCursor:-1\n"
+                   "Bindings\\Normal\\dd=\n"
+                   "Bindings\\Normal\\d=deleteRows\n"
+                   "Bindings\\Normal\\f=deleteRows\n"
+                   "Bindings\\Visual\\j=extendCursor:+1\n"
+                   "Bindings\\Visual\\Ctrl+J=spatialMoveFocus:down\n");
         file.close();
     }
 
