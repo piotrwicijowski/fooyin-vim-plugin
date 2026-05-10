@@ -262,6 +262,9 @@ private Q_SLOTS:
     void organiserMoveDownExitsGroupAfterParent();
     void organiserMoveDownNestsRootGroupIntoNextGroup();
     void organiserMoveDownExitsLastGroupAtEndOfTree();
+    void organiserMoveUpPastNestedGroupStaysInOuterGroup();
+    void organiserMoveUpIntoNestedGroupWhenSharingOuterParent();
+    void organiserMoveDownMovesLastChildGroupOutOfParent();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -456,6 +459,95 @@ void TestVimHandlerViewContext::organiserMoveDownExitsLastGroupAtEndOfTree()
 
     organiser.view()->setModel(&model);
     organiser.view()->expand(model.index(0, 0));
+    organiser.view()->setCurrentIndex(model.index(1, 0, model.index(0, 0)));
+
+    focusTree(organiser.view());
+    handler.moveRows(+1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("<root>"));
+    QCOMPARE(drop.row, 1);
+}
+
+void TestVimHandlerViewContext::organiserMoveUpPastNestedGroupStaysInOuterGroup()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
+    group2->appendRow(new QStandardItem(QStringLiteral("Item 3")));
+    group1->appendRow(group2);
+    model.appendRow(group1);
+    model.appendRow(new QStandardItem(QStringLiteral("Item 4")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(0, 0));
+    organiser.view()->expand(model.index(1, 0, model.index(0, 0)));
+    organiser.view()->setCurrentIndex(model.index(1, 0));
+
+    focusTree(organiser.view());
+    handler.moveRows(-1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("Group 1"));
+    QCOMPARE(drop.row, 2);
+}
+
+void TestVimHandlerViewContext::organiserMoveUpIntoNestedGroupWhenSharingOuterParent()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
+    group2->appendRow(new QStandardItem(QStringLiteral("Item 3")));
+    group1->appendRow(group2);
+    group1->appendRow(new QStandardItem(QStringLiteral("Item 4")));
+    model.appendRow(group1);
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(0, 0));
+    organiser.view()->expand(model.index(1, 0, model.index(0, 0)));
+    organiser.view()->setCurrentIndex(model.index(2, 0, model.index(0, 0)));
+
+    focusTree(organiser.view());
+    handler.moveRows(-1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("Group 2"));
+    QCOMPARE(drop.row, 2);
+}
+
+void TestVimHandlerViewContext::organiserMoveDownMovesLastChildGroupOutOfParent()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    auto* group1 = new QStandardItem(QStringLiteral("Group 1"));
+    group1->appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    auto* group2 = new QStandardItem(QStringLiteral("Group 2"));
+    group2->appendRow(new QStandardItem(QStringLiteral("Item 2")));
+    group2->appendRow(new QStandardItem(QStringLiteral("Item 3")));
+    group1->appendRow(group2);
+    model.appendRow(group1);
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(0, 0));
+    organiser.view()->expand(model.index(1, 0, model.index(0, 0)));
     organiser.view()->setCurrentIndex(model.index(1, 0, model.index(0, 0)));
 
     focusTree(organiser.view());

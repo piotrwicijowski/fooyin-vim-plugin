@@ -88,6 +88,8 @@ static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, co
 
         if(const QModelIndex targetParent = target.parent();
            targetParent.isValid() && tree->indexBelow(lastVisibleDescendant(tree, targetParent)) == current) {
+            if(current.parent() != targetParent.parent() && targetParent.parent().isValid())
+                return {targetParent.parent(), targetParent.row() + 1};
             return {targetParent, tree->model()->rowCount(targetParent)};
         }
 
@@ -1829,10 +1831,11 @@ void VimHandler::moveRows(int delta)
             QModelIndex candidate = direction < 0 ? tree->indexAbove(current) : tree->indexBelow(current);
             bool moved            = false;
 
-            if(direction > 0 && !candidate.isValid() && current.parent().isValid()) {
+            if(direction > 0 && current.parent().isValid()
+               && current.row() == tree->model()->rowCount(current.parent()) - 1) {
                 const QModelIndex currentParent = current.parent();
                 const auto dropTarget           = OrganiserDropTarget{currentParent.parent(), currentParent.row() + 1};
-                qCDebug(VIM_LOG) << "moveRows: organiser end-of-tree dropParent="
+                qCDebug(VIM_LOG) << "moveRows: organiser last-child move-out dropParent="
                                  << organiserIndexPath(dropTarget.parent) << "dropRow=" << dropTarget.row
                                  << "source=" << organiserIndexPath(current);
                 if(tree->model()->canDropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0, dropTarget.parent)
