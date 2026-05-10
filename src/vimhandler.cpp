@@ -1158,18 +1158,32 @@ void VimHandler::treeCloseOrAscend()
 
 void VimHandler::organiserCreatePlaylist()
 {
-    if(activeViewContext() != ViewContext::PlaylistOrganiser)
+    auto* tree = asTreeView(m_viewLocator->activeView());
+    if(viewContext(tree) != ViewContext::PlaylistOrganiser || !tree || !tree->model())
         return;
 
+    QModelIndex parent = tree->currentIndex();
+    if(parent.isValid() && !tree->model()->hasChildren(parent))
+        parent = parent.parent();
+
+    const int insertRow = tree->model()->rowCount(parent);
     triggerCurrentContextAction(Fooyin::Id(Constants::Actions::NewPlaylist));
+    scheduleOrganiserInsertedSelection(tree, parent, insertRow);
 }
 
 void VimHandler::organiserCreateGroup()
 {
-    if(activeViewContext() != ViewContext::PlaylistOrganiser)
+    auto* tree = asTreeView(m_viewLocator->activeView());
+    if(viewContext(tree) != ViewContext::PlaylistOrganiser || !tree || !tree->model())
         return;
 
+    QModelIndex parent = tree->currentIndex();
+    if(parent.isValid() && !tree->model()->hasChildren(parent))
+        parent = parent.parent();
+
+    const int insertRow = tree->model()->rowCount(parent);
     triggerCurrentContextAction(Fooyin::Id("PlaylistOrganiser.NewGroup"));
+    scheduleOrganiserInsertedSelection(tree, parent, insertRow);
 }
 
 // ---------------------------------------------------------------------------
@@ -2240,6 +2254,27 @@ bool VimHandler::organiserEditorActive(QObject* watched) const
     }
 
     return false;
+}
+
+void VimHandler::scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row)
+{
+    if(!tree || !tree->model() || !tree->selectionModel() || row < 0)
+        return;
+
+    QPointer<QTreeView> treePtr       = tree;
+    QPersistentModelIndex parentIndex = parent;
+    QTimer::singleShot(0, this, [treePtr, parentIndex, row]() {
+        if(!treePtr || !treePtr->model() || !treePtr->selectionModel())
+            return;
+
+        const QModelIndex index = treePtr->model()->index(row, 0, parentIndex);
+        if(!index.isValid())
+            return;
+
+        treePtr->selectionModel()->setCurrentIndex(index,
+                                                   QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        treePtr->scrollTo(index);
+    });
 }
 
 VimHandler::ViewContext VimHandler::viewContext(QAbstractItemView* view) const

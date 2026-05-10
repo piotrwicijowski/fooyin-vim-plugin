@@ -168,6 +168,7 @@ private:
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
+    void scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
