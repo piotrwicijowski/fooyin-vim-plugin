@@ -163,9 +163,36 @@ public:
         if(!canDropMimeData(data, action, row, column, parent))
             return false;
 
+        Q_UNUSED(column)
+
+        QByteArray payload = data->data(kMimeType);
+        QDataStream stream(&payload, QIODevice::ReadOnly);
+        QStringList path;
+        stream >> path;
+
+        const QModelIndex source = indexForPath(path);
+        if(!source.isValid())
+            return false;
+
+        auto* sourceParentItem = itemFromIndex(source.parent());
+        auto* targetParentItem = itemFromIndex(parent);
+        if(!sourceParentItem)
+            sourceParentItem = invisibleRootItem();
+        if(!targetParentItem)
+            targetParentItem = invisibleRootItem();
+
         m_lastDrop.row         = row;
         m_lastDrop.parentLabel = parent.isValid() ? parent.data().toString() : QStringLiteral("<root>");
         ++m_lastDrop.count;
+
+        int insertRow = row;
+        if(insertRow < 0 || insertRow > targetParentItem->rowCount())
+            insertRow = targetParentItem->rowCount();
+
+        QList<QStandardItem*> movedRow = sourceParentItem->takeRow(source.row());
+        if(source.parent() == parent && source.row() < insertRow)
+            --insertRow;
+        targetParentItem->insertRow(insertRow, movedRow);
         return true;
     }
 
@@ -231,6 +258,8 @@ private Q_SLOTS:
     void organiserMoveDownTargetsNextVisibleSibling();
     void organiserMoveDownTargetsExpandedGroupContents();
     void organiserMoveDownSkipsInvalidDescendantTargets();
+    void organiserMoveUpTargetsEndOfGroup();
+    void organiserMoveDownExitsGroupAfterParent();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -329,6 +358,59 @@ void TestVimHandlerViewContext::organiserMoveDownSkipsInvalidDescendantTargets()
     QCOMPARE(drop.count, 1);
     QCOMPARE(drop.parentLabel, QStringLiteral("<root>"));
     QCOMPARE(drop.row, 2);
+}
+
+void TestVimHandlerViewContext::organiserMoveUpTargetsEndOfGroup()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    auto* group = new QStandardItem(QStringLiteral("Group"));
+    group->appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    group->appendRow(new QStandardItem(QStringLiteral("Item 2")));
+    model.appendRow(group);
+    model.appendRow(new QStandardItem(QStringLiteral("Item 3")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(0, 0));
+    organiser.view()->setCurrentIndex(model.index(1, 0));
+
+    focusTree(organiser.view());
+    handler.moveRows(-1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("Group"));
+    QCOMPARE(drop.row, 2);
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Item 3"));
+}
+
+void TestVimHandlerViewContext::organiserMoveDownExitsGroupAfterParent()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    RecordingTreeModel model;
+
+    auto* group = new QStandardItem(QStringLiteral("Group"));
+    group->appendRow(new QStandardItem(QStringLiteral("Item 1")));
+    group->appendRow(new QStandardItem(QStringLiteral("Item 2")));
+    model.appendRow(group);
+    model.appendRow(new QStandardItem(QStringLiteral("Item 3")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(0, 0));
+    organiser.view()->setCurrentIndex(model.index(1, 0, model.index(0, 0)));
+
+    focusTree(organiser.view());
+    handler.moveRows(+1);
+    qApp->processEvents();
+
+    const auto drop = model.lastDrop();
+    QCOMPARE(drop.count, 1);
+    QCOMPARE(drop.parentLabel, QStringLiteral("<root>"));
+    QCOMPARE(drop.row, 1);
 }
 
 QTEST_MAIN(TestVimHandlerViewContext)

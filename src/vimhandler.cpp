@@ -47,13 +47,47 @@ struct OrganiserDropTarget
     int row{-1};
 };
 
-static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, const QModelIndex& target, int direction)
+static bool isAncestorIndex(const QModelIndex& ancestor, QModelIndex index)
+{
+    for(QModelIndex cursor = index.parent(); cursor.isValid(); cursor = cursor.parent()) {
+        if(cursor == ancestor)
+            return true;
+    }
+    return false;
+}
+
+static QModelIndex lastVisibleDescendant(QTreeView* tree, QModelIndex index)
+{
+    Q_ASSERT(tree);
+
+    while(index.isValid() && tree->isExpanded(index) && tree->model()->rowCount(index) > 0)
+        index = tree->model()->index(tree->model()->rowCount(index) - 1, 0, index);
+
+    return index;
+}
+
+static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, const QModelIndex& current,
+                                                             const QModelIndex& target, int direction)
 {
     Q_ASSERT(tree);
     Q_ASSERT(direction == -1 || direction == +1);
 
-    if(direction < 0)
+    if(direction < 0) {
+        if(isAncestorIndex(target, current))
+            return {target.parent(), target.row()};
+
+        if(const QModelIndex targetParent = target.parent();
+           targetParent.isValid() && tree->indexBelow(lastVisibleDescendant(tree, targetParent)) == current) {
+            return {targetParent, tree->model()->rowCount(targetParent)};
+        }
+
         return {target.parent(), target.row()};
+    }
+
+    if(const QModelIndex currentParent = current.parent();
+       currentParent.isValid() && tree->indexBelow(lastVisibleDescendant(tree, currentParent)) == target) {
+        return {currentParent.parent(), currentParent.row() + 1};
+    }
 
     if(tree->isExpanded(target) && tree->model()->rowCount(target) > 0)
         return {target, 0};
@@ -61,12 +95,23 @@ static OrganiserDropTarget organiserDropTargetForVisibleMove(QTreeView* tree, co
     return {target.parent(), target.row() + 1};
 }
 
-static QModelIndex movedIndexFromTarget(QTreeView* tree, const QPersistentModelIndex& target, int direction)
+static QModelIndex organiserMovedIndexAfterDrop(QTreeView* tree, const QModelIndex& sourceParent, int sourceRow,
+                                                const OrganiserDropTarget& dropTarget)
 {
-    if(!tree || !target.isValid())
+    if(!tree || !tree->model() || sourceRow < 0)
         return {};
 
-    return direction < 0 ? tree->indexAbove(target) : tree->indexBelow(target);
+    const QModelIndex finalParent = dropTarget.parent;
+    int finalRow                  = dropTarget.row;
+    if(sourceParent == finalParent && sourceRow < finalRow)
+        --finalRow;
+
+    const int rowCount = tree->model()->rowCount(finalParent);
+    if(rowCount <= 0)
+        return {};
+
+    finalRow = std::clamp(finalRow, 0, rowCount - 1);
+    return tree->model()->index(finalRow, 0, finalParent);
 }
 
 VimHandler::VimHandler(QObject* parent)
@@ -1760,6 +1805,10 @@ void VimHandler::moveRows(int delta)
             if(!current.isValid())
                 return;
 
+            const QModelIndex sourceParent = current.parent();
+            const int sourceRow            = current.row();
+            const QPersistentModelIndex movedItem{current};
+
             auto* mimeData = tree->model()->mimeData({current});
             if(!mimeData) {
                 qCWarning(VIM_LOG) << "moveRows: organiser mimeData unavailable";
@@ -1771,16 +1820,34 @@ void VimHandler::moveRows(int delta)
             bool moved            = false;
 
             while(candidate.isValid()) {
-                const QPersistentModelIndex target{candidate};
-                const auto dropTarget = organiserDropTargetForVisibleMove(tree, candidate, direction);
+                const auto dropTarget = organiserDropTargetForVisibleMove(tree, current, candidate, direction);
                 if(tree->model()->canDropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0, dropTarget.parent)
                    && tree->model()->dropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0,
                                                   dropTarget.parent)) {
-                    const QModelIndex movedIndex = movedIndexFromTarget(tree, target, direction);
-                    if(movedIndex.isValid()) {
+                    if(const QModelIndex movedIndex
+                       = organiserMovedIndexAfterDrop(tree, sourceParent, sourceRow, dropTarget);
+                       movedIndex.isValid()) {
                         tree->selectionModel()->setCurrentIndex(movedIndex, QItemSelectionModel::ClearAndSelect
                                                                                 | QItemSelectionModel::Rows);
                         tree->scrollTo(movedIndex);
+
+                        QPointer<QTreeView> treePtr{tree};
+                        const QPersistentModelIndex movedPersistentIndex{movedItem};
+                        const QPersistentModelIndex restoreIndex{movedIndex};
+                        QTimer::singleShot(0, this, [treePtr, movedPersistentIndex, restoreIndex]() {
+                            if(!treePtr || !treePtr->selectionModel())
+                                return;
+
+                            const QModelIndex targetIndex = movedPersistentIndex.isValid()
+                                                              ? QModelIndex(movedPersistentIndex)
+                                                              : QModelIndex(restoreIndex);
+                            if(!targetIndex.isValid())
+                                return;
+
+                            treePtr->selectionModel()->setCurrentIndex(targetIndex, QItemSelectionModel::ClearAndSelect
+                                                                                        | QItemSelectionModel::Rows);
+                            treePtr->scrollTo(targetIndex);
+                        });
                     }
                     moved = true;
                     break;
