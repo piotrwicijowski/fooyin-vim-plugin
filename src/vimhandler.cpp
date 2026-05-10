@@ -56,6 +56,16 @@ static bool isAncestorIndex(const QModelIndex& ancestor, QModelIndex index)
     return false;
 }
 
+static QString organiserIndexPath(QModelIndex index)
+{
+    QStringList parts;
+    while(index.isValid()) {
+        parts.prepend(index.data().toString());
+        index = index.parent();
+    }
+    return parts.isEmpty() ? QStringLiteral("<root>") : parts.join(QStringLiteral(" / "));
+}
+
 static QModelIndex lastVisibleDescendant(QTreeView* tree, QModelIndex index)
 {
     Q_ASSERT(tree);
@@ -1820,7 +1830,17 @@ void VimHandler::moveRows(int delta)
             bool moved            = false;
 
             while(candidate.isValid()) {
+                if(direction > 0 && isAncestorIndex(current, candidate)) {
+                    qCDebug(VIM_LOG) << "moveRows: organiser skipping descendant candidate"
+                                     << organiserIndexPath(candidate) << "while moving" << organiserIndexPath(current);
+                    candidate = tree->indexBelow(lastVisibleDescendant(tree, candidate));
+                    continue;
+                }
+
                 const auto dropTarget = organiserDropTargetForVisibleMove(tree, current, candidate, direction);
+                qCDebug(VIM_LOG) << "moveRows: organiser candidate=" << organiserIndexPath(candidate)
+                                 << "dropParent=" << organiserIndexPath(dropTarget.parent)
+                                 << "dropRow=" << dropTarget.row << "source=" << organiserIndexPath(current);
                 if(tree->model()->canDropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0, dropTarget.parent)
                    && tree->model()->dropMimeData(dragData.get(), Qt::MoveAction, dropTarget.row, 0,
                                                   dropTarget.parent)) {
