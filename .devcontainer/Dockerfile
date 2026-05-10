@@ -73,11 +73,14 @@ ENV PATH=$PATH:/usr/local/share/npm-global/bin
 ENV EDITOR=vim
 ENV VISUAL=vim
 
+# Install codex (required for the usage plugin)
+RUN npm install -g @openai/codex
+
 # Install opencode
 RUN curl -fsSL https://opencode.ai/install | bash
 
 # Opencode configuration
 COPY --chown=node:node opencode.json tui.json /home/node/.config/opencode/
 
-# Install pnpm
-RUN curl -fsSL https://get.pnpm.io/install.sh | bash
+# Install codex usage plugin
+RUN opencode plugin opencode-plugin-codex-usage
