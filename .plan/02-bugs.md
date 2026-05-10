@@ -5,6 +5,7 @@
 - The spatial navigation does not work - fixed
 - no way to disambiguate p and shift+p - fixed
 - single char shortcuts not appearing on the shortcuts page - fixed
+- search index in relation to current position - fixed
 - doing dd and undo changes line focus
 - focus on playlist organizer and doing dd deletes from current playlist
 - visual mode UseConfigBindings=true does not go to normal mode - fixed

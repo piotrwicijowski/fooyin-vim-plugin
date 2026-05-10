@@ -13,9 +13,13 @@ class TestSearchNavigation : public QObject
 private Q_SLOTS:
     void firstMatchWrapsByDefault();
     void firstMatchStopsWithoutWrap();
+    void nextMatchFromCurrentRow();
+    void nextMatchFromCurrentRowWraps();
     void nextMatchWrapsByDefault();
     void nextMatchStopsWithoutWrap();
     void nextMatchStaysAtEdgeWithoutWrap();
+    void prevMatchFromCurrentRow();
+    void prevMatchFromCurrentRowWraps();
     void prevMatchWrapsByDefault();
     void prevMatchStopsWithoutWrap();
     void prevMatchStaysAtEdgeWithoutWrap();
@@ -36,6 +40,20 @@ void TestSearchNavigation::firstMatchStopsWithoutWrap()
 void TestSearchNavigation::nextMatchWrapsByDefault()
 {
     QCOMPARE(nextSearchMatchIndex(2, 3, true), 0);
+}
+
+void TestSearchNavigation::nextMatchFromCurrentRow()
+{
+    const std::vector<int> matches{2, 5};
+    QCOMPARE(nextSearchMatchIndexForRow(matches, 1, true), 0);
+    QCOMPARE(nextSearchMatchIndexForRow(matches, 4, true), 1);
+}
+
+void TestSearchNavigation::nextMatchFromCurrentRowWraps()
+{
+    const std::vector<int> matches{2, 5};
+    QCOMPARE(nextSearchMatchIndexForRow(matches, 6, true), 0);
+    QCOMPARE(nextSearchMatchIndexForRow(matches, 6, false), -1);
 }
 
 void TestSearchNavigation::nextMatchStopsWithoutWrap()
@@ -62,6 +80,20 @@ void TestSearchNavigation::nextMatchStaysAtEdgeWithoutWrap()
 void TestSearchNavigation::prevMatchWrapsByDefault()
 {
     QCOMPARE(prevSearchMatchIndex(0, 3, true), 2);
+}
+
+void TestSearchNavigation::prevMatchFromCurrentRow()
+{
+    const std::vector<int> matches{2, 5};
+    QCOMPARE(prevSearchMatchIndexForRow(matches, 4, true), 0);
+    QCOMPARE(prevSearchMatchIndexForRow(matches, 5, true), 1);
+}
+
+void TestSearchNavigation::prevMatchFromCurrentRowWraps()
+{
+    const std::vector<int> matches{2, 5};
+    QCOMPARE(prevSearchMatchIndexForRow(matches, 1, true), 1);
+    QCOMPARE(prevSearchMatchIndexForRow(matches, 1, false), -1);
 }
 
 void TestSearchNavigation::prevMatchStopsWithoutWrap()

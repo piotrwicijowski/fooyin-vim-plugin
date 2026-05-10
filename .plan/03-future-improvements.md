@@ -7,8 +7,8 @@
 - o and g; to move to currently playing song - done
 - rework mapping logic into configuration-driven - done
 - allow for spatial navigation when in visual mode - the selection should be retained, on the new widget the mode should be normal - done
-- save per-playlist cursor position when switching between playlists (fooyin by default does not have that, but the plugin could store it)
-- search without wraparound
+- save per-playlist cursor position when switching between playlists (fooyin by default does not have that, but the plugin could store it) - need public API
+- search without wraparound - done
 - visual mode exit without removing selection
 - shift+j/shift+k for extending selection in normal mode
 - shortcuts for "next playlist/previous playlist"

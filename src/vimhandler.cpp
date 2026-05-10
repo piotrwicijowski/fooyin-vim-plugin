@@ -1485,8 +1485,17 @@ void VimHandler::cancelFilter()
 void VimHandler::nextMatch()
 {
     if (!m_searchMatches.empty()) {
-        const int nextIdx = nextSearchMatchIndex(
-            m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
+        auto* view = m_searchView.data();
+        if (!view || !view->model())
+            return;
+
+        const int currentRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+        const bool cursorAtLastMatch = m_searchMatchIdx >= 0
+                                    && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
+                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentRow;
+        const int nextIdx = cursorAtLastMatch
+            ? nextSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan)
+            : nextSearchMatchIndexForRow(m_searchMatches, currentRow, m_wrapScan);
         if (nextIdx < 0)
             return;
         m_searchMatchIdx = nextIdx;
@@ -1504,8 +1513,17 @@ void VimHandler::nextMatch()
 void VimHandler::prevMatch()
 {
     if (!m_searchMatches.empty()) {
-        const int prevIdx = prevSearchMatchIndex(
-            m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
+        auto* view = m_searchView.data();
+        if (!view || !view->model())
+            return;
+
+        const int currentRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+        const bool cursorAtLastMatch = m_searchMatchIdx >= 0
+                                    && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
+                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentRow;
+        const int prevIdx = cursorAtLastMatch
+            ? prevSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan)
+            : prevSearchMatchIndexForRow(m_searchMatches, currentRow, m_wrapScan);
         if (prevIdx < 0)
             return;
         m_searchMatchIdx = prevIdx;
