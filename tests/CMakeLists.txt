@@ -25,3 +25,15 @@ target_link_libraries(test_integration PRIVATE
     Qt6::Widgets
 )
 add_test(NAME test_integration COMMAND test_integration)
+
+add_executable(test_searchnavigation
+    searchnavigationtest.cpp
+)
+target_include_directories(test_searchnavigation PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(test_searchnavigation PRIVATE
+    Qt6::Test
+    Qt6::Widgets
+)
+add_test(NAME test_searchnavigation COMMAND test_searchnavigation)

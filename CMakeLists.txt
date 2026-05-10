@@ -114,6 +114,7 @@ set(PLUGIN_SOURCES
     src/vimsearchbar.h
     src/spatialnavigator.cpp
     src/spatialnavigator.h
+    src/searchnavigation.h
     src/viewlocator.cpp
     src/viewlocator.h
 )

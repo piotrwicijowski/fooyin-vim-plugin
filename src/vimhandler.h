@@ -1,5 +1,6 @@
 #pragma once
 
+#include "searchnavigation.h"
 #include "vimactions.h"
 #include "vimbindingparser.h"
 #include "vimclipboard.h"
@@ -178,6 +179,7 @@ private:
     VimActions m_actions;
     bool m_useConfigBindings{false};
     bool m_useDefaultBindings{true};
+    bool m_wrapScan{true};
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};
     QHash<Mode, QList<BindingEntry>> m_configBindings;

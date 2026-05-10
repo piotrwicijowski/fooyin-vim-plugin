@@ -1485,7 +1485,11 @@ void VimHandler::cancelFilter()
 void VimHandler::nextMatch()
 {
     if (!m_searchMatches.empty()) {
-        m_searchMatchIdx = (m_searchMatchIdx + 1) % static_cast<int>(m_searchMatches.size());
+        const int nextIdx = nextSearchMatchIndex(
+            m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
+        if (nextIdx < 0)
+            return;
+        m_searchMatchIdx = nextIdx;
         qCDebug(VIM_LOG) << "nextMatch: search match" << m_searchMatchIdx
                          << "row=" << m_searchMatches[static_cast<size_t>(m_searchMatchIdx)];
         jumpToMatch(m_searchMatchIdx);
@@ -1500,8 +1504,11 @@ void VimHandler::nextMatch()
 void VimHandler::prevMatch()
 {
     if (!m_searchMatches.empty()) {
-        const int sz = static_cast<int>(m_searchMatches.size());
-        m_searchMatchIdx = (m_searchMatchIdx - 1 + sz) % sz;
+        const int prevIdx = prevSearchMatchIndex(
+            m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
+        if (prevIdx < 0)
+            return;
+        m_searchMatchIdx = prevIdx;
         qCDebug(VIM_LOG) << "prevMatch: search match" << m_searchMatchIdx
                          << "row=" << m_searchMatches[static_cast<size_t>(m_searchMatchIdx)];
         jumpToMatch(m_searchMatchIdx);
@@ -1657,14 +1664,20 @@ void VimHandler::onSearchTextChanged(const QString& text)
     buildMatchList(text);
 
     if (!m_searchMatches.empty()) {
-        m_searchMatchIdx = 0;
-        for (int i = 0; i < static_cast<int>(m_searchMatches.size()); ++i) {
-            if (m_searchMatches[static_cast<size_t>(i)] >= m_preSearchRow) {
-                m_searchMatchIdx = i;
-                break;
-            }
+        m_searchMatchIdx = firstSearchMatchIndex(m_searchMatches, m_preSearchRow, m_wrapScan);
+        if (m_searchMatchIdx >= 0) {
+            jumpToMatch(m_searchMatchIdx);
+            return;
         }
-        jumpToMatch(m_searchMatchIdx);
+
+        auto* view = m_searchView.data();
+        if (view && view->model()) {
+            const int col = view->currentIndex().isValid()
+                          ? view->currentIndex().column() : 0;
+            view->selectionModel()->setCurrentIndex(
+                view->model()->index(m_preSearchRow, col),
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        }
     } else if (!text.isEmpty()) {
         auto* view = m_searchView.data();
         if (view && view->model()) {
@@ -1702,6 +1715,7 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
 
     m_useConfigBindings = manager->value(QStringLiteral("VimMotions/UseConfigBindings")).toBool();
     m_useDefaultBindings = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
+    m_wrapScan = manager->value(QStringLiteral("VimMotions/WrapScan")).toBool();
 
     using namespace Settings::VimMotions;
     manager->subscribe<UseConfigBindings>(this, [this](bool val) {
@@ -1711,7 +1725,12 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
 
     manager->subscribe<UseDefaultBindings>(this, [this](bool val) {
         m_useDefaultBindings = val;
-    if (m_useConfigBindings) rebuildBindings();
+        if (m_useConfigBindings)
+            rebuildBindings();
+    });
+
+    manager->subscribe<WrapScan>(this, [this](bool val) {
+        m_wrapScan = val;
     });
 
     for (const auto& b : VimMotionsSettings::defaultBindings()) {

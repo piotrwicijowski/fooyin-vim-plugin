@@ -16,6 +16,7 @@ enum VimMotionsSetting : uint32_t
 {
     UseConfigBindings = 0 | Type::Bool,
     UseDefaultBindings,
+    WrapScan,
 };
 Q_ENUM_NS(VimMotionsSetting)
 

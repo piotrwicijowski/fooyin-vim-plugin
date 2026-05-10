@@ -12,7 +12,7 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | Visual | `v` | Linewise range selection |
 | Insert | `i` | Vim off; all keys pass through to fooyin normally |
 | Filter | `Ctrl+i` | Live incremental filter — hides non-matching rows |
-| Search | `/` | Live search — all rows visible, cursor jumps to matches |
+| Search | `/` | Live search — all rows visible, cursor jumps to matches; wraps by default |
 
 ### Normal mode bindings
 
@@ -218,6 +218,17 @@ UseConfigBindings=true
 When `true`, the plugin reads all keys under the `VimMotions/Bindings` group and dispatches key events through the config-driven system instead of the hardcoded handlers.
 
 By default, all built-in bindings are active when `UseConfigBindings=true`. Use `UseDefaultBindings` (see below) to start from a clean slate.
+
+### Search options
+
+Slash-search wraparound is controlled by `WrapScan`, similar to Vim's `wrapscan` option. It defaults to `true`, which preserves the current behavior: `/`, `n`, and `N` wrap to the start or end when needed.
+
+Set it to `false` to stop at the last or first match instead:
+
+```ini
+[VimMotions]
+WrapScan=false
+```
 
 ### Binding format
 

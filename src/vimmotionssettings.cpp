@@ -76,11 +76,14 @@ VimMotionsSettings::VimMotionsSettings(SettingsManager* settingsManager)
 {
     using namespace Settings::VimMotions;
 
-settingsManager->createSetting<UseConfigBindings>(
+    settingsManager->createSetting<UseConfigBindings>(
         false, u"VimMotions/UseConfigBindings"_s);
 
     settingsManager->createSetting<UseDefaultBindings>(
         true, u"VimMotions/UseDefaultBindings"_s);
+
+    settingsManager->createSetting<WrapScan>(
+        true, u"VimMotions/WrapScan"_s);
 
     for (const auto& b : defaultBindings()) {
         settingsManager->createSetting(
