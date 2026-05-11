@@ -78,10 +78,8 @@ class TestVimHandlerTimeout : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
-    void hardcodedTwoKeyTimeoutClearsPendingSequence();
-    void hardcodedMarkTimeoutClearsPendingMark();
-    void configTwoKeyTimeoutClearsPendingSequence();
-    void configMarkTimeoutClearsPendingMark();
+    void twoKeyTimeoutClearsPendingSequence();
+    void markTimeoutClearsPendingMark();
     void configBindingTriggersFooyinAction();
     void configNormalAmbiguousPrefixPrefersLongerSequence();
     void configNormalAmbiguousPrefixFallsBackAfterTimeout();
@@ -89,9 +87,9 @@ private Q_SLOTS:
     void configVisualAmbiguousPrefixFallsBackAfterTimeout();
 };
 
-void TestVimHandlerTimeout::hardcodedTwoKeyTimeoutClearsPendingSequence()
+void TestVimHandlerTimeout::twoKeyTimeoutClearsPendingSequence()
 {
-    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_timeout_hardcoded_sequence.ini")};
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_timeout_sequence.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
     settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
@@ -116,63 +114,11 @@ void TestVimHandlerTimeout::hardcodedTwoKeyTimeoutClearsPendingSequence()
     QCOMPARE(view.currentIndex().row(), 0);
 }
 
-void TestVimHandlerTimeout::hardcodedMarkTimeoutClearsPendingMark()
+void TestVimHandlerTimeout::markTimeoutClearsPendingMark()
 {
-    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_timeout_hardcoded_mark.ini")};
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_timeout_mark.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
-
-    VimHandler handler;
-    handler.setSettingsManager(&settings);
-
-    PlaylistView view;
-    QStandardItemModel model;
-    model.appendRow(new QStandardItem(QStringLiteral("A")));
-    view.setModel(&model);
-    view.setCurrentIndex(model.index(0, 0));
-    focusView(&view);
-
-    QVERIFY(dispatchKey(handler, &view, u'm'));
-    QVERIFY(dispatchShortcutOverride(handler, &view, u'z'));
-    QTest::qWait(50);
-    QVERIFY(!dispatchShortcutOverride(handler, &view, u'z'));
-}
-
-void TestVimHandlerTimeout::configTwoKeyTimeoutClearsPendingSequence()
-{
-    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_timeout_config_sequence.ini")};
-    VimMotionsSettings vimSettings(&settings);
-    Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
-    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
-
-    VimHandler handler;
-    handler.setSettingsManager(&settings);
-
-    PlaylistView view;
-    QStandardItemModel model;
-    model.appendRow(new QStandardItem(QStringLiteral("A")));
-    model.appendRow(new QStandardItem(QStringLiteral("B")));
-    model.appendRow(new QStandardItem(QStringLiteral("C")));
-    view.setModel(&model);
-    view.setCurrentIndex(model.index(2, 0));
-    focusView(&view);
-
-    QVERIFY(dispatchKey(handler, &view, u'g'));
-    QTest::qWait(50);
-    QVERIFY(dispatchKey(handler, &view, u'g'));
-    QCOMPARE(view.currentIndex().row(), 2);
-    QVERIFY(dispatchKey(handler, &view, u'g'));
-    QCOMPARE(view.currentIndex().row(), 0);
-}
-
-void TestVimHandlerTimeout::configMarkTimeoutClearsPendingMark()
-{
-    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_timeout_config_mark.ini")};
-    VimMotionsSettings vimSettings(&settings);
-    Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
     settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
 
     VimHandler handler;
@@ -196,7 +142,6 @@ void TestVimHandlerTimeout::configBindingTriggersFooyinAction()
     SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_fooyin_action.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
 
     const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
@@ -233,7 +178,6 @@ void TestVimHandlerTimeout::configNormalAmbiguousPrefixPrefersLongerSequence()
     SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_normal_ambiguous_prefix.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
     settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
 
@@ -275,7 +219,6 @@ void TestVimHandlerTimeout::configNormalAmbiguousPrefixFallsBackAfterTimeout()
     SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_normal_ambiguous_fallback.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
     settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
 
@@ -306,7 +249,6 @@ void TestVimHandlerTimeout::configVisualAmbiguousPrefixPrefersLongerSequence()
     SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_visual_ambiguous_prefix.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
     settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
 
@@ -352,7 +294,6 @@ void TestVimHandlerTimeout::configVisualAmbiguousPrefixFallsBackAfterTimeout()
     SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_visual_ambiguous_fallback.ini")};
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
-    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
     settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
 

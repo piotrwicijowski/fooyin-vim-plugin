@@ -217,22 +217,9 @@ Pipe through `grep` to focus on a specific subsystem:
 QT_LOGGING_RULES="fy.vim.debug=true" fooyin 2>&1 | grep "fy.vim"
 ```
 
-## Configurable bindings (experimental)
+## Configurable bindings
 
-The plugin supports user-defined key bindings stored in fooyin's config file (`~/.config/fooyin/fooyin.conf`). This feature is **off by default** — the hardcoded bindings above are used unless you opt in.
-
-### Enabling
-
-Add (or change) these lines in `fooyin.conf`:
-
-```ini
-[VimMotions]
-UseConfigBindings=true
-```
-
-When `true`, the plugin reads all keys under the `VimMotions/Bindings` group and dispatches key events through the config-driven system instead of the hardcoded handlers.
-
-By default, all built-in bindings are active when `UseConfigBindings=true`. Use `UseDefaultBindings` (see below) to start from a clean slate.
+The plugin reads vim bindings from fooyin's config file (`~/.config/fooyin/fooyin.conf`). By default, all built-in bindings are active through this config-driven system. Use `UseDefaultBindings` (see below) to start from a clean slate.
 
 After changing `fooyin.conf`, restart fooyin before expecting vim-binding changes to apply.
 
@@ -348,7 +335,6 @@ Use `fooyinAction:<Action.Id>` when you want a vim binding to trigger an existin
 
 ```ini
 [VimMotions]
-UseConfigBindings=true
 Bindings\Normal\<Space>=fooyinAction:Playback.PlayPause
 Bindings\Normal\x=fooyinAction:Playback.Next
 Bindings\Normal\z=fooyinAction:View.ShowNowPlaying
@@ -360,13 +346,12 @@ You can discover action IDs in **Settings -> Shortcuts**. The command ID is show
 
 ### UseDefaultBindings
 
-By default (`UseDefaultBindings=true`), all built-in bindings are active when `UseConfigBindings=true`. You can still override or unmap individual bindings on top of those defaults.
+By default (`UseDefaultBindings=true`), all built-in bindings are active. You can still override or unmap individual bindings on top of those defaults.
 
 Set `UseDefaultBindings=false` to start from a **clean slate** — no default bindings are loaded. Only bindings you explicitly configure in `fooyin.conf` will take effect:
 
 ```ini
 [VimMotions]
-UseConfigBindings=true
 UseDefaultBindings=false
 Bindings\Normal\j=moveCursor:+1
 Bindings\Normal\k=moveCursor:-1
@@ -396,7 +381,6 @@ To opt into only the bindings you need, set `UseDefaultBindings=false` and copy 
 
 ```ini
 [VimMotions]
-UseConfigBindings=true
 UseDefaultBindings=false
 
 ; -- Normal mode --

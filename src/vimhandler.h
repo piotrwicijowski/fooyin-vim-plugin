@@ -145,10 +145,6 @@ private:
     };
 
     bool handleKeyPress(QKeyEvent* ev);
-    bool handleNormalKey(QKeyEvent* ev);
-    bool handleVisualKey(QKeyEvent* ev);
-    [[nodiscard]] bool wouldHandleNormal(QKeyEvent* ev) const;
-    [[nodiscard]] bool wouldHandleVisual(QKeyEvent* ev) const;
     [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
     [[nodiscard]] bool hasPendingInput() const;
     [[nodiscard]] bool pendingConfigPrefixMatches(const BindingEntry& entry) const;
@@ -254,7 +250,6 @@ private:
     QString m_lastSearchPattern;
 
     VimActions m_actions;
-    bool m_useConfigBindings{false};
     bool m_useDefaultBindings{true};
     bool m_wrapScan{true};
     int m_dispatchCount{0};
