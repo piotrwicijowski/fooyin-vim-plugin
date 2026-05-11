@@ -6,6 +6,7 @@
 #include "vimclipboard.h"
 
 #include <QObject>
+#include <QPersistentModelIndex>
 #include <QPointer>
 #include <QTimer>
 #include <core/playlist/playlist.h>
@@ -226,9 +227,9 @@ private:
 
     QPointer<VimSearchBar> m_searchBar;
     QPointer<QAbstractItemView> m_searchView;
-    std::vector<int> m_searchMatches;
+    std::vector<QPersistentModelIndex> m_searchMatches;
     int m_searchMatchIdx{-1};
-    int m_preSearchRow{-1};
+    QPersistentModelIndex m_preSearchIndex;
     QString m_lastSearchPattern;
 
     VimActions m_actions;

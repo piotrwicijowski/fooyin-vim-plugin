@@ -285,6 +285,10 @@ private Q_SLOTS:
     void organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup();
     void organiserInlineEditorSuspendsVimCapture();
     void searchBarTypingKeepsFocus();
+    void organiserSearchFindsVisibleChild();
+    void organiserSearchSkipsCollapsedChildren();
+    void organiserSearchNavigatesVisibleMatches();
+    void organiserSearchKeepsEarlierRootCandidatesAfterJump();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -711,6 +715,156 @@ void TestVimHandlerViewContext::searchBarTypingKeepsFocus()
     qApp->processEvents();
 
     QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::organiserSearchFindsVisibleChild()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    QStandardItemModel model;
+
+    auto* group = new QStandardItem(QStringLiteral("Group"));
+    group->appendRow(new QStandardItem(QStringLiteral("Needle Child")));
+    model.appendRow(new QStandardItem(QStringLiteral("Before")));
+    model.appendRow(group);
+    model.appendRow(new QStandardItem(QStringLiteral("After")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(1, 0));
+    organiser.view()->setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(organiser.view());
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = organiser.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("Needle"));
+    qApp->processEvents();
+
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle Child"));
+
+    QTest::keyClick(editor, Qt::Key_Escape);
+    qApp->processEvents();
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::organiserSearchSkipsCollapsedChildren()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    QStandardItemModel model;
+
+    auto* group = new QStandardItem(QStringLiteral("Group"));
+    group->appendRow(new QStandardItem(QStringLiteral("Hidden Needle")));
+    model.appendRow(new QStandardItem(QStringLiteral("Start")));
+    model.appendRow(group);
+    model.appendRow(new QStandardItem(QStringLiteral("Tail")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->collapse(model.index(1, 0));
+    organiser.view()->setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(organiser.view());
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = organiser.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("Needle"));
+    qApp->processEvents();
+
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Start"));
+
+    QTest::keyClick(editor, Qt::Key_Escape);
+    qApp->processEvents();
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::organiserSearchNavigatesVisibleMatches()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    QStandardItemModel model;
+
+    model.appendRow(new QStandardItem(QStringLiteral("Needle One")));
+    auto* group = new QStandardItem(QStringLiteral("Group"));
+    group->appendRow(new QStandardItem(QStringLiteral("Needle Two")));
+    model.appendRow(group);
+    model.appendRow(new QStandardItem(QStringLiteral("Needle Three")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(1, 0));
+    organiser.view()->setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(organiser.view());
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = organiser.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("Needle"));
+    qApp->processEvents();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle One"));
+
+    QTest::keyClick(editor, Qt::Key_Return);
+    qApp->processEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    handler.nextMatch();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle Two"));
+
+    handler.nextMatch();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle Three"));
+
+    handler.nextMatch();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle One"));
+
+    handler.prevMatch();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle Three"));
+
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::organiserSearchKeepsEarlierRootCandidatesAfterJump()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    QStandardItemModel model;
+
+    model.appendRow(new QStandardItem(QStringLiteral("Library Selection")));
+    model.appendRow(new QStandardItem(QStringLiteral("ByTempo")));
+    model.appendRow(new QStandardItem(QStringLiteral("test3")));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(organiser.view());
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = organiser.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("t"));
+    qApp->processEvents();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Library Selection"));
+
+    QTest::keyClicks(editor, QStringLiteral("e"));
+    qApp->processEvents();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("ByTempo"));
+
+    editor->clear();
+    QTest::keyClicks(editor, QStringLiteral("t"));
+    qApp->processEvents();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Library Selection"));
+
+    QTest::keyClick(editor, Qt::Key_Escape);
+    qApp->processEvents();
     qApp->removeEventFilter(&handler);
 }
 

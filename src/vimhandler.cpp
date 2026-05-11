@@ -52,6 +52,71 @@ static QAbstractItemView* enclosingView(QWidget* widget)
     return nullptr;
 }
 
+static QString searchTextForIndex(const QAbstractItemModel* model, const QModelIndex& index)
+{
+    if(!model || !index.isValid())
+        return {};
+
+    const QList<int> roles{Qt::ToolTipRole, Qt::DisplayRole, Qt::EditRole};
+    for(const int role : roles) {
+        const QString text = model->data(index, role).toString();
+        if(!text.isEmpty())
+            return text;
+    }
+
+    return {};
+}
+
+static QString searchIndexPath(QModelIndex index)
+{
+    QStringList parts;
+    while(index.isValid()) {
+        parts.prepend(searchTextForIndex(index.model(), index));
+        index = index.parent();
+    }
+    return parts.isEmpty() ? QStringLiteral("<root>") : parts.join(QStringLiteral(" / "));
+}
+
+static QString searchIndexDescription(const QModelIndex& index)
+{
+    if(!index.isValid())
+        return QStringLiteral("<invalid>");
+
+    const QString title = searchTextForIndex(index.model(), index);
+    return QStringLiteral("title=\"%1\" row=%2 col=%3 path=\"%4\"")
+        .arg(title, QString::number(index.row()), QString::number(index.column()), searchIndexPath(index));
+}
+
+static int searchMatchPosition(const std::vector<QPersistentModelIndex>& matches, const QModelIndex& index)
+{
+    if(!index.isValid())
+        return -1;
+
+    for(int i = 0; i < static_cast<int>(matches.size()); ++i) {
+        if(matches[static_cast<size_t>(i)] == index)
+            return i;
+    }
+
+    return -1;
+}
+
+static int firstVisibleSearchMatchIndex(QTreeView* tree, const std::vector<QPersistentModelIndex>& matches,
+                                        const QModelIndex& start, bool wrapScan)
+{
+    if(!tree || matches.empty())
+        return -1;
+
+    if(!start.isValid())
+        return 0;
+
+    for(QModelIndex index = start; index.isValid(); index = tree->indexBelow(index)) {
+        if(const int matchIdx = searchMatchPosition(matches, index); matchIdx >= 0)
+            return matchIdx;
+    }
+
+    return wrapScan ? 0 : -1;
+}
+
 struct OrganiserDropTarget
 {
     QModelIndex parent;
@@ -166,6 +231,7 @@ VimHandler::VimHandler(QObject* parent)
 VimHandler::~VimHandler()
 {
     delete m_filterBar;
+    delete m_searchBar;
 }
 
 VimHandler::Mode VimHandler::mode() const
@@ -2188,19 +2254,36 @@ void VimHandler::nextMatch()
         if(!view || !view->model())
             return;
 
-        const int currentRow         = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
-        const bool cursorAtLastMatch = m_searchMatchIdx >= 0
+        const QModelIndex currentIndex = view->currentIndex();
+        const bool cursorAtLastMatch   = m_searchMatchIdx >= 0
                                     && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
-                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentRow;
-        const int nextIdx
-            = cursorAtLastMatch
-                ? nextSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan)
-                : nextSearchMatchIndexForRow(m_searchMatches, currentRow, m_wrapScan);
+                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentIndex;
+
+        int nextIdx = -1;
+        if(cursorAtLastMatch) {
+            nextIdx = nextSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
+        }
+        else if(auto* tree = asTreeView(view)) {
+            nextIdx = firstVisibleSearchMatchIndex(tree, m_searchMatches, currentIndex, m_wrapScan);
+        }
+        else {
+            const int currentRow = currentIndex.isValid() ? currentIndex.row() : 0;
+            for(int i = 0; i < static_cast<int>(m_searchMatches.size()); ++i) {
+                const auto& match = m_searchMatches[static_cast<size_t>(i)];
+                if(match.isValid() && match.row() >= currentRow) {
+                    nextIdx = i;
+                    break;
+                }
+            }
+            if(nextIdx < 0 && m_wrapScan)
+                nextIdx = 0;
+        }
+
         if(nextIdx < 0)
             return;
         m_searchMatchIdx = nextIdx;
         qCDebug(VIM_LOG) << "nextMatch: search match" << m_searchMatchIdx
-                         << "row=" << m_searchMatches[static_cast<size_t>(m_searchMatchIdx)];
+                         << searchIndexDescription(m_searchMatches[static_cast<size_t>(m_searchMatchIdx)]);
         jumpToMatch(m_searchMatchIdx);
         return;
     }
@@ -2217,19 +2300,43 @@ void VimHandler::prevMatch()
         if(!view || !view->model())
             return;
 
-        const int currentRow         = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
-        const bool cursorAtLastMatch = m_searchMatchIdx >= 0
+        const QModelIndex currentIndex = view->currentIndex();
+        const bool cursorAtLastMatch   = m_searchMatchIdx >= 0
                                     && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
-                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentRow;
-        const int prevIdx
-            = cursorAtLastMatch
-                ? prevSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan)
-                : prevSearchMatchIndexForRow(m_searchMatches, currentRow, m_wrapScan);
+                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentIndex;
+
+        int prevIdx = -1;
+        if(cursorAtLastMatch) {
+            prevIdx = prevSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
+        }
+        else if(auto* tree = asTreeView(view)) {
+            for(QModelIndex index = currentIndex; index.isValid(); index = tree->indexAbove(index)) {
+                if(const int matchIdx = searchMatchPosition(m_searchMatches, index); matchIdx >= 0) {
+                    prevIdx = matchIdx;
+                    break;
+                }
+            }
+            if(prevIdx < 0 && m_wrapScan)
+                prevIdx = static_cast<int>(m_searchMatches.size()) - 1;
+        }
+        else {
+            const int currentRow = currentIndex.isValid() ? currentIndex.row() : 0;
+            for(int i = static_cast<int>(m_searchMatches.size()) - 1; i >= 0; --i) {
+                const auto& match = m_searchMatches[static_cast<size_t>(i)];
+                if(match.isValid() && match.row() <= currentRow) {
+                    prevIdx = i;
+                    break;
+                }
+            }
+            if(prevIdx < 0 && m_wrapScan)
+                prevIdx = static_cast<int>(m_searchMatches.size()) - 1;
+        }
+
         if(prevIdx < 0)
             return;
         m_searchMatchIdx = prevIdx;
         qCDebug(VIM_LOG) << "prevMatch: search match" << m_searchMatchIdx
-                         << "row=" << m_searchMatches[static_cast<size_t>(m_searchMatchIdx)];
+                         << searchIndexDescription(m_searchMatches[static_cast<size_t>(m_searchMatchIdx)]);
         jumpToMatch(m_searchMatchIdx);
         return;
     }
@@ -2350,8 +2457,8 @@ void VimHandler::enterSearch()
 
     // Save the view now — once the search bar gains focus, activeView() would
     // lose its cache and its fallback would steal focus back to the view.
-    m_searchView   = view;
-    m_preSearchRow = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    m_searchView     = view;
+    m_preSearchIndex = view->currentIndex();
 
     if(!m_searchBar) {
         m_searchBar = new VimSearchBar();
@@ -2373,7 +2480,7 @@ void VimHandler::enterSearch()
 
     m_searchBar->show();
     m_searchBar->setFocus();
-    qCInfo(VIM_LOG) << "Mode → Search, preSearchRow=" << m_preSearchRow;
+    qCInfo(VIM_LOG) << "Mode → Search," << searchIndexDescription(m_preSearchIndex);
 }
 
 void VimHandler::commitSearch()
@@ -2389,7 +2496,8 @@ void VimHandler::commitSearch()
     clearPendingInputState();
     m_count = 0;
     emit modeChanged(m_mode);
-    qCInfo(VIM_LOG) << "Search committed: '" << m_lastSearchPattern << "' matchCount=" << m_searchMatches.size();
+    qCInfo(VIM_LOG) << "Search committed: pattern='" << m_lastSearchPattern
+                    << "' matchCount=" << m_searchMatches.size();
 }
 
 void VimHandler::cancelSearch()
@@ -2402,9 +2510,15 @@ void VimHandler::cancelSearch()
     m_lastSearchPattern.clear();
 
     auto* view = m_searchView.data();
-    if(view && view->model() && m_preSearchRow >= 0) {
-        const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
-        view->selectionModel()->setCurrentIndex(view->model()->index(m_preSearchRow, col),
+    if(view && view->model() && m_preSearchIndex.isValid()) {
+        const int col       = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+        QModelIndex restore = m_preSearchIndex;
+        if(col > 0) {
+            const QModelIndex sibling = restore.siblingAtColumn(col);
+            if(sibling.isValid())
+                restore = sibling;
+        }
+        view->selectionModel()->setCurrentIndex(restore,
                                                 QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     }
 
@@ -2415,7 +2529,7 @@ void VimHandler::cancelSearch()
     clearPendingInputState();
     m_count = 0;
     emit modeChanged(m_mode);
-    qCInfo(VIM_LOG) << "Search cancelled, cursor restored to row" << m_preSearchRow;
+    qCInfo(VIM_LOG) << "Search cancelled, cursor restored to" << searchIndexDescription(m_preSearchIndex);
 }
 
 void VimHandler::buildMatchList(const QString& pattern)
@@ -2431,22 +2545,38 @@ void VimHandler::buildMatchList(const QString& pattern)
         return;
 
     auto* model    = view->model();
-    const int rows = model->rowCount();
     const int cols = model->columnCount();
 
-    for(int row = 0; row < rows; ++row) {
+    const auto appendMatchIfNeeded = [&](const QModelIndex& rowIndex) {
+        bool matched = false;
+        QString matchedText;
         for(int col = 0; col < cols; ++col) {
-            const QModelIndex mi = model->index(row, col);
-            // PlaylistModel returns formatted track text via ToolTipRole;
-            // Qt::DisplayRole is only used for the RatingEditor column.
-            QString cell = model->data(mi, Qt::ToolTipRole).toString();
-            if(cell.isEmpty())
-                cell = model->data(mi, Qt::DisplayRole).toString();
+            const QModelIndex cellIndex = rowIndex.siblingAtColumn(col);
+            const QString cell          = searchTextForIndex(model, cellIndex);
             if(!cell.isEmpty() && cell.contains(pattern, Qt::CaseInsensitive)) {
-                m_searchMatches.push_back(row);
+                m_searchMatches.push_back(rowIndex);
+                matched     = true;
+                matchedText = cell;
                 break;
             }
         }
+
+        qCDebug(VIM_LOG) << "buildMatchList: candidate" << searchIndexDescription(rowIndex) << "matched=" << matched
+                         << "text=\"" << matchedText << "\"";
+    };
+
+    if(auto* tree = asTreeView(view)) {
+        QModelIndex index;
+        if(model->rowCount() > 0)
+            index = model->index(0, 0);
+
+        for(; index.isValid(); index = tree->indexBelow(index))
+            appendMatchIfNeeded(index);
+    }
+    else {
+        const int rows = model->rowCount();
+        for(int row = 0; row < rows; ++row)
+            appendMatchIfNeeded(model->index(row, 0));
     }
     qCDebug(VIM_LOG) << "buildMatchList: pattern='" << pattern << "' matches=" << m_searchMatches.size();
 }
@@ -2456,24 +2586,40 @@ void VimHandler::onSearchTextChanged(const QString& text)
     buildMatchList(text);
 
     if(!m_searchMatches.empty()) {
-        m_searchMatchIdx = firstSearchMatchIndex(m_searchMatches, m_preSearchRow, m_wrapScan);
+        if(auto* tree = asTreeView(m_searchView.data()))
+            m_searchMatchIdx = firstVisibleSearchMatchIndex(tree, m_searchMatches, m_preSearchIndex, m_wrapScan);
+        else
+            m_searchMatchIdx = firstSearchMatchIndexForRow(m_searchMatches, m_preSearchIndex.row(), m_wrapScan);
+
         if(m_searchMatchIdx >= 0) {
             jumpToMatch(m_searchMatchIdx);
             return;
         }
 
         auto* view = m_searchView.data();
-        if(view && view->model()) {
-            const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
-            view->selectionModel()->setCurrentIndex(view->model()->index(m_preSearchRow, col),
+        if(view && view->model() && m_preSearchIndex.isValid()) {
+            const int col       = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+            QModelIndex restore = m_preSearchIndex;
+            if(col > 0) {
+                const QModelIndex sibling = restore.siblingAtColumn(col);
+                if(sibling.isValid())
+                    restore = sibling;
+            }
+            view->selectionModel()->setCurrentIndex(restore,
                                                     QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         }
     }
     else if(!text.isEmpty()) {
         auto* view = m_searchView.data();
-        if(view && view->model()) {
-            const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
-            view->selectionModel()->setCurrentIndex(view->model()->index(m_preSearchRow, col),
+        if(view && view->model() && m_preSearchIndex.isValid()) {
+            const int col       = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+            QModelIndex restore = m_preSearchIndex;
+            if(col > 0) {
+                const QModelIndex sibling = restore.siblingAtColumn(col);
+                if(sibling.isValid())
+                    restore = sibling;
+            }
+            view->selectionModel()->setCurrentIndex(restore,
                                                     QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         }
     }
@@ -2484,12 +2630,16 @@ void VimHandler::jumpToMatch(int idx)
     auto* view = m_searchView.data();
     if(!view || !view->model() || m_searchMatches.empty())
         return;
-    const int row        = m_searchMatches[static_cast<size_t>(idx)];
-    const int col        = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
-    const QModelIndex mi = view->model()->index(row, col);
+    QModelIndex mi = m_searchMatches[static_cast<size_t>(idx)];
+    const int col  = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    if(col > 0) {
+        const QModelIndex sibling = mi.siblingAtColumn(col);
+        if(sibling.isValid())
+            mi = sibling;
+    }
     view->selectionModel()->setCurrentIndex(mi, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     view->scrollTo(mi);
-    qCDebug(VIM_LOG) << "jumpToMatch: idx=" << idx << "row=" << row;
+    qCDebug(VIM_LOG) << "jumpToMatch: idx=" << idx << searchIndexDescription(mi);
 }
 
 // ---------------------------------------------------------------------------

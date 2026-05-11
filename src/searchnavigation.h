@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QPersistentModelIndex>
+
 #include <cstddef>
 #include <vector>
 
@@ -9,6 +11,17 @@ namespace Fooyin::VimMotions {
 {
     for(int i = 0; i < static_cast<int>(matches.size()); ++i) {
         if(matches[static_cast<size_t>(i)] >= startRow)
+            return i;
+    }
+
+    return wrapScan && !matches.empty() ? 0 : -1;
+}
+
+[[nodiscard]] inline int firstSearchMatchIndexForRow(const std::vector<QPersistentModelIndex>& matches, int startRow,
+                                                     bool wrapScan)
+{
+    for(int i = 0; i < static_cast<int>(matches.size()); ++i) {
+        if(matches[static_cast<size_t>(i)].isValid() && matches[static_cast<size_t>(i)].row() >= startRow)
             return i;
     }
 
