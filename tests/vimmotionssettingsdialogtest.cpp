@@ -3,6 +3,7 @@
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QTest>
 #include <QTreeView>
@@ -47,7 +48,13 @@ void TestVimMotionsSettingsDialog::testWidgetScaffold()
 
     auto* buttons = dialog.findChild<QDialogButtonBox*>();
     QVERIFY(buttons);
-    QCOMPARE(buttons->standardButtons(), QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    QCOMPARE(buttons->standardButtons(),
+             QDialogButtonBox::Ok | QDialogButtonBox::Apply | QDialogButtonBox::Reset | QDialogButtonBox::Cancel);
+
+    QVERIFY(buttons->button(QDialogButtonBox::Ok));
+    QVERIFY(buttons->button(QDialogButtonBox::Apply));
+    QVERIFY(buttons->button(QDialogButtonBox::Reset));
+    QVERIFY(buttons->button(QDialogButtonBox::Cancel));
 }
 
 QTEST_MAIN(TestVimMotionsSettingsDialog)

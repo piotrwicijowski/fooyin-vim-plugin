@@ -18,6 +18,7 @@ add_executable(test_integration
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionssettingsdialog.cpp
 )
 target_include_directories(test_integration PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -31,12 +32,16 @@ add_test(NAME test_integration COMMAND test_integration)
 
 add_executable(test_vimmotionssettingsdialog
     vimmotionssettingsdialogtest.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettingsdialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
 )
 target_include_directories(test_vimmotionssettingsdialog PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 target_link_libraries(test_vimmotionssettingsdialog PRIVATE
+    Fooyin::Gui
     Qt6::Test
     Qt6::Widgets
 )

@@ -198,7 +198,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 
 ### Overall status
 
-- Status: stage 3 complete
+- Status: stage 4 complete
 - Feature flag default: disabled
 - Shipping state: dormant
 
@@ -207,7 +207,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 - [x] Stage 1: Feature-gated entry point
 - [x] Stage 2: Settings/bindings backend refactor
 - [x] Stage 3: Dialog skeleton
-- [ ] Stage 4: Load / Apply / Reset wiring
+- [x] Stage 4: Load / Apply / Reset wiring
 - [ ] Stage 5: Read-only effective bindings tree
 - [ ] Stage 6: Documentation and visibility review
 
@@ -217,6 +217,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 - 2026-05-11: Stage 1 implemented with hidden settings UI flag, config provider seam, stub dialog scaffold, and default-off test coverage.
 - 2026-05-11: Stage 2 implemented with binding backend extraction, handler/plugin wiring, and reload coverage for custom bindings.
 - 2026-05-11: Stage 3 implemented with a feature-gated settings dialog scaffold, placeholder bindings tree, and widget coverage.
+- 2026-05-11: Stage 4 implemented with load/apply/reset wiring, settings persistence, backend reload integration, and runtime test coverage.
 
 ### Notes for future sessions
 

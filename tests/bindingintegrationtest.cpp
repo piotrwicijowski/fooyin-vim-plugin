@@ -1,10 +1,16 @@
 #include "vimbindingparser.h"
 #include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
+#include "vimmotionssettingsdialog.h"
 
+#include <QAbstractButton>
+#include <QCheckBox>
+#include <QDialogButtonBox>
 #include <QFile>
+#include <QPushButton>
 #include <QSet>
 #include <QSettings>
+#include <QSpinBox>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -235,6 +241,72 @@ private Q_SLOTS:
         const auto reloadedBindings = backend.effectiveBindings().value(BindingMode::Normal);
         QVERIFY(hasBinding(reloadedBindings, QChar(u'z'), QStringLiteral("focusNowPlaying")));
         QVERIFY(!hasBinding(reloadedBindings, QChar(u'j'), QStringLiteral("moveCursor")));
+    }
+
+    void testSettingsDialogLoadsAppliesAndResets()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_dialog.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        settings.set<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(120);
+        settings.set<Fooyin::Settings::VimMotions::WrapScan>(false);
+        settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false);
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Normal/z"), QStringLiteral("focusNowPlaying"));
+
+        VimMotionsBindingBackend backend{&settings};
+        VimMotionsSettingsDialog dialog{&settings, &backend};
+
+        auto* timeout = dialog.findChild<QSpinBox*>(QStringLiteral("pendingSequenceTimeout"));
+        QVERIFY(timeout);
+        QCOMPARE(timeout->value(), 120);
+
+        auto* wrapScan = dialog.findChild<QCheckBox*>(QStringLiteral("wrapScan"));
+        QVERIFY(wrapScan);
+        QVERIFY(!wrapScan->isChecked());
+
+        auto* useDefaultBindings = dialog.findChild<QCheckBox*>(QStringLiteral("useDefaultBindings"));
+        QVERIFY(useDefaultBindings);
+        QVERIFY(!useDefaultBindings->isChecked());
+
+        timeout->setValue(450);
+        wrapScan->setChecked(true);
+        useDefaultBindings->setChecked(true);
+
+        auto* buttons = dialog.findChild<QDialogButtonBox*>();
+        QVERIFY(buttons);
+        auto* applyButton = buttons->button(QDialogButtonBox::Apply);
+        QVERIFY(applyButton);
+        applyButton->click();
+
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 450);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
+        QCOMPARE(backend.pendingSequenceTimeout(), 450);
+        QCOMPARE(backend.wrapScan(), true);
+        QCOMPARE(backend.useDefaultBindings(), true);
+        QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'j'),
+                           QStringLiteral("moveCursor")));
+
+        timeout->setValue(30);
+        wrapScan->setChecked(false);
+        useDefaultBindings->setChecked(false);
+
+        auto* resetButton = buttons->button(QDialogButtonBox::Reset);
+        QVERIFY(resetButton);
+        resetButton->click();
+
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 0);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
+        QCOMPARE(timeout->value(), 0);
+        QVERIFY(wrapScan->isChecked());
+        QVERIFY(useDefaultBindings->isChecked());
+        QCOMPARE(backend.pendingSequenceTimeout(), 0);
+        QCOMPARE(backend.wrapScan(), true);
+        QCOMPARE(backend.useDefaultBindings(), true);
+        QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'j'),
+                           QStringLiteral("moveCursor")));
     }
 };
 

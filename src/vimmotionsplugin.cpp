@@ -27,14 +27,15 @@ namespace {
 class VimMotionsPluginSettingsProvider : public PluginSettingsProvider
 {
 public:
-    explicit VimMotionsPluginSettingsProvider(SettingsManager* settings)
+    explicit VimMotionsPluginSettingsProvider(Fooyin::SettingsManager* settings, VimMotionsBindingBackend* backend)
         : m_settings{settings}
+        , m_backend{backend}
     { }
 
     void showSettings(QWidget* parent) override
     {
         if(m_settings && m_settings->value<Settings::VimMotions::EnableSettingsUi>()) {
-            auto* dialog = new VimMotionsSettingsDialog(parent);
+            auto* dialog = new VimMotionsSettingsDialog(m_settings, m_backend, parent);
             dialog->setAttribute(Qt::WA_DeleteOnClose);
             dialog->show();
             return;
@@ -47,6 +48,7 @@ public:
 
 private:
     SettingsManager* m_settings{nullptr};
+    VimMotionsBindingBackend* m_backend{nullptr};
 };
 
 QString modeIndicatorText(VimHandler::Mode mode)
@@ -76,7 +78,7 @@ VimMotionsPlugin::~VimMotionsPlugin() = default;
 
 std::unique_ptr<PluginSettingsProvider> VimMotionsPlugin::settingsProvider() const
 {
-    return std::make_unique<VimMotionsPluginSettingsProvider>(m_settingsManager);
+    return std::make_unique<VimMotionsPluginSettingsProvider>(m_settingsManager, m_settingsBackend.get());
 }
 
 void VimMotionsPlugin::initialise(const CorePluginContext& context)
