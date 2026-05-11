@@ -12,6 +12,8 @@
 - m - playlist local mark - done
 - Select-all visual style with one shortcut - done
 - Pending timeout - done
+- Allow binding any fooyin action without needing to explicitly declare a function for it in vim plugin - done
+- Surround the bindings like apostrophe, slash, return with angled brackets - done
 - visual mode exit without removing selection
 - shift+j/shift+k for extending selection in normal mode
 - shortcuts for "next playlist/previous playlist"
@@ -19,7 +21,5 @@
 - mark column indicator - needs public API
 - F2 (rename) - detect if we have text input and don't capture normal mode bindings
 - Move/copy this song right after the currently playing without moving focus there
-- Allow binding any fooyin action without needing to explicitly declare a function for it in vim plugin
 - Mode indicator
 - dot for repeat
-- Surround the bindings like apostrophe, slash, return with angled brackets
