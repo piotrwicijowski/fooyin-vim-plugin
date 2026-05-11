@@ -198,13 +198,13 @@ Use this section across sessions. Update it as work lands so future sessions do 
 
 ### Overall status
 
-- Status: not started
+- Status: stage 1 complete
 - Feature flag default: disabled
 - Shipping state: dormant
 
 ### Stage checklist
 
-- [ ] Stage 1: Feature-gated entry point
+- [x] Stage 1: Feature-gated entry point
 - [ ] Stage 2: Settings/bindings backend refactor
 - [ ] Stage 3: Dialog skeleton
 - [ ] Stage 4: Load / Apply / Reset wiring
@@ -214,6 +214,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 ### Session log
 
 - 2026-05-11: Plan created. No implementation started.
+- 2026-05-11: Stage 1 implemented with hidden settings UI flag, config provider seam, stub dialog scaffold, and default-off test coverage.
 
 ### Notes for future sessions
 

@@ -16,11 +16,13 @@ add_test(NAME test_parsebinding COMMAND test_parsebinding)
 add_executable(test_integration
     bindingintegrationtest.cpp
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
 )
 target_include_directories(test_integration PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 target_link_libraries(test_integration PRIVATE
+    Fooyin::Gui
     Qt6::Test
     Qt6::Widgets
 )

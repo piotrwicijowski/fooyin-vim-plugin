@@ -123,6 +123,8 @@ set(PLUGIN_SOURCES
     src/vimmotionsplugin.h
     src/vimmotionssettings.cpp
     src/vimmotionssettings.h
+    src/vimmotionssettingsdialog.cpp
+    src/vimmotionssettingsdialog.h
     src/vimsearchbar.cpp
     src/vimsearchbar.h
     src/spatialnavigator.cpp

@@ -85,6 +85,8 @@ VimMotionsSettings::VimMotionsSettings(SettingsManager* settingsManager)
 {
     using namespace Settings::VimMotions;
 
+    settingsManager->createSetting<EnableSettingsUi>(false, u"VimMotions/EnableSettingsUi"_s);
+
     settingsManager->createSetting<UseDefaultBindings>(true, u"VimMotions/UseDefaultBindings"_s);
 
     settingsManager->createSetting<WrapScan>(true, u"VimMotions/WrapScan"_s);

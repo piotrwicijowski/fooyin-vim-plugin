@@ -3,8 +3,10 @@
 #include <core/plugins/coreplugin.h>
 #include <core/plugins/plugin.h>
 #include <gui/plugins/guiplugin.h>
+#include <gui/plugins/pluginconfigguiplugin.h>
 
 #include <QObject>
+#include <memory>
 
 namespace Fooyin {
 struct CorePluginContext;
@@ -22,11 +24,12 @@ class VimHandler;
 class VimMotionsPlugin : public QObject,
                          public Plugin,
                          public CorePlugin,
-                         public GuiPlugin
+                         public GuiPlugin,
+                         public PluginConfigGuiPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.fooyin.fooyin.plugin/1.0" FILE "vimmotions.json")
-    Q_INTERFACES(Fooyin::Plugin Fooyin::CorePlugin Fooyin::GuiPlugin)
+    Q_INTERFACES(Fooyin::Plugin Fooyin::CorePlugin Fooyin::GuiPlugin Fooyin::PluginConfigGuiPlugin)
 
 public:
     explicit VimMotionsPlugin();
@@ -34,6 +37,7 @@ public:
 
     void initialise(const CorePluginContext& context) override;
     void initialise(const GuiPluginContext& context) override;
+    [[nodiscard]] std::unique_ptr<PluginSettingsProvider> settingsProvider() const override;
     void shutdown() override;
 
 private:

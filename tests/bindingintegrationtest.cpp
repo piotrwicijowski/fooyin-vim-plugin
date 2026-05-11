@@ -1,10 +1,13 @@
 #include "vimbindingparser.h"
+#include "vimmotionssettings.h"
 
 #include <QFile>
 #include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <utils/settings/settingsmanager.h>
 
 using namespace Fooyin::VimMotions;
 
@@ -188,6 +191,15 @@ private Q_SLOTS:
         settings.setValue(QStringLiteral("VimMotions/PendingSequenceTimeout"), 250);
         settings.sync();
         QCOMPARE(loadPendingSequenceTimeout(), 250);
+    }
+
+    void testSettingsUiFlagDefaultsOff()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::EnableSettingsUi>(), false);
     }
 };
 

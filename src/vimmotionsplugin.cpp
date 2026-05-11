@@ -3,18 +3,50 @@
 #include "vimlog.h"
 #include "vimmodeindicatorwidget.h"
 #include "vimmotionssettings.h"
+#include "vimmotionssettingsdialog.h"
 
 #include <core/plugins/coreplugincontext.h>
 #include <gui/plugins/guiplugincontext.h>
 #include <gui/widgetprovider.h>
 
+#include <gui/plugins/pluginsettingsprovider.h>
+#include <utils/settings/settingsmanager.h>
+
 #include <QApplication>
+#include <QMessageBox>
+
+#include <memory>
 
 using namespace Qt::StringLiterals;
 
 namespace Fooyin::VimMotions {
 
 namespace {
+
+class VimMotionsPluginSettingsProvider : public PluginSettingsProvider
+{
+public:
+    explicit VimMotionsPluginSettingsProvider(SettingsManager* settings)
+        : m_settings{settings}
+    { }
+
+    void showSettings(QWidget* parent) override
+    {
+        if(m_settings && m_settings->value<Settings::VimMotions::EnableSettingsUi>()) {
+            auto* dialog = new VimMotionsSettingsDialog(parent);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
+            return;
+        }
+
+        QMessageBox::information(
+            parent, QApplication::translate("VimMotionsPlugin", "Vim Motions"),
+            QApplication::translate("VimMotionsPlugin", "The Vim Motions settings UI is disabled."));
+    }
+
+private:
+    SettingsManager* m_settings{nullptr};
+};
 
 QString modeIndicatorText(VimHandler::Mode mode)
 {
@@ -40,6 +72,11 @@ QString modeIndicatorText(VimHandler::Mode mode)
 
 VimMotionsPlugin::VimMotionsPlugin()  = default;
 VimMotionsPlugin::~VimMotionsPlugin() = default;
+
+std::unique_ptr<PluginSettingsProvider> VimMotionsPlugin::settingsProvider() const
+{
+    return std::make_unique<VimMotionsPluginSettingsProvider>(m_settingsManager);
+}
 
 void VimMotionsPlugin::initialise(const CorePluginContext& context)
 {
