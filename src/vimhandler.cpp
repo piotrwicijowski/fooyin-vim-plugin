@@ -1690,12 +1690,17 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
     const Fooyin::PlaylistTrackList selectedEntries(sourceBefore.begin() + sourceStart,
                                                     sourceBefore.begin() + sourceEnd);
     Fooyin::PlaylistTrackList sourceAfter = sourceBefore;
+    Fooyin::UId restoreEntryId;
+    Fooyin::UId cursorBeforeEntryId;
+    if(originalRow >= 0 && originalRow < static_cast<int>(sourceBefore.size())) {
+        cursorBeforeEntryId = sourceBefore[static_cast<size_t>(originalRow)].entryId;
+    }
 
     const Fooyin::TrackList selectedTracks = Fooyin::PlaylistTrack::toTracks(selectedEntries);
     const bool samePlaylist                = sourcePlaylist == destinationPlaylist;
     const Fooyin::PlaylistTrackList destinationBefore
         = samePlaylist ? sourceBefore : destinationPlaylist->playlistTracks();
-    Fooyin::PlaylistTrackList destinationAfter = move && samePlaylist ? sourceAfter : destinationBefore;
+    Fooyin::PlaylistTrackList destinationAfter = destinationBefore;
 
     std::vector<VimClipboard::MarkTransfer> cutMarks;
     if(move && !samePlaylist) {
@@ -1703,6 +1708,13 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
     }
     if(move) {
         sourceAfter.erase(sourceAfter.begin() + sourceStart, sourceAfter.begin() + sourceEnd);
+        if(!sourceAfter.empty()) {
+            const int restoreIndex = std::min(sourceStart, static_cast<int>(sourceAfter.size()) - 1);
+            restoreEntryId         = sourceAfter[static_cast<size_t>(restoreIndex)].entryId;
+        }
+        if(samePlaylist) {
+            destinationAfter = sourceAfter;
+        }
     }
 
     auto insertedEntries = move && samePlaylist
@@ -1743,23 +1755,42 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
     qCDebug(VIM_LOG) << (move ? "moveAfterCurrentPlaying" : "copyAfterCurrentPlaying")
                      << "sourcePlaylist=" << sourcePlaylist->name()
                      << "destinationPlaylist=" << destinationPlaylist->name() << "sourceRows=[" << sourceStart << ","
-                     << (sourceEnd - 1) << "] insertPos=" << insertPos << "samePlaylist=" << samePlaylist;
+                     << (sourceEnd - 1) << "] insertPos=" << insertPos << "samePlaylist=" << samePlaylist
+                     << "cursorBeforeEntryId=" << cursorBeforeEntryId << "restoreEntryId=" << restoreEntryId;
 
     applyPlaylistSnapshots(afterSnapshots);
 
     const int rowCountBefore = static_cast<int>(sourceBefore.size());
     const int rowCountAfter
         = samePlaylist ? static_cast<int>(destinationAfter.size()) : static_cast<int>(sourceAfter.size());
-    const int restoreRow = rowCountAfter > 0 ? qMin(originalRow, rowCountAfter - 1) : -1;
+    int restoreRow = rowCountAfter > 0 ? qMin(originalRow, rowCountAfter - 1) : -1;
+    if(move) {
+        if(!restoreEntryId.isValid()) {
+            restoreRow = -1;
+        }
+        else {
+            const auto findRowByEntryId = [&restoreEntryId](const Fooyin::PlaylistTrackList& tracks) {
+                for(int i = 0; i < static_cast<int>(tracks.size()); ++i) {
+                    if(tracks[static_cast<size_t>(i)].entryId == restoreEntryId)
+                        return i;
+                }
+                return -1;
+            };
+
+            restoreRow = samePlaylist ? findRowByEntryId(destinationAfter) : findRowByEntryId(sourceAfter);
+        }
+    }
+
     pushUndoEntry(std::move(beforeSnapshots), std::move(afterSnapshots), originalRow, restoreRow, col, rowCountBefore,
-                  rowCountAfter);
+                  rowCountAfter, std::move(cursorBeforeEntryId), std::move(restoreEntryId));
 
     if(m_mode == Mode::Visual) {
         enterNormal();
     }
 
     if(restoreRow >= 0) {
-        scheduleIndexRestore(view, restoreRow, col, rowCountAfter);
+        const Fooyin::UId restorePlaylistId = sourcePlaylist->id();
+        scheduleEntryRestore(view, restorePlaylistId, restoreEntryId, restoreRow, col, rowCountAfter);
     }
 }
 
@@ -1842,12 +1873,12 @@ void VimHandler::pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList
 
 void VimHandler::pushUndoEntry(std::vector<PlaylistSnapshot> before, std::vector<PlaylistSnapshot> after,
                                const int cursorBefore, const int cursorAfter, const int col, const int rowCountBefore,
-                               const int rowCountAfter)
+                               const int rowCountAfter, Fooyin::UId cursorBeforeEntryId, Fooyin::UId cursorAfterEntryId)
 {
     if(m_undoIndex + 1 < static_cast<int>(m_undoStack.size()))
         m_undoStack.resize(static_cast<size_t>(m_undoIndex + 1));
-    m_undoStack.push_back(
-        {std::move(before), std::move(after), cursorBefore, cursorAfter, col, rowCountBefore, rowCountAfter});
+    m_undoStack.push_back({std::move(before), std::move(after), cursorBefore, cursorAfter, col, rowCountBefore,
+                           rowCountAfter, std::move(cursorBeforeEntryId), std::move(cursorAfterEntryId)});
     m_undoIndex = static_cast<int>(m_undoStack.size()) - 1;
     qCDebug(VIM_LOG) << "pushUndoEntry: undoIndex=" << m_undoIndex << "stackSize=" << m_undoStack.size();
 }
@@ -1861,6 +1892,100 @@ void VimHandler::applyPlaylistSnapshots(const std::vector<PlaylistSnapshot>& sna
         m_playlistHandler->replacePlaylistTracks(snapshot.playlistId, snapshot.tracks,
                                                  Fooyin::PlaylistTrackChangeSource::History);
     }
+}
+
+void VimHandler::scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId,
+                                      const Fooyin::UId& entryId, const int fallbackRow, const int col,
+                                      const int expectedRowCount)
+{
+    if(!view || !view->model() || !view->selectionModel())
+        return;
+
+    if(!entryId.isValid() || !m_playlistHandler) {
+        scheduleIndexRestore(view, fallbackRow, col, expectedRowCount);
+        return;
+    }
+
+    auto resolveRow = [this, playlistId, entryId, fallbackRow]() {
+        if(auto* playlist = m_playlistHandler->playlistById(playlistId)) {
+            const int row = playlist->indexOfTrackEntry(entryId);
+            if(row >= 0)
+                return row;
+        }
+        return fallbackRow;
+    };
+
+    QPointer<QAbstractItemView> viewPtr{view};
+
+    auto tryRestore = [viewPtr, resolveRow, col]() -> bool {
+        if(!viewPtr || !viewPtr->model() || !viewPtr->selectionModel())
+            return false;
+
+        const int row = resolveRow();
+        if(row < 0 || viewPtr->model()->rowCount() <= row)
+            return false;
+
+        const QModelIndex idx = viewPtr->model()->index(row, col);
+        if(!idx.isValid())
+            return false;
+
+        const int currentRow = viewPtr->currentIndex().isValid() ? viewPtr->currentIndex().row() : -1;
+        qCDebug(VIM_LOG) << "scheduleEntryRestore: cursor restoring row" << row << "(current was" << currentRow << ")";
+        viewPtr->selectionModel()->setCurrentIndex(idx,
+                                                   QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        qCDebug(VIM_LOG) << "scheduleEntryRestore: cursor restored to row" << row;
+        return true;
+    };
+
+    qCDebug(VIM_LOG) << "scheduleEntryRestore: playlistId=" << playlistId << "entryId=" << entryId
+                     << "resolvedRow=" << resolveRow() << "fallbackRow=" << fallbackRow
+                     << "expectedRowCount=" << expectedRowCount;
+
+    QTimer::singleShot(0, this, [tryRestore]() { tryRestore(); });
+
+    auto restoreAfterPopulation = [viewPtr, tryRestore, expectedRowCount]() {
+        if(!viewPtr || !viewPtr->model())
+            return;
+
+        qCDebug(VIM_LOG) << "scheduleEntryRestore: modelReset caught, waiting for rowsInserted"
+                         << "target rowCount=" << expectedRowCount;
+
+        // Some model resets repopulate synchronously before any rowsInserted
+        // signals are emitted. Try again on the next event-loop turn first.
+        QTimer::singleShot(0, viewPtr, [viewPtr, tryRestore, expectedRowCount]() {
+            if(!viewPtr || !viewPtr->model())
+                return;
+
+            const int rc = viewPtr->model()->rowCount();
+            qCDebug(VIM_LOG) << "scheduleEntryRestore: post-reset retry, rowCount=" << rc;
+            if(rc >= expectedRowCount)
+                tryRestore();
+        });
+
+        if(viewPtr->model()->rowCount() >= expectedRowCount) {
+            qCDebug(VIM_LOG) << "scheduleEntryRestore: model already repopulated after reset";
+            tryRestore();
+            return;
+        }
+
+        auto guard = std::make_shared<bool>(false);
+        QObject::connect(viewPtr->model(), &QAbstractItemModel::rowsInserted, viewPtr,
+                         [viewPtr, tryRestore, expectedRowCount, guard]() {
+                             if(!viewPtr || !viewPtr->model() || *guard)
+                                 return;
+
+                             const int rc = viewPtr->model()->rowCount();
+                             if(rc < expectedRowCount)
+                                 return;
+
+                             qCDebug(VIM_LOG) << "scheduleEntryRestore: rowsInserted, rowCount=" << rc;
+                             tryRestore();
+                             *guard = true;
+                         });
+    };
+
+    QObject::connect(view->model(), &QAbstractItemModel::modelReset, view->model(), restoreAfterPopulation,
+                     Qt::SingleShotConnection);
 }
 
 void VimHandler::undo()
@@ -1879,7 +2004,9 @@ void VimHandler::undo()
     applyPlaylistSnapshots(entry.before);
     auto* view = m_viewLocator->activeView();
     if(view && entry.cursorBefore >= 0) {
-        scheduleIndexRestore(view, entry.cursorBefore, entry.col, entry.rowCountBefore);
+        const Fooyin::UId playlistId = !entry.before.empty() ? entry.before.front().playlistId : Fooyin::UId{};
+        scheduleEntryRestore(view, playlistId, entry.cursorBeforeEntryId, entry.cursorBefore, entry.col,
+                             entry.rowCountBefore);
     }
     --m_undoIndex;
 }
@@ -1901,7 +2028,9 @@ void VimHandler::redo()
     applyPlaylistSnapshots(entry.after);
     auto* view = m_viewLocator->activeView();
     if(view && entry.cursorAfter >= 0) {
-        scheduleIndexRestore(view, entry.cursorAfter, entry.col, entry.rowCountAfter);
+        const Fooyin::UId playlistId = !entry.after.empty() ? entry.after.front().playlistId : Fooyin::UId{};
+        scheduleEntryRestore(view, playlistId, entry.cursorAfterEntryId, entry.cursorAfter, entry.col,
+                             entry.rowCountAfter);
     }
 }
 

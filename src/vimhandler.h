@@ -184,7 +184,8 @@ private:
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
                        int cursorBefore, int cursorAfter, int col);
     void pushUndoEntry(std::vector<PlaylistSnapshot> before, std::vector<PlaylistSnapshot> after, int cursorBefore,
-                       int cursorAfter, int col, int rowCountBefore, int rowCountAfter);
+                       int cursorAfter, int col, int rowCountBefore, int rowCountAfter,
+                       Fooyin::UId cursorBeforeEntryId = {}, Fooyin::UId cursorAfterEntryId = {});
     void applyPlaylistSnapshots(const std::vector<PlaylistSnapshot>& snapshots) const;
 
     void setLocalMark(QChar mark);
@@ -203,6 +204,8 @@ private:
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
+    void scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId, const Fooyin::UId& entryId,
+                              int fallbackRow, int col, int expectedRowCount);
 
     Mode m_mode{Mode::Normal};
     int m_count{0};
@@ -223,6 +226,8 @@ private:
         int col{0};
         int rowCountBefore{0};
         int rowCountAfter{0};
+        Fooyin::UId cursorBeforeEntryId;
+        Fooyin::UId cursorAfterEntryId;
     };
 
     VimClipboard m_clipboard;
