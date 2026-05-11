@@ -1,6 +1,6 @@
 # fooyin-vim-plugin
 
-Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Normal, Visual, Insert, Filter, and Search modes to every list view in fooyin (playlist, library browser, file browser, queue, etc.).
+Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Normal, Visual, Insert, Filter, and Search modes to every list view in fooyin (playlist, library browser, file browser, queue, etc.). It also provides an optional `Vim Mode Indicator` layout widget that displays the current mode.
 
 ## Features
 
@@ -13,6 +13,10 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | Insert | `i` | Vim off; all keys pass through to fooyin normally |
 | Filter | `Ctrl+i` | Live incremental filter — hides non-matching rows |
 | Search | `/` | Live search — all rows visible, cursor jumps to matches; wraps by default |
+
+### Mode indicator widget
+
+Enable **Layout Editing Mode** in fooyin and add the `Vim Mode Indicator` widget from the `Vim Motions` submenu to place a compact current-mode display anywhere in your layout.
 
 ### Normal mode bindings
 

@@ -117,6 +117,8 @@ set(PLUGIN_SOURCES
     src/vimclipboard.cpp
     src/vimclipboard.h
     src/vimlog.h
+    src/vimmodeindicatorwidget.cpp
+    src/vimmodeindicatorwidget.h
     src/vimmotionsplugin.cpp
     src/vimmotionsplugin.h
     src/vimmotionssettings.cpp
