@@ -23,6 +23,158 @@ using namespace Qt::StringLiterals;
 
 namespace Fooyin::VimMotions {
 
+namespace {
+
+QString modeText(BindingMode mode)
+{
+    switch(mode) {
+        case BindingMode::Normal:
+            return QApplication::translate("VimMotionsSettingsDialog", "Normal");
+        case BindingMode::Visual:
+            return QApplication::translate("VimMotionsSettingsDialog", "Visual");
+        case BindingMode::Insert:
+            return QApplication::translate("VimMotionsSettingsDialog", "Insert");
+    }
+
+    return QApplication::translate("VimMotionsSettingsDialog", "Normal");
+}
+
+QString namedKeyText(Qt::Key key)
+{
+    switch(key) {
+        case Qt::Key_Escape:
+            return QStringLiteral("<Esc>");
+        case Qt::Key_Return:
+            return QStringLiteral("<CR>");
+        case Qt::Key_Enter:
+            return QStringLiteral("<Enter>");
+        case Qt::Key_Tab:
+            return QStringLiteral("<Tab>");
+        case Qt::Key_Backspace:
+            return QStringLiteral("<BS>");
+        case Qt::Key_Space:
+            return QStringLiteral("<Space>");
+        case Qt::Key_Delete:
+            return QStringLiteral("<Del>");
+        case Qt::Key_Insert:
+            return QStringLiteral("<Insert>");
+        case Qt::Key_Home:
+            return QStringLiteral("<Home>");
+        case Qt::Key_End:
+            return QStringLiteral("<End>");
+        case Qt::Key_PageUp:
+            return QStringLiteral("<PageUp>");
+        case Qt::Key_PageDown:
+            return QStringLiteral("<PageDown>");
+        case Qt::Key_Left:
+            return QStringLiteral("<Left>");
+        case Qt::Key_Right:
+            return QStringLiteral("<Right>");
+        case Qt::Key_Up:
+            return QStringLiteral("<Up>");
+        case Qt::Key_Down:
+            return QStringLiteral("<Down>");
+        case Qt::Key_Slash:
+            return QStringLiteral("<Slash>");
+        case Qt::Key_Backslash:
+            return QStringLiteral("<Bslash>");
+        case Qt::Key_Bar:
+            return QStringLiteral("<Bar>");
+        case Qt::Key_Less:
+            return QStringLiteral("<Lt>");
+        default:
+            return {};
+    }
+}
+
+QString comboText(const KeyCombo& combo)
+{
+    QString text;
+
+    if(combo.modifiers & Qt::ControlModifier)
+        text += QStringLiteral("Ctrl+");
+    if(combo.modifiers & Qt::AltModifier)
+        text += QStringLiteral("Alt+");
+    if(combo.modifiers & Qt::ShiftModifier)
+        text += QStringLiteral("Shift+");
+    if(combo.modifiers & Qt::MetaModifier)
+        text += QStringLiteral("Meta+");
+
+    if(!combo.ch.isNull() && combo.modifiers == Qt::NoModifier) {
+        text += combo.ch;
+        return text;
+    }
+
+    if(!combo.ch.isNull() && combo.modifiers != Qt::NoModifier) {
+        text += combo.ch.toUpper();
+        return text;
+    }
+
+    const QString namedText = namedKeyText(combo.key);
+    if(!namedText.isEmpty()) {
+        text += namedText;
+        return text;
+    }
+
+    text += QStringLiteral("<Unknown>");
+    return text;
+}
+
+QString bindingKeysText(const BindingEntry& entry)
+{
+    QString text;
+    for(const auto& combo : entry.keys)
+        text += comboText(combo);
+    return text;
+}
+
+QString bindingActionText(const BindingEntry& entry)
+{
+    if(entry.args.isEmpty())
+        return entry.actionName;
+
+    return entry.actionName + u':' + entry.args;
+}
+
+void populateBindingsTree(QStandardItemModel* model, const QHash<BindingMode, QList<BindingEntry>>& bindings)
+{
+    if(!model)
+        return;
+
+    model->clear();
+    model->setHorizontalHeaderLabels(
+        {QObject::tr("Mode"), QObject::tr("Keys"), QObject::tr("Action"), QObject::tr("Source")});
+
+    const QList<BindingMode> modeOrder{BindingMode::Normal, BindingMode::Visual, BindingMode::Insert};
+
+    for(const BindingMode mode : modeOrder) {
+        const auto modeBindings = bindings.value(mode);
+        for(const auto& entry : modeBindings) {
+            QList<QStandardItem*> row;
+            row.reserve(4);
+
+            auto* modeItem   = new QStandardItem(modeText(mode));
+            auto* keysItem   = new QStandardItem(bindingKeysText(entry));
+            auto* actionItem = new QStandardItem(bindingActionText(entry));
+            auto* sourceItem = new QStandardItem();
+
+            modeItem->setEditable(false);
+            keysItem->setEditable(false);
+            actionItem->setEditable(false);
+            sourceItem->setEditable(false);
+
+            row.push_back(modeItem);
+            row.push_back(keysItem);
+            row.push_back(actionItem);
+            row.push_back(sourceItem);
+
+            model->appendRow(row);
+        }
+    }
+}
+
+} // namespace
+
 VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* settingsManager,
                                                    VimMotionsBindingBackend* settingsBackend, QWidget* parent)
     : QDialog{parent}
@@ -95,6 +247,11 @@ void VimMotionsSettingsDialog::load()
 {
     if(m_settingsBackend) {
         m_settingsBackend->reloadBindings();
+    }
+
+    if(auto* bindingModel = qobject_cast<QStandardItemModel*>(m_bindingsTree->model())) {
+        populateBindingsTree(bindingModel, m_settingsBackend ? m_settingsBackend->effectiveBindings()
+                                                             : QHash<BindingMode, QList<BindingEntry>>{});
     }
 
     if(m_settingsManager) {

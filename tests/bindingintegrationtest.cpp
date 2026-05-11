@@ -11,8 +11,10 @@
 #include <QSet>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTreeView>
 
 #include <utils/settings/settingsmanager.h>
 
@@ -75,6 +77,25 @@ private:
 
             if(binding.keys.front().ch == key)
                 return true;
+        }
+
+        return false;
+    }
+
+    static bool hasTreeRow(const QStandardItemModel* model, const QString& mode, const QString& keys,
+                           const QString& action)
+    {
+        if(!model)
+            return false;
+
+        for(int row = 0; row < model->rowCount(); ++row) {
+            if(model->data(model->index(row, 0)).toString() != mode)
+                continue;
+            if(model->data(model->index(row, 1)).toString() != keys)
+                continue;
+            if(model->data(model->index(row, 2)).toString() != action)
+                continue;
+            return true;
         }
 
         return false;
@@ -256,6 +277,13 @@ private Q_SLOTS:
 
         VimMotionsBindingBackend backend{&settings};
         VimMotionsSettingsDialog dialog{&settings, &backend};
+        auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
+        QVERIFY(tree);
+        auto* treeModel = qobject_cast<QStandardItemModel*>(tree->model());
+        QVERIFY(treeModel);
+        QVERIFY(
+            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
 
         auto* timeout = dialog.findChild<QSpinBox*>(QStringLiteral("pendingSequenceTimeout"));
         QVERIFY(timeout);
@@ -285,6 +313,9 @@ private Q_SLOTS:
         QCOMPARE(backend.pendingSequenceTimeout(), 450);
         QCOMPARE(backend.wrapScan(), true);
         QCOMPARE(backend.useDefaultBindings(), true);
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
+        QVERIFY(
+            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
         QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'j'),
                            QStringLiteral("moveCursor")));
 
@@ -305,8 +336,18 @@ private Q_SLOTS:
         QCOMPARE(backend.pendingSequenceTimeout(), 0);
         QCOMPARE(backend.wrapScan(), true);
         QCOMPARE(backend.useDefaultBindings(), true);
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
+        QVERIFY(
+            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
         QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'j'),
                            QStringLiteral("moveCursor")));
+
+        useDefaultBindings->setChecked(false);
+        applyButton->click();
+
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
+        QVERIFY(
+            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
     }
 };
 

@@ -198,7 +198,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 
 ### Overall status
 
-- Status: stage 4 complete
+- Status: stage 5 complete
 - Feature flag default: disabled
 - Shipping state: dormant
 
@@ -208,7 +208,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 - [x] Stage 2: Settings/bindings backend refactor
 - [x] Stage 3: Dialog skeleton
 - [x] Stage 4: Load / Apply / Reset wiring
-- [ ] Stage 5: Read-only effective bindings tree
+- [x] Stage 5: Read-only effective bindings tree
 - [ ] Stage 6: Documentation and visibility review
 
 ### Session log
@@ -218,6 +218,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 - 2026-05-11: Stage 2 implemented with binding backend extraction, handler/plugin wiring, and reload coverage for custom bindings.
 - 2026-05-11: Stage 3 implemented with a feature-gated settings dialog scaffold, placeholder bindings tree, and widget coverage.
 - 2026-05-11: Stage 4 implemented with load/apply/reset wiring, settings persistence, backend reload integration, and runtime test coverage.
+- 2026-05-11: Stage 5 implemented with a read-only effective bindings tree populated from backend state and refresh coverage in integration tests.
 
 ### Notes for future sessions
 
