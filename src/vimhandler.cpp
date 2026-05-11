@@ -252,6 +252,14 @@ VimHandler::VimHandler(QObject* parent)
 {
     m_pendingTimeoutTimer.setSingleShot(true);
     connect(&m_pendingTimeoutTimer, &QTimer::timeout, this, [this]() {
+        if(!m_pendingConfigSequence.isEmpty() && m_pendingConfigFallback.has_value()) {
+            const auto fallback = *m_pendingConfigFallback;
+            qCDebug(VIM_LOG) << "Pending input timeout expired; executing fallback action" << fallback.actionName;
+            clearPendingInputState();
+            executeAction(fallback);
+            return;
+        }
+
         qCDebug(VIM_LOG) << "Pending input timeout expired; clearing pending state";
         clearPendingInputState();
     });
@@ -3084,6 +3092,7 @@ void VimHandler::clearPendingInputState()
 {
     m_pendingKey = {};
     m_pendingConfigSequence.clear();
+    m_pendingConfigFallback.reset();
     m_pendingMarkOp = PendingMarkOp::None;
     m_pendingTimeoutTimer.stop();
 }
@@ -3383,6 +3392,14 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
             return true;
         }
 
+        if(m_pendingConfigFallback.has_value()) {
+            const auto fallback = *m_pendingConfigFallback;
+            qCDebug(VIM_LOG) << "ConfigDispatch: sequence mismatch, using fallback" << fallback.actionName;
+            clearPendingInputState();
+            executeAction(fallback);
+            return true;
+        }
+
         clearPendingInputState();
     }
 
@@ -3423,28 +3440,30 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
         }
     }
 
-    if(!best) {
-        for(const auto& b : bindings) {
-            if(b.keys.size() < 2)
-                continue;
-            if(b.keys.front().matches(ev)) {
-                best         = &b;
-                bestModCount = -2;
-                break;
-            }
+    const BindingEntry* sequencePrefix = nullptr;
+    for(const auto& b : bindings) {
+        if(b.keys.size() < 2)
+            continue;
+        if(b.keys.front().matches(ev)) {
+            sequencePrefix = &b;
+            break;
         }
+    }
+
+    if(sequencePrefix) {
+        m_pendingConfigSequence = {sequencePrefix->keys.front()};
+        m_pendingConfigFallback.reset();
+        if(best)
+            m_pendingConfigFallback = *best;
+        refreshPendingTimeout();
+        qCDebug(VIM_LOG) << "ConfigDispatch: sequence start length" << m_pendingConfigSequence.size()
+                         << "fallback=" << (m_pendingConfigFallback ? m_pendingConfigFallback->actionName : QString{});
+        return true;
     }
 
     if(!best) {
         qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << qtKey << "text=" << text;
         return false;
-    }
-
-    if(best->keys.size() > 1) {
-        m_pendingConfigSequence = {best->keys.front()};
-        refreshPendingTimeout();
-        qCDebug(VIM_LOG) << "ConfigDispatch: sequence start length" << m_pendingConfigSequence.size();
-        return true;
     }
 
     qCDebug(VIM_LOG) << "ConfigDispatch: action" << best->actionName << "args=" << best->args;

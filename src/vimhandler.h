@@ -261,6 +261,7 @@ private:
     bool m_hadExplicitCount{false};
     QHash<Mode, QList<BindingEntry>> m_configBindings;
     QList<KeyCombo> m_pendingConfigSequence;
+    std::optional<BindingEntry> m_pendingConfigFallback;
     int m_pendingSequenceTimeoutMs{0};
     QTimer m_pendingTimeoutTimer;
 };
