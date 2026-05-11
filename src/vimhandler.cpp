@@ -117,6 +117,37 @@ static int firstVisibleSearchMatchIndex(QTreeView* tree, const std::vector<QPers
     return wrapScan ? 0 : -1;
 }
 
+static std::vector<QPersistentModelIndex> orderedSearchMatches(QAbstractItemView* view,
+                                                               const std::vector<QPersistentModelIndex>& matches)
+{
+    std::vector<QPersistentModelIndex> ordered;
+    if(!view || !view->model() || matches.empty())
+        return ordered;
+
+    auto* model = view->model();
+    ordered.reserve(matches.size());
+
+    const auto appendIfMatched = [&](const QModelIndex& index) {
+        if(searchMatchPosition(matches, index) >= 0)
+            ordered.push_back(index);
+    };
+
+    if(auto* tree = asTreeView(view)) {
+        QModelIndex index;
+        if(model->rowCount() > 0)
+            index = model->index(0, 0);
+
+        for(; index.isValid(); index = tree->indexBelow(index))
+            appendIfMatched(index);
+    }
+    else {
+        for(int row = 0; row < model->rowCount(); ++row)
+            appendIfMatched(model->index(row, 0));
+    }
+
+    return ordered;
+}
+
 struct OrganiserDropTarget
 {
     QModelIndex parent;
@@ -2254,6 +2285,10 @@ void VimHandler::nextMatch()
         if(!view || !view->model())
             return;
 
+        refreshSearchMatches();
+        if(m_searchMatches.empty())
+            return;
+
         const QModelIndex currentIndex = view->currentIndex();
         const bool cursorAtLastMatch   = m_searchMatchIdx >= 0
                                     && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
@@ -2298,6 +2333,10 @@ void VimHandler::prevMatch()
     if(!m_searchMatches.empty()) {
         auto* view = m_searchView.data();
         if(!view || !view->model())
+            return;
+
+        refreshSearchMatches();
+        if(m_searchMatches.empty())
             return;
 
         const QModelIndex currentIndex = view->currentIndex();
@@ -2579,6 +2618,21 @@ void VimHandler::buildMatchList(const QString& pattern)
             appendMatchIfNeeded(model->index(row, 0));
     }
     qCDebug(VIM_LOG) << "buildMatchList: pattern='" << pattern << "' matches=" << m_searchMatches.size();
+}
+
+void VimHandler::refreshSearchMatches()
+{
+    auto* view = m_searchView.data();
+    if(!view || !view->model()) {
+        m_searchMatches.clear();
+        m_searchMatchIdx = -1;
+        return;
+    }
+
+    m_searchMatches = orderedSearchMatches(view, m_searchMatches);
+
+    const QModelIndex currentIndex = view->currentIndex();
+    m_searchMatchIdx               = searchMatchPosition(m_searchMatches, currentIndex);
 }
 
 void VimHandler::onSearchTextChanged(const QString& text)

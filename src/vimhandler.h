@@ -166,6 +166,7 @@ private:
     void cancelSearch();
     void onSearchTextChanged(const QString& text);
     void buildMatchList(const QString& pattern);
+    void refreshSearchMatches();
     void jumpToMatch(int idx);
 
     [[nodiscard]] int halfPageDelta() const;

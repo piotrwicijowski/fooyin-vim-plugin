@@ -2,6 +2,7 @@
 
 #include <gui/fywidget.h>
 
+#include <QAbstractItemModel>
 #include <QApplication>
 #include <QDataStream>
 #include <QLineEdit>
@@ -10,6 +11,8 @@
 #include <QTest>
 #include <QTreeView>
 #include <QVBoxLayout>
+
+#include <memory>
 
 namespace Fooyin {
 
@@ -243,6 +246,142 @@ private:
     DropCall m_lastDrop;
 };
 
+class MoveAwareTreeModel : public QAbstractItemModel
+{
+public:
+    struct Node
+    {
+        QString text;
+        Node* parent{nullptr};
+        std::vector<std::unique_ptr<Node>> children;
+    };
+
+    explicit MoveAwareTreeModel(QObject* parent = nullptr)
+        : QAbstractItemModel(parent)
+    { }
+
+    QModelIndex appendRoot(const QString& text)
+    {
+        return appendChild({}, text);
+    }
+
+    QModelIndex appendChild(const QModelIndex& parent, const QString& text)
+    {
+        Node* parentNode = nodeForIndex(parent);
+        const int row    = static_cast<int>(parentNode->children.size());
+        beginInsertRows(parent, row, row);
+        auto child    = std::make_unique<Node>();
+        child->text   = text;
+        child->parent = parentNode;
+        Node* raw     = child.get();
+        parentNode->children.push_back(std::move(child));
+        endInsertRows();
+        return createIndex(row, 0, raw);
+    }
+
+    QModelIndex index(int row, int column, const QModelIndex& parent = QModelIndex()) const override
+    {
+        if(column != 0 || row < 0)
+            return {};
+
+        const Node* parentNode = nodeForIndex(parent);
+        if(row >= static_cast<int>(parentNode->children.size()))
+            return {};
+
+        return createIndex(row, column, parentNode->children[static_cast<size_t>(row)].get());
+    }
+
+    QModelIndex parent(const QModelIndex& child) const override
+    {
+        if(!child.isValid())
+            return {};
+
+        const Node* node       = nodeForIndex(child);
+        const Node* parentNode = node ? node->parent : nullptr;
+        if(!parentNode || parentNode == &m_root)
+            return {};
+
+        return createIndex(rowOfNode(parentNode), 0, const_cast<Node*>(parentNode));
+    }
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        return static_cast<int>(nodeForIndex(parent)->children.size());
+    }
+
+    int columnCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        Q_UNUSED(parent)
+        return 1;
+    }
+
+    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override
+    {
+        if(!index.isValid() || (role != Qt::DisplayRole && role != Qt::EditRole && role != Qt::ToolTipRole))
+            return {};
+
+        return nodeForIndex(index)->text;
+    }
+
+    bool moveRows(const QModelIndex& sourceParent, int sourceRow, int count, const QModelIndex& destinationParent,
+                  int destinationChild) override
+    {
+        if(count != 1 || sourceRow < 0 || destinationChild < 0)
+            return false;
+
+        Node* sourceParentNode = nodeForIndex(sourceParent);
+        Node* destParentNode   = nodeForIndex(destinationParent);
+        if(sourceRow >= static_cast<int>(sourceParentNode->children.size())
+           || destinationChild > static_cast<int>(destParentNode->children.size())) {
+            return false;
+        }
+
+        if(sourceParent == destinationParent
+           && (destinationChild == sourceRow || destinationChild == sourceRow + count)) {
+            return false;
+        }
+
+        beginMoveRows(sourceParent, sourceRow, sourceRow + count - 1, destinationParent, destinationChild);
+
+        auto moved = std::move(sourceParentNode->children[static_cast<size_t>(sourceRow)]);
+        sourceParentNode->children.erase(sourceParentNode->children.begin() + sourceRow);
+
+        int insertRow = destinationChild;
+        if(sourceParent == destinationParent && sourceRow < destinationChild)
+            --insertRow;
+
+        moved->parent = destParentNode;
+        destParentNode->children.insert(destParentNode->children.begin() + insertRow, std::move(moved));
+
+        endMoveRows();
+        return true;
+    }
+
+private:
+    [[nodiscard]] Node* nodeForIndex(const QModelIndex& index) const
+    {
+        if(index.isValid())
+            return static_cast<Node*>(index.internalPointer());
+        return const_cast<Node*>(&m_root);
+    }
+
+    [[nodiscard]] int rowOfNode(const Node* node) const
+    {
+        const Node* parentNode = node ? node->parent : nullptr;
+        if(!parentNode)
+            return -1;
+
+        for(int row = 0; row < static_cast<int>(parentNode->children.size()); ++row) {
+            if(parentNode->children[static_cast<size_t>(row)].get() == node)
+                return row;
+        }
+
+        return -1;
+    }
+
+    Node m_root;
+};
+
 void focusTree(QTreeView* tree)
 {
     tree->window()->show();
@@ -289,6 +428,8 @@ private Q_SLOTS:
     void organiserSearchSkipsCollapsedChildren();
     void organiserSearchNavigatesVisibleMatches();
     void organiserSearchKeepsEarlierRootCandidatesAfterJump();
+    void playlistSearchNavigationTracksReorderedMatches();
+    void organiserSearchNavigationTracksReorderedMatches();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -865,6 +1006,92 @@ void TestVimHandlerViewContext::organiserSearchKeepsEarlierRootCandidatesAfterJu
 
     QTest::keyClick(editor, Qt::Key_Escape);
     qApp->processEvents();
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::playlistSearchNavigationTracksReorderedMatches()
+{
+    VimHandler handler;
+    Fooyin::PlaylistView view;
+    MoveAwareTreeModel model;
+
+    model.appendRoot(QStringLiteral("Needle One"));
+    model.appendRoot(QStringLiteral("Other"));
+    model.appendRoot(QStringLiteral("Needle Two"));
+    model.appendRoot(QStringLiteral("Needle Three"));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(&view);
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = view.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("Needle"));
+    qApp->processEvents();
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("Needle One"));
+
+    QTest::keyClick(editor, Qt::Key_Return);
+    qApp->processEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    QVERIFY(model.moveRow(QModelIndex(), 2, QModelIndex(), 0));
+    view.setCurrentIndex(model.index(1, 0));
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("Needle One"));
+
+    handler.nextMatch();
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("Needle Three"));
+
+    view.setCurrentIndex(model.index(1, 0));
+    handler.prevMatch();
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("Needle Two"));
+
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::organiserSearchNavigationTracksReorderedMatches()
+{
+    VimHandler handler;
+    FakeOrganiserWidget organiser;
+    MoveAwareTreeModel model;
+
+    model.appendRoot(QStringLiteral("Needle One"));
+    const QModelIndex group = model.appendRoot(QStringLiteral("Group"));
+    model.appendChild(group, QStringLiteral("Needle Two"));
+    model.appendRoot(QStringLiteral("Needle Three"));
+
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(1, 0));
+    organiser.view()->setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(organiser.view());
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = organiser.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("Needle"));
+    qApp->processEvents();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle One"));
+
+    QTest::keyClick(editor, Qt::Key_Return);
+    qApp->processEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    QVERIFY(model.moveRow(group, 0, QModelIndex(), 0));
+    organiser.view()->setCurrentIndex(model.index(1, 0));
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle One"));
+
+    handler.nextMatch();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle Three"));
+
+    organiser.view()->setCurrentIndex(model.index(1, 0));
+    handler.prevMatch();
+    QCOMPARE(organiser.view()->currentIndex().data().toString(), QStringLiteral("Needle Two"));
+
     qApp->removeEventFilter(&handler);
 }
 
