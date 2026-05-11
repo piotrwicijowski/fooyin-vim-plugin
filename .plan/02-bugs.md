@@ -12,4 +12,4 @@
 - bindings are not reloaded on config change - wontfix
 - doing dd and undo changes line focus
 - Pasting to empty playlist - needs public API
-- Search and delete changes offsets/indexes
+- Search and delete changes offsets/indexes - fixed

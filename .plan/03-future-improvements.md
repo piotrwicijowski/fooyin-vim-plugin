@@ -21,5 +21,5 @@
 - mark column indicator - needs public API
 - F2 (rename) - detect if we have text input and don't capture normal mode bindings
 - Move/copy this song right after the currently playing without moving focus there
-- Mode indicator
+- Mode indicator - done
 - dot for repeat
