@@ -57,6 +57,17 @@ void focusView(QTreeView* view)
     qApp->processEvents();
 }
 
+void writeFooyinConfig(const std::function<void(QSettings&)>& configure)
+{
+    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir{}.mkpath(configDir);
+
+    QSettings fileSettings(configDir + QStringLiteral("/fooyin.conf"), QSettings::IniFormat);
+    fileSettings.remove(QStringLiteral("VimMotions"));
+    configure(fileSettings);
+    fileSettings.sync();
+}
+
 } // namespace
 
 using namespace Fooyin;
@@ -72,6 +83,10 @@ private Q_SLOTS:
     void configTwoKeyTimeoutClearsPendingSequence();
     void configMarkTimeoutClearsPendingMark();
     void configBindingTriggersFooyinAction();
+    void configNormalAmbiguousPrefixPrefersLongerSequence();
+    void configNormalAmbiguousPrefixFallsBackAfterTimeout();
+    void configVisualAmbiguousPrefixPrefersLongerSequence();
+    void configVisualAmbiguousPrefixFallsBackAfterTimeout();
 };
 
 void TestVimHandlerTimeout::hardcodedTwoKeyTimeoutClearsPendingSequence()
@@ -211,6 +226,157 @@ void TestVimHandlerTimeout::configBindingTriggersFooyinAction()
 
     QVERIFY(dispatchKey(handler, &view, u'x'));
     QCOMPARE(triggeredSpy.count(), 1);
+}
+
+void TestVimHandlerTimeout::configNormalAmbiguousPrefixPrefersLongerSequence()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_normal_ambiguous_prefix.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
+
+    writeFooyinConfig([](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/x"), QStringLiteral("enterVisual"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/xc"), QStringLiteral("beginSetMark"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/z"), QStringLiteral("enterVisual"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/zc"), QStringLiteral("beginJumpToMark"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'x'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'c'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchShortcutOverride(handler, &view, u'a'));
+    QVERIFY(dispatchKey(handler, &view, u'a'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    QVERIFY(dispatchKey(handler, &view, u'z'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'c'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchShortcutOverride(handler, &view, u'a'));
+}
+
+void TestVimHandlerTimeout::configNormalAmbiguousPrefixFallsBackAfterTimeout()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_normal_ambiguous_fallback.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
+
+    writeFooyinConfig([](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/x"), QStringLiteral("enterVisual"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Normal/xc"), QStringLiteral("beginSetMark"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'x'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QTest::qWait(50);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerTimeout::configVisualAmbiguousPrefixPrefersLongerSequence()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_visual_ambiguous_prefix.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
+
+    writeFooyinConfig([](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Visual/x"), QStringLiteral("leaveVisualMode"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Visual/xc"), QStringLiteral("beginSetMark"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Visual/z"), QStringLiteral("leaveVisualMode"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Visual/zc"), QStringLiteral("beginJumpToMark"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    model.appendRow(new QStandardItem(QStringLiteral("B")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    handler.enterVisual();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchKey(handler, &view, u'x'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchKey(handler, &view, u'c'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchShortcutOverride(handler, &view, u'z'));
+    QVERIFY(dispatchKey(handler, &view, u'z'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+
+    handler.enterVisual();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchKey(handler, &view, u'z'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchKey(handler, &view, u'c'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchShortcutOverride(handler, &view, u'z'));
+}
+
+void TestVimHandlerTimeout::configVisualAmbiguousPrefixFallsBackAfterTimeout()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_visual_ambiguous_fallback.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseConfigBindings"), true);
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
+
+    writeFooyinConfig([](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Visual/x"), QStringLiteral("leaveVisualMode"));
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Visual/xc"), QStringLiteral("beginSetMark"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    handler.enterVisual();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dispatchKey(handler, &view, u'x'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QTest::qWait(50);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
 }
 
 QTEST_MAIN(TestVimHandlerTimeout)
