@@ -42,6 +42,16 @@ static QTreeView* asTreeView(QAbstractItemView* v)
     return qobject_cast<QTreeView*>(v);
 }
 
+static QAbstractItemView* enclosingView(QWidget* widget)
+{
+    while(widget) {
+        if(auto* view = qobject_cast<QAbstractItemView*>(widget))
+            return view;
+        widget = widget->parentWidget();
+    }
+    return nullptr;
+}
+
 struct OrganiserDropTarget
 {
     QModelIndex parent;
@@ -2252,20 +2262,18 @@ Fooyin::FyWidget* VimHandler::findEnclosingFyWidget(QAbstractItemView* view) con
 
 bool VimHandler::organiserEditorActive(QObject* watched) const
 {
-    auto* view = m_viewLocator->activeView();
-    if(viewContext(view) != ViewContext::PlaylistOrganiser)
-        return false;
-
-    auto* widget = qobject_cast<QWidget*>(watched);
-    while(widget) {
-        if(widget != view && widget != view->viewport() && view->isAncestorOf(widget))
+    if(auto* widget = qobject_cast<QWidget*>(watched)) {
+        if(auto* view = enclosingView(widget);
+           viewContext(view) == ViewContext::PlaylistOrganiser && widget != view && widget != view->viewport()) {
             return true;
-        widget = widget->parentWidget();
+        }
     }
 
-    if(auto* focus = QApplication::focusWidget();
-       focus && focus != view && focus != view->viewport() && view->isAncestorOf(focus)) {
-        return true;
+    if(auto* focus = QApplication::focusWidget(); focus) {
+        if(auto* view = enclosingView(focus);
+           viewContext(view) == ViewContext::PlaylistOrganiser && focus != view && focus != view->viewport()) {
+            return true;
+        }
     }
 
     return false;

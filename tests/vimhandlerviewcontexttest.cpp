@@ -284,6 +284,7 @@ private Q_SLOTS:
     void organiserMoveUpIntoEmptyGroup();
     void organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup();
     void organiserInlineEditorSuspendsVimCapture();
+    void searchBarTypingKeepsFocus();
 };
 
 void TestVimHandlerViewContext::classifiesNullView()
@@ -677,6 +678,40 @@ void TestVimHandlerViewContext::organiserInlineEditorSuspendsVimCapture()
 
     QTest::keyClick(editor, Qt::Key_Return);
     qApp->processEvents();
+}
+
+void TestVimHandlerViewContext::searchBarTypingKeepsFocus()
+{
+    VimHandler handler;
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+
+    model.appendRow(new QStandardItem(QStringLiteral("Alpha")));
+    model.appendRow(new QStandardItem(QStringLiteral("Beta")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(&view);
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = view.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QVERIFY(editor->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Search);
+
+    QTest::keyClicks(editor, QStringLiteral("a"));
+    qApp->processEvents();
+
+    QVERIFY(editor->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Search);
+
+    QTest::keyClick(editor, Qt::Key_Escape);
+    qApp->processEvents();
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    qApp->removeEventFilter(&handler);
 }
 
 QTEST_MAIN(TestVimHandlerViewContext)
