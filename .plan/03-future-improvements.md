@@ -16,10 +16,10 @@
 - Surround the bindings like apostrophe, slash, return with angled brackets - done
 - visual mode exit without removing selection
 - shift+j/shift+k for extending selection in normal mode
-- shortcuts for "next playlist/previous playlist"
+- shortcuts for "next playlist/previous playlist" - needs public API
 - marks. M - global marks (regardless of playlist) - needs public API
 - mark column indicator - needs public API
-- F2 (rename) - detect if we have text input and don't capture normal mode bindings
+- F2 (rename) - detect if we have text input and don't capture normal mode bindings - done
 - Move/copy this song right after the currently playing without moving focus there
 - Mode indicator - done
 - dot for repeat

@@ -79,6 +79,8 @@ private Q_SLOTS:
                    "Bindings\\Normal\\Ctrl+A=selectAll\n"
                    "Bindings\\Normal\\<Space>=fooyinAction:Playback.Next\n"
                    "Bindings\\Normal\\g<Space>=focusNowPlaying\n"
+                   "Bindings\\Normal\\yc=copyAfterCurrentPlaying\n"
+                   "Bindings\\Normal\\dc=moveAfterCurrentPlaying\n"
                    "Bindings\\Visual\\j=extendCursor:+1\n"
                    "Bindings\\Visual\\v=leaveVisualMode\n"
                    "Bindings\\Visual\\Ctrl+J=spatialMoveFocus:down\n");
@@ -88,7 +90,7 @@ private Q_SLOTS:
     void testAllBindings()
     {
         auto bindings = loadParsedBindings({}, false);
-        QCOMPARE(bindings.size(), 15);
+        QCOMPARE(bindings.size(), 17);
         QVERIFY(bindings.contains(QStringLiteral("[Normal] j = moveCursor")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] k = moveCursor")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] m = beginSetMark")));
@@ -101,6 +103,8 @@ private Q_SLOTS:
         QVERIFY(bindings.contains(QStringLiteral("[Normal] Ctrl+A = selectAll")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] <Space> = fooyinAction")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] g<Space> = focusNowPlaying")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] yc = copyAfterCurrentPlaying")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] dc = moveAfterCurrentPlaying")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] j = extendCursor")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] v = leaveVisualMode")));
         QVERIFY(bindings.contains(QStringLiteral("[Visual] Ctrl+J = spatialMoveFocus")));
@@ -109,7 +113,7 @@ private Q_SLOTS:
     void testSkipEmptyValues()
     {
         auto bindings = loadParsedBindings({}, true);
-        QCOMPARE(bindings.size(), 15);
+        QCOMPARE(bindings.size(), 17);
     }
 
     void testSkipDefaults()
@@ -119,7 +123,7 @@ private Q_SLOTS:
 
         auto bindings = loadParsedBindings(defaults, true);
 
-        QCOMPARE(bindings.size(), 14);
+        QCOMPARE(bindings.size(), 16);
     }
 
     void testAllSkipped()
@@ -138,6 +142,8 @@ private Q_SLOTS:
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/Ctrl+A"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/<Space>"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/g<Space>"));
+        skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/yc"));
+        skipAll.insert(QStringLiteral("VimMotions/Bindings/Normal/dc"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Visual/j"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Visual/v"));
         skipAll.insert(QStringLiteral("VimMotions/Bindings/Visual/Ctrl+J"));
@@ -154,12 +160,14 @@ private Q_SLOTS:
 
         auto bindings = loadParsedBindings(defaults, true);
 
-        QCOMPARE(bindings.size(), 13);
+        QCOMPARE(bindings.size(), 15);
         QVERIFY(bindings.contains(QStringLiteral("[Normal] d = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] f = deleteRows")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] Ctrl+A = selectAll")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] <Space> = fooyinAction")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] g<Space> = focusNowPlaying")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] yc = copyAfterCurrentPlaying")));
+        QVERIFY(bindings.contains(QStringLiteral("[Normal] dc = moveAfterCurrentPlaying")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] m = beginSetMark")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] ' = beginJumpToMark")));
         QVERIFY(bindings.contains(QStringLiteral("[Normal] ` = beginJumpToMark")));

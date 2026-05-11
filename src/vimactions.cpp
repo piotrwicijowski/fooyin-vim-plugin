@@ -54,6 +54,10 @@ void VimActions::registerAll()
     registerAction(u"yankRows"_s, [](VimHandler& h, const QStringView&) { h.yankRows(h.currentCount()); });
     registerAction(u"pasteAfter"_s, [](VimHandler& h, const QStringView&) { h.pasteAfter(); });
     registerAction(u"pasteBefore"_s, [](VimHandler& h, const QStringView&) { h.pasteBefore(); });
+    registerAction(u"copyAfterCurrentPlaying"_s,
+                   [](VimHandler& h, const QStringView&) { h.copyAfterCurrentPlaying(); });
+    registerAction(u"moveAfterCurrentPlaying"_s,
+                   [](VimHandler& h, const QStringView&) { h.moveAfterCurrentPlaying(); });
 
     // -- Row movement (Alt+J/K) --
     registerAction(u"moveRows"_s, [](VimHandler& h, const QStringView& a) { h.moveRows(a.toInt()); });

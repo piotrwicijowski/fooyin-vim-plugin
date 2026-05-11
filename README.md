@@ -314,6 +314,8 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 | `yankRows` | — | Normal | Yank N rows into vim clipboard |
 | `pasteAfter` | — | Normal | Paste after cursor |
 | `pasteBefore` | — | Normal | Paste before cursor |
+| `copyAfterCurrentPlaying` | — | Normal, Visual | Copy the current row or visual selection to immediately after the currently playing track without jumping there |
+| `moveAfterCurrentPlaying` | — | Normal, Visual | Move the current row or visual selection to immediately after the currently playing track without jumping there |
 | `undo` | — | Normal | Undo last playlist change |
 | `redo` | — | Normal | Redo last undone change |
 | `focusNowPlaying` | — | Normal | Focus currently playing track |

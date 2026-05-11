@@ -12,6 +12,7 @@
 #include <core/playlist/playlist.h>
 #include <utils/id.h>
 
+#include <optional>
 #include <vector>
 
 class QAbstractItemView;
@@ -101,6 +102,8 @@ public:
     void yankRows(int count);
     void pasteAfter();
     void pasteBefore();
+    void copyAfterCurrentPlaying();
+    void moveAfterCurrentPlaying();
     void undo();
     void redo();
 
@@ -172,8 +175,17 @@ private:
     [[nodiscard]] int halfPageDelta() const;
     void treeMoveCursor(QTreeView* tree, int delta);
 
+    struct PlaylistSnapshot
+    {
+        Fooyin::UId playlistId;
+        Fooyin::PlaylistTrackList tracks;
+    };
+
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
                        int cursorBefore, int cursorAfter, int col);
+    void pushUndoEntry(std::vector<PlaylistSnapshot> before, std::vector<PlaylistSnapshot> after, int cursorBefore,
+                       int cursorAfter, int col, int rowCountBefore, int rowCountAfter);
+    void applyPlaylistSnapshots(const std::vector<PlaylistSnapshot>& snapshots) const;
 
     void setLocalMark(QChar mark);
     void jumpToLocalMark(QChar mark);
@@ -185,7 +197,9 @@ private:
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
+    [[nodiscard]] std::optional<std::pair<int, int>> selectedTrackRowRange(Fooyin::Playlist* playlist);
     void scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row);
+    void insertSelectionAfterCurrentPlaying(bool move);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
@@ -202,12 +216,13 @@ private:
 
     struct UndoEntry
     {
-        Fooyin::UId playlistId;
-        Fooyin::PlaylistTrackList before;
-        Fooyin::PlaylistTrackList after;
+        std::vector<PlaylistSnapshot> before;
+        std::vector<PlaylistSnapshot> after;
         int cursorBefore{-1};
         int cursorAfter{-1};
         int col{0};
+        int rowCountBefore{0};
+        int rowCountAfter{0};
     };
 
     VimClipboard m_clipboard;

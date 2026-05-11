@@ -29,6 +29,8 @@ private Q_SLOTS:
     void testOrganiserAddGroupAction();
     void testSelectAllAction();
     void testFooyinAction();
+    void testCopyAfterCurrentPlayingAction();
+    void testMoveAfterCurrentPlayingAction();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -193,6 +195,26 @@ void TestParseBinding::testFooyinAction()
     QCOMPARE(e.args, QStringLiteral("Playback.Next"));
     QCOMPARE(e.keys.size(), 1);
     QCOMPARE(e.keys[0].key, Qt::Key_Space);
+}
+
+void TestParseBinding::testCopyAfterCurrentPlayingAction()
+{
+    auto e = parseBindingString(QStringLiteral("yc"), QStringLiteral("copyAfterCurrentPlaying"));
+    QCOMPARE(e.actionName, QStringLiteral("copyAfterCurrentPlaying"));
+    QCOMPARE(e.args, QStringLiteral(""));
+    QCOMPARE(e.keys.size(), 2);
+    QCOMPARE(e.keys[0].ch, QChar(u'y'));
+    QCOMPARE(e.keys[1].ch, QChar(u'c'));
+}
+
+void TestParseBinding::testMoveAfterCurrentPlayingAction()
+{
+    auto e = parseBindingString(QStringLiteral("dc"), QStringLiteral("moveAfterCurrentPlaying"));
+    QCOMPARE(e.actionName, QStringLiteral("moveAfterCurrentPlaying"));
+    QCOMPARE(e.args, QStringLiteral(""));
+    QCOMPARE(e.keys.size(), 2);
+    QCOMPARE(e.keys[0].ch, QChar(u'd'));
+    QCOMPARE(e.keys[1].ch, QChar(u'c'));
 }
 
 QTEST_MAIN(TestParseBinding)
