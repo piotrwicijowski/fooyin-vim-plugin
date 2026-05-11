@@ -2,6 +2,7 @@
 #include "vimhandler.h"
 #include "vimlog.h"
 #include "vimmodeindicatorwidget.h"
+#include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
 #include "vimmotionssettingsdialog.h"
 
@@ -86,6 +87,7 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
                     << (m_playlistHandler ? "(PlaylistHandler acquired)" : "(no PlaylistHandler!)");
 
     VimMotionsSettings{m_settingsManager};
+    m_settingsBackend = std::make_unique<VimMotionsBindingBackend>(m_settingsManager);
 }
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
@@ -99,6 +101,7 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
     m_vimHandler->setActionManager(m_actionManager);
     m_vimHandler->setTrackSelectionController(m_trackSelection);
+    m_vimHandler->setSettingsBackend(m_settingsBackend.get());
     m_vimHandler->setSettingsManager(m_settingsManager);
     qApp->installEventFilter(m_vimHandler);
 

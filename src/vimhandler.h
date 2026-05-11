@@ -34,6 +34,7 @@ namespace Fooyin::VimMotions {
 enum class Direction : int;
 
 class ViewLocator;
+class VimMotionsBindingBackend;
 class SpatialNavigator;
 class VimSearchBar;
 
@@ -67,6 +68,7 @@ public:
     void setPlaylistHandler(Fooyin::PlaylistHandler* handler);
     void setActionManager(Fooyin::ActionManager* manager);
     void setSettingsManager(Fooyin::SettingsManager* manager);
+    void setSettingsBackend(VimMotionsBindingBackend* backend);
     void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
@@ -230,6 +232,8 @@ private:
     Fooyin::ActionManager* m_actionManager{nullptr};
     Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
     Fooyin::SettingsManager* m_settingsManager{nullptr};
+    VimMotionsBindingBackend* m_settingsBackend{nullptr};
+    std::unique_ptr<VimMotionsBindingBackend> m_ownedSettingsBackend;
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};

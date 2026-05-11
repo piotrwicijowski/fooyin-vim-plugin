@@ -16,6 +16,7 @@ add_test(NAME test_parsebinding COMMAND test_parsebinding)
 add_executable(test_integration
     bindingintegrationtest.cpp
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
 )
 target_include_directories(test_integration PRIVATE
@@ -46,6 +47,7 @@ add_executable(test_vimhandler_viewcontext
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
     ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
     ${CMAKE_SOURCE_DIR}/src/vimsearchbar.cpp
     ${CMAKE_SOURCE_DIR}/src/viewlocator.cpp
@@ -68,6 +70,7 @@ add_executable(test_vimhandler_timeout
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
     ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
     ${CMAKE_SOURCE_DIR}/src/vimsearchbar.cpp
     ${CMAKE_SOURCE_DIR}/src/viewlocator.cpp

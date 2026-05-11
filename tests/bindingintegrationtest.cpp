@@ -1,4 +1,5 @@
 #include "vimbindingparser.h"
+#include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
 
 #include <QFile>
@@ -58,6 +59,19 @@ private:
         const int timeout = settings.value(QStringLiteral("PendingSequenceTimeout"), 0).toInt();
         settings.endGroup();
         return timeout;
+    }
+
+    static bool hasBinding(const QList<BindingEntry>& bindings, QChar key, const QString& action)
+    {
+        for(const auto& binding : bindings) {
+            if(binding.actionName != action || binding.keys.size() != 1)
+                continue;
+
+            if(binding.keys.front().ch == key)
+                return true;
+        }
+
+        return false;
     }
 
 private Q_SLOTS:
@@ -200,6 +214,27 @@ private Q_SLOTS:
         Q_UNUSED(vimSettings);
 
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::EnableSettingsUi>(), false);
+    }
+
+    void testBindingBackendReloadsCustomBindings()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Normal/z"), QStringLiteral("focusNowPlaying"));
+
+        VimMotionsBindingBackend backend{&settings};
+        const auto initialBindings = backend.effectiveBindings().value(BindingMode::Normal);
+        QVERIFY(hasBinding(initialBindings, QChar(u'z'), QStringLiteral("focusNowPlaying")));
+        QVERIFY(hasBinding(initialBindings, QChar(u'j'), QStringLiteral("moveCursor")));
+
+        QCOMPARE(settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false), true);
+        backend.reloadBindings();
+
+        const auto reloadedBindings = backend.effectiveBindings().value(BindingMode::Normal);
+        QVERIFY(hasBinding(reloadedBindings, QChar(u'z'), QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasBinding(reloadedBindings, QChar(u'j'), QStringLiteral("moveCursor")));
     }
 };
 

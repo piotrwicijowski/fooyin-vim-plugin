@@ -20,6 +20,7 @@ class TrackSelectionController;
 namespace VimMotions {
 
 class VimHandler;
+class VimMotionsBindingBackend;
 
 class VimMotionsPlugin : public QObject,
                          public Plugin,
@@ -46,6 +47,7 @@ private:
     SearchController* m_searchController{nullptr};
     TrackSelectionController* m_trackSelection{nullptr};
     SettingsManager* m_settingsManager{nullptr};
+    std::unique_ptr<VimMotionsBindingBackend> m_settingsBackend;
     VimHandler* m_vimHandler{nullptr};
 };
 
