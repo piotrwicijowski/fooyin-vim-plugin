@@ -20,6 +20,6 @@
 - marks. M - global marks (regardless of playlist) - needs public API
 - mark column indicator - needs public API
 - F2 (rename) - detect if we have text input and don't capture normal mode bindings - done
-- Move/copy this song right after the currently playing without moving focus there
+- Move/copy this song right after the currently playing without moving focus there - done
 - Mode indicator - done
 - dot for repeat
