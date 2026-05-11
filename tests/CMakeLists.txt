@@ -29,6 +29,19 @@ target_link_libraries(test_integration PRIVATE
 )
 add_test(NAME test_integration COMMAND test_integration)
 
+add_executable(test_vimmotionssettingsdialog
+    vimmotionssettingsdialogtest.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionssettingsdialog.cpp
+)
+target_include_directories(test_vimmotionssettingsdialog PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(test_vimmotionssettingsdialog PRIVATE
+    Qt6::Test
+    Qt6::Widgets
+)
+add_test(NAME test_vimmotionssettingsdialog COMMAND test_vimmotionssettingsdialog)
+
 add_executable(test_searchnavigation
     searchnavigationtest.cpp
 )
