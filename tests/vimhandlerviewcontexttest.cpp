@@ -1,6 +1,8 @@
 #include "vimhandler.h"
+#include "vimmotionssettings.h"
 
 #include <gui/fywidget.h>
+#include <utils/settings/settingsmanager.h>
 
 #include <QAbstractItemModel>
 #include <QApplication>
@@ -11,6 +13,11 @@
 #include <QTest>
 #include <QTreeView>
 #include <QVBoxLayout>
+
+#include <QDir>
+#include <QFile>
+#include <QKeyEvent>
+#include <QSettings>
 
 #include <memory>
 
@@ -389,6 +396,12 @@ void focusTree(QTreeView* tree)
     qApp->processEvents();
 }
 
+bool dispatchKey(Fooyin::VimMotions::VimHandler& handler, QObject* watched, QChar ch)
+{
+    QKeyEvent event(QEvent::KeyPress, Qt::Key_A + (ch.toLower().unicode() - u'a'), Qt::NoModifier, QString(ch));
+    return handler.eventFilter(watched, &event);
+}
+
 QStandardItem* makeGroupItem(const QString& text)
 {
     auto* item = new QStandardItem(text);
@@ -424,6 +437,7 @@ private Q_SLOTS:
     void organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup();
     void organiserInlineEditorSuspendsVimCapture();
     void searchBarTypingKeepsFocus();
+    void scopedBindingsPreferActiveViewOverGlobalFallback();
     void organiserSearchFindsVisibleChild();
     void organiserSearchSkipsCollapsedChildren();
     void organiserSearchNavigatesVisibleMatches();
@@ -857,6 +871,60 @@ void TestVimHandlerViewContext::searchBarTypingKeepsFocus()
 
     QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::scopedBindingsPreferActiveViewOverGlobalFallback()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_scoped_view_context.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/j"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistView/Normal/j"), QStringLiteral("moveCursor:+1"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistOrganiser/Normal/j"),
+                     QStringLiteral("treeOpenOrDescend"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    Fooyin::PlaylistView playlistView;
+    QStandardItemModel playlistModel;
+    playlistModel.appendRow(new QStandardItem(QStringLiteral("One")));
+    playlistModel.appendRow(new QStandardItem(QStringLiteral("Two")));
+    playlistView.setModel(&playlistModel);
+    playlistView.setCurrentIndex(playlistModel.index(0, 0));
+    focusTree(&playlistView);
+
+    QVERIFY(dispatchKey(handler, &playlistView, u'j'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(playlistView.currentIndex().row(), 1);
+
+    FakeOrganiserWidget organiser;
+    QStandardItemModel organiserModel;
+    auto* group = makeGroupItem(QStringLiteral("Group"));
+    group->appendRow(new QStandardItem(QStringLiteral("Child")));
+    organiserModel.appendRow(group);
+    organiser.view()->setModel(&organiserModel);
+    organiser.view()->collapse(organiserModel.index(0, 0));
+    organiser.view()->setCurrentIndex(organiserModel.index(0, 0));
+    focusTree(organiser.view());
+
+    QVERIFY(dispatchKey(handler, organiser.view(), u'j'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(organiser.view()->isExpanded(organiserModel.index(0, 0)));
+
+    FakeFyWidget otherWidget;
+    QStandardItemModel otherModel;
+    otherModel.appendRow(new QStandardItem(QStringLiteral("Other")));
+    otherWidget.view()->setModel(&otherModel);
+    otherWidget.view()->setCurrentIndex(otherModel.index(0, 0));
+    focusTree(otherWidget.view());
+
+    QVERIFY(dispatchKey(handler, otherWidget.view(), u'j'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
 }
 
 void TestVimHandlerViewContext::organiserSearchFindsVisibleChild()

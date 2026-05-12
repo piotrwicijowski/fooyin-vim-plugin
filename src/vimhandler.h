@@ -4,7 +4,10 @@
 #include "vimactions.h"
 #include "vimbindingparser.h"
 #include "vimclipboard.h"
+#include "vimmotionsbindingbackend.h"
 
+#include <QHash>
+#include <QList>
 #include <QMetaObject>
 #include <QObject>
 #include <QPersistentModelIndex>
@@ -35,7 +38,6 @@ namespace Fooyin::VimMotions {
 enum class Direction : int;
 
 class ViewLocator;
-class VimMotionsBindingBackend;
 class SpatialNavigator;
 class VimSearchBar;
 
@@ -52,6 +54,9 @@ public:
         Filter,
         Search
     };
+
+    using ScopedConfigBindings = QHash<BindingScope, QList<BindingEntry>>;
+    using ModeConfigBindings   = QHash<Mode, ScopedConfigBindings>;
 
     enum class ViewContext
     {
@@ -77,7 +82,7 @@ public:
     // Testing support
     void rebuildBindings();
     [[nodiscard]] ViewContext viewContext(QAbstractItemView* view) const;
-    [[nodiscard]] const QHash<Mode, QList<BindingEntry>>& configBindings() const
+    [[nodiscard]] const ModeConfigBindings& configBindings() const
     {
         return m_configBindings;
     }
@@ -150,10 +155,12 @@ private:
     bool handleKeyPress(QKeyEvent* ev);
     [[nodiscard]] bool shouldSkipBindings(QObject* watched) const;
     [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
+    [[nodiscard]] bool wouldHandleFromBindings(QKeyEvent* ev, const QList<BindingEntry>& bindings) const;
     [[nodiscard]] bool hasPendingInput() const;
     [[nodiscard]] bool pendingConfigPrefixMatches(const BindingEntry& entry) const;
 
     bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
+    bool dispatchFromBindings(QKeyEvent* ev, BindingScope scope, const QList<BindingEntry>& bindings);
     void executeAction(const BindingEntry& entry);
     bool handlePendingMarkOp(QKeyEvent* ev);
     void clearPendingInputState();
@@ -196,6 +203,8 @@ private:
     [[nodiscard]] std::vector<VimClipboard::MarkTransfer> takeCutMarks(Fooyin::Playlist* playlist, int startRow,
                                                                        int endRow);
     [[nodiscard]] ViewContext activeViewContext() const;
+    [[nodiscard]] BindingScope bindingScopeForView(QAbstractItemView* view) const;
+    [[nodiscard]] BindingScope activeBindingScope() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
@@ -263,9 +272,10 @@ private:
     bool m_wrapScan{true};
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};
-    QHash<Mode, QList<BindingEntry>> m_configBindings;
+    ModeConfigBindings m_configBindings;
     QList<KeyCombo> m_pendingConfigSequence;
     std::optional<BindingEntry> m_pendingConfigFallback;
+    std::optional<BindingScope> m_pendingConfigScope;
     int m_pendingSequenceTimeoutMs{0};
     QTimer m_pendingTimeoutTimer;
 };

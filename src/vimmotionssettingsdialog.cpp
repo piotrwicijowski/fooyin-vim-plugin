@@ -34,7 +34,8 @@ namespace {
 
 enum BindingRoles
 {
-    ModeRole = Qt::UserRole + 1,
+    ScopeRole = Qt::UserRole + 1,
+    ModeRole,
     KeysRole,
     SourceRole,
     StatusRole,
@@ -116,6 +117,7 @@ void populateBindingsTree(QStandardItemModel* model, const QList<BindingRow>& ro
 
         for(auto* item : {modeItem, keysItem, actionItem, sourceItem, statusItem}) {
             item->setEditable(false);
+            item->setData(static_cast<int>(row.scope), ScopeRole);
             item->setData(static_cast<int>(row.mode), ModeRole);
             item->setData(row.keys, KeysRole);
             item->setData(static_cast<int>(row.source), SourceRole);
@@ -322,6 +324,7 @@ void VimMotionsSettingsDialog::refreshBindingsTree()
         return;
 
     const QModelIndex currentIndex = m_bindingsTree->currentIndex();
+    const int currentScope         = currentIndex.data(ScopeRole).toInt();
     const int currentMode          = currentIndex.data(ModeRole).toInt();
     const QString currentKeys      = currentIndex.data(KeysRole).toString();
 
@@ -334,7 +337,8 @@ void VimMotionsSettingsDialog::refreshBindingsTree()
     if(!currentKeys.isEmpty()) {
         for(int row = 0; row < bindingModel->rowCount(); ++row) {
             const QModelIndex index = bindingModel->index(row, 0);
-            if(index.data(ModeRole).toInt() == currentMode && index.data(KeysRole).toString() == currentKeys) {
+            if(index.data(ScopeRole).toInt() == currentScope && index.data(ModeRole).toInt() == currentMode
+               && index.data(KeysRole).toString() == currentKeys) {
                 m_bindingsTree->setCurrentIndex(index);
                 break;
             }
@@ -348,13 +352,15 @@ void VimMotionsSettingsDialog::updateBindingButtons()
 {
     const QModelIndex currentIndex = m_bindingsTree->currentIndex();
     const bool hasSelection        = currentIndex.isValid();
+    const auto scope               = static_cast<BindingScope>(currentIndex.data(ScopeRole).toInt());
     const auto mode                = static_cast<BindingMode>(currentIndex.data(ModeRole).toInt());
     const QString keys             = currentIndex.data(KeysRole).toString();
     const auto status              = static_cast<BindingRowStatus>(currentIndex.data(StatusRole).toInt());
 
     const auto definitionIt = hasSelection ? std::find_if(m_bindingDefinitions.cbegin(), m_bindingDefinitions.cend(),
-                                                          [mode, &keys](const auto& candidate) {
-                                                              return candidate.mode == mode && candidate.keys == keys;
+                                                          [scope, mode, &keys](const auto& candidate) {
+                                                              return candidate.scope == scope && candidate.mode == mode
+                                                                  && candidate.keys == keys;
                                                           })
                                            : m_bindingDefinitions.cend();
     const BindingDefinition* definition = definitionIt == m_bindingDefinitions.cend() ? nullptr : &(*definitionIt);
@@ -401,8 +407,8 @@ void VimMotionsSettingsDialog::addBinding()
     if(dialog.exec() != QDialog::Accepted)
         return;
 
-    if(!m_settingsBackend->addCustomBinding(m_bindingDefinitions, dialog.mode(), dialog.keys(), dialog.actionName(),
-                                            dialog.args())) {
+    if(!m_settingsBackend->addCustomBinding(m_bindingDefinitions, BindingScope::Global, dialog.mode(), dialog.keys(),
+                                            dialog.actionName(), dialog.args())) {
         QMessageBox::warning(this, windowTitle(), tr("Could not add binding. Check for duplicate or invalid keys."));
         return;
     }
@@ -415,13 +421,15 @@ void VimMotionsSettingsDialog::editBinding()
     if(!m_settingsBackend || !m_bindingsTree->currentIndex().isValid())
         return;
 
-    const QModelIndex index        = m_bindingsTree->currentIndex();
-    const BindingMode originalMode = static_cast<BindingMode>(index.data(ModeRole).toInt());
-    const QString originalKeys     = index.data(KeysRole).toString();
+    const QModelIndex index          = m_bindingsTree->currentIndex();
+    const BindingScope originalScope = static_cast<BindingScope>(index.data(ScopeRole).toInt());
+    const BindingMode originalMode   = static_cast<BindingMode>(index.data(ModeRole).toInt());
+    const QString originalKeys       = index.data(KeysRole).toString();
 
     auto definitionIt = std::find_if(m_bindingDefinitions.begin(), m_bindingDefinitions.end(),
-                                     [originalMode, &originalKeys](const auto& definition) {
-                                         return definition.mode == originalMode && definition.keys == originalKeys;
+                                     [originalScope, originalMode, &originalKeys](const auto& definition) {
+                                         return definition.scope == originalScope && definition.mode == originalMode
+                                             && definition.keys == originalKeys;
                                      });
     if(definitionIt == m_bindingDefinitions.end())
         return;
@@ -438,8 +446,9 @@ void VimMotionsSettingsDialog::editBinding()
     if(dialog.exec() != QDialog::Accepted)
         return;
 
-    if(!m_settingsBackend->updateCustomBinding(m_bindingDefinitions, originalMode, originalKeys, dialog.mode(),
-                                               dialog.keys(), dialog.actionName(), dialog.args())) {
+    if(!m_settingsBackend->updateCustomBinding(m_bindingDefinitions, originalScope, originalMode, originalKeys,
+                                               originalScope, dialog.mode(), dialog.keys(), dialog.actionName(),
+                                               dialog.args())) {
         QMessageBox::warning(this, windowTitle(), tr("Could not update binding. Check for duplicate or invalid keys."));
         return;
     }
@@ -453,9 +462,9 @@ void VimMotionsSettingsDialog::removeBinding()
         return;
 
     const QModelIndex index = m_bindingsTree->currentIndex();
-    if(m_settingsBackend->removeCustomBinding(m_bindingDefinitions,
-                                              static_cast<BindingMode>(index.data(ModeRole).toInt()),
-                                              index.data(KeysRole).toString())) {
+    if(m_settingsBackend->removeCustomBinding(
+           m_bindingDefinitions, static_cast<BindingScope>(index.data(ScopeRole).toInt()),
+           static_cast<BindingMode>(index.data(ModeRole).toInt()), index.data(KeysRole).toString())) {
         refreshBindingsTree();
     }
 }
@@ -466,7 +475,8 @@ void VimMotionsSettingsDialog::unmapBinding()
         return;
 
     const QModelIndex index = m_bindingsTree->currentIndex();
-    if(!m_settingsBackend->unmapBinding(m_bindingDefinitions, static_cast<BindingMode>(index.data(ModeRole).toInt()),
+    if(!m_settingsBackend->unmapBinding(m_bindingDefinitions, static_cast<BindingScope>(index.data(ScopeRole).toInt()),
+                                        static_cast<BindingMode>(index.data(ModeRole).toInt()),
                                         index.data(KeysRole).toString())) {
         return;
     }
@@ -480,7 +490,8 @@ void VimMotionsSettingsDialog::resetSelectedBinding()
         return;
 
     const QModelIndex index = m_bindingsTree->currentIndex();
-    if(m_settingsBackend->resetBinding(m_bindingDefinitions, static_cast<BindingMode>(index.data(ModeRole).toInt()),
+    if(m_settingsBackend->resetBinding(m_bindingDefinitions, static_cast<BindingScope>(index.data(ScopeRole).toInt()),
+                                       static_cast<BindingMode>(index.data(ModeRole).toInt()),
                                        index.data(KeysRole).toString())) {
         refreshBindingsTree();
     }

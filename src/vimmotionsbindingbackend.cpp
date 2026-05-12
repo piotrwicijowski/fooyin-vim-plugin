@@ -21,6 +21,18 @@ QSettings* settingsFile(SettingsManager* settingsManager)
     return settingsManager ? settingsManager->findChild<QSettings*>() : nullptr;
 }
 
+std::optional<BindingScope> scopeFromString(const QString& scope)
+{
+    if(scope == QStringLiteral("Global"))
+        return BindingScope::Global;
+    if(scope == QStringLiteral("PlaylistView"))
+        return BindingScope::PlaylistView;
+    if(scope == QStringLiteral("PlaylistOrganiser"))
+        return BindingScope::PlaylistOrganiser;
+
+    return std::nullopt;
+}
+
 std::optional<BindingMode> modeFromString(const QString& mode)
 {
     if(mode == QStringLiteral("Normal"))
@@ -31,6 +43,20 @@ std::optional<BindingMode> modeFromString(const QString& mode)
         return BindingMode::Insert;
 
     return std::nullopt;
+}
+
+QString scopeText(BindingScope scope)
+{
+    switch(scope) {
+        case BindingScope::Global:
+            return QStringLiteral("Global");
+        case BindingScope::PlaylistView:
+            return QStringLiteral("PlaylistView");
+        case BindingScope::PlaylistOrganiser:
+            return QStringLiteral("PlaylistOrganiser");
+    }
+
+    return QStringLiteral("Global");
 }
 
 QString modeText(BindingMode mode)
@@ -47,6 +73,20 @@ QString modeText(BindingMode mode)
     return QStringLiteral("Normal");
 }
 
+int scopeOrder(BindingScope scope)
+{
+    switch(scope) {
+        case BindingScope::Global:
+            return 0;
+        case BindingScope::PlaylistView:
+            return 1;
+        case BindingScope::PlaylistOrganiser:
+            return 2;
+    }
+
+    return 0;
+}
+
 int modeOrder(BindingMode mode)
 {
     switch(mode) {
@@ -59,11 +99,6 @@ int modeOrder(BindingMode mode)
     }
 
     return 0;
-}
-
-QString fullBindingKey(BindingMode mode, const QString& keys)
-{
-    return QStringLiteral("VimMotions/Bindings/") + modeText(mode) + u'/' + keys;
 }
 
 QString bindingValue(const QString& actionName, const QString& args)
@@ -133,19 +168,20 @@ QHash<QString, QString> loadCustomBindingValues(SettingsManager* settingsManager
     return customValues;
 }
 
-BindingDefinition* findDefinition(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys)
+BindingDefinition* findDefinition(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
+                                  const QString& keys)
 {
-    const auto it = std::find_if(definitions.begin(), definitions.end(), [mode, &keys](const auto& definition) {
-        return definition.mode == mode && definition.keys == keys;
+    const auto it = std::find_if(definitions.begin(), definitions.end(), [scope, mode, &keys](const auto& definition) {
+        return definition.scope == scope && definition.mode == mode && definition.keys == keys;
     });
     return it == definitions.end() ? nullptr : &(*it);
 }
 
-const BindingDefinition* findDefinition(const QList<BindingDefinition>& definitions, BindingMode mode,
-                                        const QString& keys)
+const BindingDefinition* findDefinition(const QList<BindingDefinition>& definitions, BindingScope scope,
+                                        BindingMode mode, const QString& keys)
 {
-    const auto it = std::find_if(definitions.begin(), definitions.end(), [mode, &keys](const auto& definition) {
-        return definition.mode == mode && definition.keys == keys;
+    const auto it = std::find_if(definitions.begin(), definitions.end(), [scope, mode, &keys](const auto& definition) {
+        return definition.scope == scope && definition.mode == mode && definition.keys == keys;
     });
     return it == definitions.end() ? nullptr : &(*it);
 }
@@ -153,6 +189,11 @@ const BindingDefinition* findDefinition(const QList<BindingDefinition>& definiti
 void sortDefinitions(QList<BindingDefinition>& definitions)
 {
     std::sort(definitions.begin(), definitions.end(), [](const auto& left, const auto& right) {
+        const int leftScopeOrder  = scopeOrder(left.scope);
+        const int rightScopeOrder = scopeOrder(right.scope);
+        if(leftScopeOrder != rightScopeOrder)
+            return leftScopeOrder < rightScopeOrder;
+
         const int leftOrder  = modeOrder(left.mode);
         const int rightOrder = modeOrder(right.mode);
         if(leftOrder != rightOrder)
@@ -161,10 +202,11 @@ void sortDefinitions(QList<BindingDefinition>& definitions)
     });
 }
 
-BindingRow bindingRowFromValue(BindingMode mode, const QString& keys, const QString& value, BindingRowSource source,
-                               BindingRowStatus status)
+BindingRow bindingRowFromValue(BindingScope scope, BindingMode mode, const QString& keys, const QString& value,
+                               BindingRowSource source, BindingRowStatus status)
 {
     BindingRow row;
+    row.scope  = scope;
     row.mode   = mode;
     row.keys   = keys;
     row.source = source;
@@ -214,7 +256,7 @@ void VimMotionsBindingBackend::reloadBindings()
     emit bindingsChanged();
 }
 
-const QHash<BindingMode, QList<BindingEntry>>& VimMotionsBindingBackend::effectiveBindings() const
+const EffectiveBindings& VimMotionsBindingBackend::effectiveBindings() const
 {
     return m_effectiveBindings;
 }
@@ -226,20 +268,22 @@ QList<BindingDefinition> VimMotionsBindingBackend::bindingDefinitions() const
 
     for(auto it = customValues.constBegin(); it != customValues.constEnd(); ++it) {
         const QStringList parts = it.key().split(u'/');
-        if(parts.size() < 4)
+        if(parts.size() != 5)
             continue;
 
-        const auto mode = modeFromString(parts[parts.size() - 2]);
-        if(!mode)
+        const auto scope = scopeFromString(parts[2]);
+        const auto mode  = modeFromString(parts[3]);
+        if(!scope || !mode)
             continue;
 
-        const QString keys = parts.last();
-        if(auto* definition = findDefinition(definitions, *mode, keys)) {
+        const QString keys = parts[4];
+        if(auto* definition = findDefinition(definitions, *scope, *mode, keys)) {
             definition->customValue = it.value();
             continue;
         }
 
         BindingDefinition definition;
+        definition.scope       = *scope;
         definition.mode        = *mode;
         definition.keys        = keys;
         definition.customValue = it.value();
@@ -264,16 +308,18 @@ QList<BindingDefinition> VimMotionsBindingBackend::defaultBindingDefinitions() c
     for(const auto& binding : VimMotionsSettings::defaultBindings()) {
         const QString fullKey   = QString::fromLatin1(binding.key);
         const QStringList parts = fullKey.split(u'/');
-        if(parts.size() < 4)
+        if(parts.size() != 5)
             continue;
 
-        const auto mode = modeFromString(parts[parts.size() - 2]);
-        if(!mode)
+        const auto scope = scopeFromString(parts[2]);
+        const auto mode  = modeFromString(parts[3]);
+        if(!scope || !mode)
             continue;
 
         BindingDefinition definition;
+        definition.scope        = *scope;
         definition.mode         = *mode;
-        definition.keys         = parts.last();
+        definition.keys         = parts[4];
         definition.defaultValue = QString::fromLatin1(binding.value);
         definitions.push_back(definition);
     }
@@ -291,18 +337,20 @@ QList<BindingRow> VimMotionsBindingBackend::bindingRows(const QList<BindingDefin
         if(definition.isDefaultBinding()) {
             if(definition.customValue.has_value()) {
                 if(definition.customValue->isEmpty()) {
-                    rows.push_back(bindingRowFromValue(definition.mode, definition.keys, definition.defaultValue,
-                                                       BindingRowSource::CustomOverride, BindingRowStatus::Unmapped));
+                    rows.push_back(bindingRowFromValue(definition.scope, definition.mode, definition.keys,
+                                                       definition.defaultValue, BindingRowSource::CustomOverride,
+                                                       BindingRowStatus::Unmapped));
                 }
                 else {
-                    rows.push_back(bindingRowFromValue(definition.mode, definition.keys, *definition.customValue,
-                                                       BindingRowSource::CustomOverride, BindingRowStatus::Active));
+                    rows.push_back(bindingRowFromValue(definition.scope, definition.mode, definition.keys,
+                                                       *definition.customValue, BindingRowSource::CustomOverride,
+                                                       BindingRowStatus::Active));
                 }
                 continue;
             }
 
             rows.push_back(bindingRowFromValue(
-                definition.mode, definition.keys, definition.defaultValue, BindingRowSource::Default,
+                definition.scope, definition.mode, definition.keys, definition.defaultValue, BindingRowSource::Default,
                 useDefaultBindings ? BindingRowStatus::Active : BindingRowStatus::Disabled));
             continue;
         }
@@ -310,28 +358,34 @@ QList<BindingRow> VimMotionsBindingBackend::bindingRows(const QList<BindingDefin
         if(!definition.customValue.has_value() || definition.customValue->isEmpty())
             continue;
 
-        rows.push_back(bindingRowFromValue(definition.mode, definition.keys, *definition.customValue,
+        rows.push_back(bindingRowFromValue(definition.scope, definition.mode, definition.keys, *definition.customValue,
                                            BindingRowSource::Custom, BindingRowStatus::Active));
     }
 
     std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+        const int leftScopeOrder  = scopeOrder(left.scope);
+        const int rightScopeOrder = scopeOrder(right.scope);
+        if(leftScopeOrder != rightScopeOrder)
+            return leftScopeOrder < rightScopeOrder;
+
         const int leftOrder  = modeOrder(left.mode);
         const int rightOrder = modeOrder(right.mode);
         if(leftOrder != rightOrder)
             return leftOrder < rightOrder;
+
         return left.keys < right.keys;
     });
     return rows;
 }
 
-bool VimMotionsBindingBackend::addCustomBinding(QList<BindingDefinition>& definitions, BindingMode mode,
-                                                const QString& keys, const QString& actionName,
+bool VimMotionsBindingBackend::addCustomBinding(QList<BindingDefinition>& definitions, BindingScope scope,
+                                                BindingMode mode, const QString& keys, const QString& actionName,
                                                 const QString& args) const
 {
     if(!isValidBinding(keys, actionName, args))
         return false;
 
-    if(BindingDefinition* definition = findDefinition(definitions, mode, keys)) {
+    if(BindingDefinition* definition = findDefinition(definitions, scope, mode, keys)) {
         if(!definition->isDefaultBinding())
             return false;
 
@@ -344,6 +398,7 @@ bool VimMotionsBindingBackend::addCustomBinding(QList<BindingDefinition>& defini
     }
 
     BindingDefinition definition;
+    definition.scope       = scope;
     definition.mode        = mode;
     definition.keys        = keys;
     definition.customValue = bindingValue(actionName, args);
@@ -352,28 +407,33 @@ bool VimMotionsBindingBackend::addCustomBinding(QList<BindingDefinition>& defini
     return true;
 }
 
-bool VimMotionsBindingBackend::updateCustomBinding(QList<BindingDefinition>& definitions, BindingMode originalMode,
-                                                   const QString& originalKeys, BindingMode mode, const QString& keys,
+bool VimMotionsBindingBackend::updateCustomBinding(QList<BindingDefinition>& definitions, BindingScope originalScope,
+                                                   BindingMode originalMode, const QString& originalKeys,
+                                                   BindingScope scope, BindingMode mode, const QString& keys,
                                                    const QString& actionName, const QString& args) const
 {
     if(!isValidBinding(keys, actionName, args))
         return false;
 
-    BindingDefinition* original = findDefinition(definitions, originalMode, originalKeys);
+    BindingDefinition* original = findDefinition(definitions, originalScope, originalMode, originalKeys);
     if(!original)
         return false;
 
-    if((originalMode != mode || originalKeys != keys) && findDefinition(definitions, mode, keys))
+    if((originalScope != scope || originalMode != mode || originalKeys != keys)
+       && findDefinition(definitions, scope, mode, keys)) {
         return false;
+    }
 
     BindingDefinition updated = *original;
+    updated.scope             = scope;
     updated.mode              = mode;
     updated.keys              = keys;
     updated.customValue       = bindingValue(actionName, args);
 
     definitions.erase(std::remove_if(definitions.begin(), definitions.end(),
-                                     [originalMode, &originalKeys](const auto& def) {
-                                         return def.mode == originalMode && def.keys == originalKeys;
+                                     [originalScope, originalMode, &originalKeys](const auto& def) {
+                                         return def.scope == originalScope && def.mode == originalMode
+                                             && def.keys == originalKeys;
                                      }),
                       definitions.end());
     definitions.push_back(updated);
@@ -381,23 +441,25 @@ bool VimMotionsBindingBackend::updateCustomBinding(QList<BindingDefinition>& def
     return true;
 }
 
-bool VimMotionsBindingBackend::removeCustomBinding(QList<BindingDefinition>& definitions, BindingMode mode,
-                                                   const QString& keys) const
+bool VimMotionsBindingBackend::removeCustomBinding(QList<BindingDefinition>& definitions, BindingScope scope,
+                                                   BindingMode mode, const QString& keys) const
 {
-    const BindingDefinition* definition = findDefinition(definitions, mode, keys);
+    const BindingDefinition* definition = findDefinition(definitions, scope, mode, keys);
     if(!definition || definition->isDefaultBinding())
         return false;
 
     definitions.erase(std::remove_if(definitions.begin(), definitions.end(),
-                                     [mode, &keys](const auto& def) { return def.mode == mode && def.keys == keys; }),
+                                     [scope, mode, &keys](const auto& def) {
+                                         return def.scope == scope && def.mode == mode && def.keys == keys;
+                                     }),
                       definitions.end());
     return true;
 }
 
-bool VimMotionsBindingBackend::resetBinding(QList<BindingDefinition>& definitions, BindingMode mode,
+bool VimMotionsBindingBackend::resetBinding(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
                                             const QString& keys) const
 {
-    BindingDefinition* definition = findDefinition(definitions, mode, keys);
+    BindingDefinition* definition = findDefinition(definitions, scope, mode, keys);
     if(!definition)
         return false;
 
@@ -407,13 +469,13 @@ bool VimMotionsBindingBackend::resetBinding(QList<BindingDefinition>& definition
         return true;
     }
 
-    return removeCustomBinding(definitions, mode, keys);
+    return removeCustomBinding(definitions, scope, mode, keys);
 }
 
-bool VimMotionsBindingBackend::unmapBinding(QList<BindingDefinition>& definitions, BindingMode mode,
+bool VimMotionsBindingBackend::unmapBinding(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
                                             const QString& keys) const
 {
-    BindingDefinition* definition = findDefinition(definitions, mode, keys);
+    BindingDefinition* definition = findDefinition(definitions, scope, mode, keys);
     if(!definition || !definition->isDefaultBinding())
         return false;
 
@@ -436,7 +498,8 @@ bool VimMotionsBindingBackend::saveBindingDefinitions(const QList<BindingDefinit
         if(!definition.customValue.has_value())
             continue;
 
-        settings.setValue(QStringLiteral("Bindings/") + modeText(definition.mode) + u'/' + definition.keys,
+        settings.setValue(QStringLiteral("Bindings/") + scopeText(definition.scope) + u'/' + modeText(definition.mode)
+                              + u'/' + definition.keys,
                           *definition.customValue);
     }
 
@@ -446,15 +509,15 @@ bool VimMotionsBindingBackend::saveBindingDefinitions(const QList<BindingDefinit
     return settings.status() == QSettings::NoError;
 }
 
-QHash<BindingMode, QList<BindingEntry>> VimMotionsBindingBackend::loadBindings() const
+EffectiveBindings VimMotionsBindingBackend::loadBindings() const
 {
-    QHash<BindingMode, QList<BindingEntry>> bindings;
+    EffectiveBindings bindings;
 
     for(const auto& row : bindingRows(bindingDefinitions(), useDefaultBindings())) {
         if(row.status != BindingRowStatus::Active)
             continue;
 
-        bindings[row.mode].push_back(parseBindingString(row.keys, bindingValue(row.actionName, row.args)));
+        bindings[row.mode][row.scope].push_back(parseBindingString(row.keys, bindingValue(row.actionName, row.args)));
     }
 
     return bindings;
@@ -463,6 +526,11 @@ QHash<BindingMode, QList<BindingEntry>> VimMotionsBindingBackend::loadBindings()
 std::optional<BindingMode> VimMotionsBindingBackend::modeFromString(const QString& mode)
 {
     return ::Fooyin::VimMotions::modeFromString(mode);
+}
+
+std::optional<BindingScope> VimMotionsBindingBackend::scopeFromString(const QString& scope)
+{
+    return ::Fooyin::VimMotions::scopeFromString(scope);
 }
 
 } // namespace Fooyin::VimMotions

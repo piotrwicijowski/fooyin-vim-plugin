@@ -37,6 +37,9 @@ namespace Fooyin::VimMotions {
 
 namespace {
 
+using ScopedConfigBindings = VimHandler::ScopedConfigBindings;
+using ModeConfigBindings   = VimHandler::ModeConfigBindings;
+
 VimHandler::Mode toHandlerMode(BindingMode mode)
 {
     switch(mode) {
@@ -51,12 +54,16 @@ VimHandler::Mode toHandlerMode(BindingMode mode)
     return VimHandler::Mode::Normal;
 }
 
-QHash<VimHandler::Mode, QList<BindingEntry>> convertBindings(const QHash<BindingMode, QList<BindingEntry>>& source)
+ModeConfigBindings convertBindings(const EffectiveBindings& source)
 {
-    QHash<VimHandler::Mode, QList<BindingEntry>> bindings;
+    ModeConfigBindings bindings;
 
     for(auto it = source.cbegin(); it != source.cend(); ++it) {
-        bindings.insert(toHandlerMode(it.key()), it.value());
+        ScopedConfigBindings scopedBindings;
+        for(auto scopedIt = it.value().cbegin(); scopedIt != it.value().cend(); ++scopedIt)
+            scopedBindings.insert(scopedIt.key(), scopedIt.value());
+
+        bindings.insert(toHandlerMode(it.key()), scopedBindings);
     }
 
     return bindings;
@@ -2549,6 +2556,7 @@ void VimHandler::clearPendingInputState()
     m_pendingKey = {};
     m_pendingConfigSequence.clear();
     m_pendingConfigFallback.reset();
+    m_pendingConfigScope.reset();
     m_pendingMarkOp = PendingMarkOp::None;
     m_pendingTimeoutTimer.stop();
 }
@@ -2671,9 +2679,16 @@ void VimHandler::applyBackendBindings()
 
     m_configBindings = convertBindings(m_settingsBackend->effectiveBindings());
 
-    qCInfo(VIM_LOG) << "Rebuilt config bindings:" << m_configBindings[Mode::Normal].size() << "normal,"
-                    << m_configBindings[Mode::Visual].size() << "visual," << m_configBindings[Mode::Insert].size()
-                    << "insert";
+    const auto bindingCountForMode = [this](Mode mode) {
+        int count                 = 0;
+        const auto scopedBindings = m_configBindings.value(mode);
+        for(auto it = scopedBindings.cbegin(); it != scopedBindings.cend(); ++it)
+            count += it.value().size();
+        return count;
+    };
+
+    qCInfo(VIM_LOG) << "Rebuilt config bindings:" << bindingCountForMode(Mode::Normal) << "normal,"
+                    << bindingCountForMode(Mode::Visual) << "visual," << bindingCountForMode(Mode::Insert) << "insert";
 }
 
 // ---------------------------------------------------------------------------
@@ -2742,7 +2757,33 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     m_dispatchCount    = m_count > 0 ? m_count : 1;
     m_count            = 0;
 
-    const auto& bindings = m_configBindings[mode];
+    const BindingScope activeScope = activeBindingScope();
+
+    if(m_pendingConfigScope.has_value()) {
+        const auto scopedBindings = m_configBindings.value(mode).value(*m_pendingConfigScope);
+        if(dispatchFromBindings(ev, *m_pendingConfigScope, scopedBindings))
+            return true;
+    }
+
+    const auto scopedBindings = m_configBindings.value(mode).value(activeScope);
+    if(dispatchFromBindings(ev, activeScope, scopedBindings))
+        return true;
+
+    if(activeScope != BindingScope::Global) {
+        const auto globalBindings = m_configBindings.value(mode).value(BindingScope::Global);
+        if(dispatchFromBindings(ev, BindingScope::Global, globalBindings))
+            return true;
+    }
+
+    qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << qtKey << "text=" << text
+                     << "scope=" << static_cast<int>(activeScope);
+    return false;
+}
+
+bool VimHandler::dispatchFromBindings(QKeyEvent* ev, const BindingScope scope, const QList<BindingEntry>& bindings)
+{
+    const QString text = ev->text();
+    const QChar ch     = text.isEmpty() ? QChar{} : text.front();
 
     if(!m_pendingConfigSequence.isEmpty()) {
         const BindingEntry* completeMatch = nullptr;
@@ -2762,6 +2803,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
             }
             else {
                 m_pendingConfigSequence = nextPrefix;
+                m_pendingConfigScope    = scope;
                 refreshPendingTimeout();
                 qCDebug(VIM_LOG) << "ConfigDispatch: sequence pending length" << m_pendingConfigSequence.size();
                 return true;
@@ -2836,6 +2878,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     if(sequencePrefix) {
         m_pendingConfigSequence = {sequencePrefix->keys.front()};
         m_pendingConfigFallback.reset();
+        m_pendingConfigScope = scope;
         if(best)
             m_pendingConfigFallback = *best;
         refreshPendingTimeout();
@@ -2845,7 +2888,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     }
 
     if(!best) {
-        qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << qtKey << "text=" << text;
+        qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << ev->key() << "text=" << text;
         return false;
     }
 
@@ -2874,7 +2917,24 @@ bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
             return true;
     }
 
-    const auto& bindings = m_configBindings.value(mode);
+    if(m_pendingConfigScope.has_value()) {
+        const auto pendingBindings = m_configBindings.value(mode).value(*m_pendingConfigScope);
+        if(wouldHandleFromBindings(ev, pendingBindings))
+            return true;
+    }
+
+    const BindingScope activeScope = activeBindingScope();
+    if(wouldHandleFromBindings(ev, m_configBindings.value(mode).value(activeScope)))
+        return true;
+
+    return activeScope != BindingScope::Global
+        && wouldHandleFromBindings(ev, m_configBindings.value(mode).value(BindingScope::Global));
+}
+
+bool VimHandler::wouldHandleFromBindings(QKeyEvent* ev, const QList<BindingEntry>& bindings) const
+{
+    if(bindings.isEmpty())
+        return false;
 
     if(!m_pendingConfigSequence.isEmpty()) {
         for(const auto& b : bindings) {
@@ -2900,6 +2960,26 @@ bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
     }
 
     return false;
+}
+
+BindingScope VimHandler::bindingScopeForView(QAbstractItemView* view) const
+{
+    switch(viewContext(view)) {
+        case ViewContext::PlaylistView:
+            return BindingScope::PlaylistView;
+        case ViewContext::PlaylistOrganiser:
+            return BindingScope::PlaylistOrganiser;
+        case ViewContext::None:
+        case ViewContext::Other:
+            return BindingScope::Global;
+    }
+
+    return BindingScope::Global;
+}
+
+BindingScope VimHandler::activeBindingScope() const
+{
+    return bindingScopeForView(m_viewLocator->activeView());
 }
 
 bool VimHandler::pendingConfigPrefixMatches(const BindingEntry& entry) const
