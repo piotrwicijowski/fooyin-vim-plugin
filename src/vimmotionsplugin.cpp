@@ -2,19 +2,54 @@
 #include "vimhandler.h"
 #include "vimlog.h"
 #include "vimmodeindicatorwidget.h"
+#include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
+#include "vimmotionssettingsdialog.h"
 
 #include <core/plugins/coreplugincontext.h>
 #include <gui/plugins/guiplugincontext.h>
 #include <gui/widgetprovider.h>
 
+#include <gui/plugins/pluginsettingsprovider.h>
+#include <utils/settings/settingsmanager.h>
+
 #include <QApplication>
+#include <QMessageBox>
+
+#include <memory>
 
 using namespace Qt::StringLiterals;
 
 namespace Fooyin::VimMotions {
 
 namespace {
+
+class VimMotionsPluginSettingsProvider : public PluginSettingsProvider
+{
+public:
+    explicit VimMotionsPluginSettingsProvider(Fooyin::SettingsManager* settings, VimMotionsBindingBackend* backend)
+        : m_settings{settings}
+        , m_backend{backend}
+    { }
+
+    void showSettings(QWidget* parent) override
+    {
+        if(m_settings && m_settings->value<Settings::VimMotions::EnableSettingsUi>()) {
+            auto* dialog = new VimMotionsSettingsDialog(m_settings, m_backend, parent);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->show();
+            return;
+        }
+
+        QMessageBox::information(
+            parent, QApplication::translate("VimMotionsPlugin", "Vim Motions"),
+            QApplication::translate("VimMotionsPlugin", "The Vim Motions settings UI is disabled."));
+    }
+
+private:
+    SettingsManager* m_settings{nullptr};
+    VimMotionsBindingBackend* m_backend{nullptr};
+};
 
 QString modeIndicatorText(VimHandler::Mode mode)
 {
@@ -41,6 +76,11 @@ QString modeIndicatorText(VimHandler::Mode mode)
 VimMotionsPlugin::VimMotionsPlugin()  = default;
 VimMotionsPlugin::~VimMotionsPlugin() = default;
 
+std::unique_ptr<PluginSettingsProvider> VimMotionsPlugin::settingsProvider() const
+{
+    return std::make_unique<VimMotionsPluginSettingsProvider>(m_settingsManager, m_settingsBackend.get());
+}
+
 void VimMotionsPlugin::initialise(const CorePluginContext& context)
 {
     m_playlistHandler = context.playlistHandler;
@@ -49,6 +89,7 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
                     << (m_playlistHandler ? "(PlaylistHandler acquired)" : "(no PlaylistHandler!)");
 
     VimMotionsSettings{m_settingsManager};
+    m_settingsBackend = std::make_unique<VimMotionsBindingBackend>(m_settingsManager);
 }
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
@@ -62,6 +103,7 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
     m_vimHandler->setActionManager(m_actionManager);
     m_vimHandler->setTrackSelectionController(m_trackSelection);
+    m_vimHandler->setSettingsBackend(m_settingsBackend.get());
     m_vimHandler->setSettingsManager(m_settingsManager);
     qApp->installEventFilter(m_vimHandler);
 

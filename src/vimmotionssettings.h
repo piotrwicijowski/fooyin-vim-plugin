@@ -14,7 +14,9 @@ namespace Fooyin::Settings::VimMotions {
 Q_NAMESPACE
 enum VimMotionsSetting : uint32_t
 {
-    UseDefaultBindings = 0 | Type::Bool,
+    EnableSettingsUi        = 0 | Type::Bool,
+    UseDefaultBindings      = 1 | Type::Bool,
+    UseVimMotionsInSettings = 2 | Type::Bool,
     WrapScan,
     PendingSequenceTimeout = 0 | Type::Int,
 };

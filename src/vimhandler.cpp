@@ -3,6 +3,7 @@
 #include "viewlocator.h"
 #include "vimbindingparser.h"
 #include "vimlog.h"
+#include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
 #include "vimsearchbar.h"
 
@@ -25,9 +26,6 @@
 #include <QMimeData>
 #include <QPersistentModelIndex>
 #include <QPointer>
-#include <QSet>
-#include <QSettings>
-#include <QStandardPaths>
 #include <QTimer>
 #include <QTreeView>
 #include <algorithm>
@@ -36,6 +34,55 @@
 Q_LOGGING_CATEGORY(VIM_LOG, "fy.vim")
 
 namespace Fooyin::VimMotions {
+
+namespace {
+
+VimHandler::Mode toHandlerMode(BindingMode mode)
+{
+    switch(mode) {
+        case BindingMode::Normal:
+            return VimHandler::Mode::Normal;
+        case BindingMode::Visual:
+            return VimHandler::Mode::Visual;
+        case BindingMode::Insert:
+            return VimHandler::Mode::Insert;
+    }
+
+    return VimHandler::Mode::Normal;
+}
+
+QHash<VimHandler::Mode, QList<BindingEntry>> convertBindings(const QHash<BindingMode, QList<BindingEntry>>& source)
+{
+    QHash<VimHandler::Mode, QList<BindingEntry>> bindings;
+
+    for(auto it = source.cbegin(); it != source.cend(); ++it) {
+        bindings.insert(toHandlerMode(it.key()), it.value());
+    }
+
+    return bindings;
+}
+
+bool isSettingsDialogObject(const QObject* object)
+{
+    return object && QString::fromLatin1(object->metaObject()->className()).contains(QStringLiteral("SettingsDialog"));
+}
+
+bool hasSettingsDialogAncestor(const QObject* object)
+{
+    for(auto* current = object; current; current = current->parent()) {
+        if(isSettingsDialogObject(current))
+            return true;
+    }
+
+    if(const auto* widget = qobject_cast<const QWidget*>(object)) {
+        if(const QWidget* window = widget->window(); window && window != widget && hasSettingsDialogAncestor(window))
+            return true;
+    }
+
+    return false;
+}
+
+} // namespace
 
 static QTreeView* asTreeView(QAbstractItemView* v)
 {
@@ -283,6 +330,9 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     if(m_suppressFilter)
         return false;
 
+    if(shouldSkipBindings(watched))
+        return false;
+
     const auto type = event->type();
 
     if((type == QEvent::ShortcutOverride || type == QEvent::KeyPress) && organiserEditorActive(watched))
@@ -327,6 +377,24 @@ bool VimHandler::handleKeyPress(QKeyEvent* ev)
         case Mode::Search:
             return false;
     }
+    return false;
+}
+
+bool VimHandler::shouldSkipBindings(QObject* watched) const
+{
+    if(m_useVimMotionsInSettings)
+        return false;
+
+    if(watched && hasSettingsDialogAncestor(watched))
+        return true;
+
+    for(QObject* candidate :
+        {static_cast<QObject*>(QApplication::focusWidget()), static_cast<QObject*>(QApplication::activeModalWidget()),
+         static_cast<QObject*>(QApplication::activeWindow())}) {
+        if(candidate && hasSettingsDialogAncestor(candidate))
+            return true;
+    }
+
     return false;
 }
 
@@ -2405,7 +2473,15 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
     if(!manager)
         return;
 
+    if(!m_settingsBackend) {
+        m_ownedSettingsBackend             = std::make_unique<VimMotionsBindingBackend>(manager, this);
+        m_settingsBackend                  = m_ownedSettingsBackend.get();
+        m_backendBindingsChangedConnection = QObject::connect(
+            m_settingsBackend, &VimMotionsBindingBackend::bindingsChanged, this, [this]() { applyBackendBindings(); });
+    }
+
     m_useDefaultBindings       = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
+    m_useVimMotionsInSettings  = manager->value(QStringLiteral("VimMotions/UseVimMotionsInSettings")).toBool();
     m_wrapScan                 = manager->value(QStringLiteral("VimMotions/WrapScan")).toBool();
     m_pendingSequenceTimeoutMs = qMax(0, manager->value(QStringLiteral("VimMotions/PendingSequenceTimeout")).toInt());
 
@@ -2414,6 +2490,8 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
         m_useDefaultBindings = val;
         rebuildBindings();
     });
+
+    manager->subscribe<UseVimMotionsInSettings>(this, [this](bool val) { m_useVimMotionsInSettings = val; });
 
     manager->subscribe<WrapScan>(this, [this](bool val) { m_wrapScan = val; });
 
@@ -2427,6 +2505,22 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
     }
 
     rebuildBindings();
+}
+
+void VimHandler::setSettingsBackend(VimMotionsBindingBackend* backend)
+{
+    QObject::disconnect(m_backendBindingsChangedConnection);
+    m_ownedSettingsBackend.reset();
+    m_settingsBackend = backend;
+
+    if(m_settingsBackend) {
+        m_backendBindingsChangedConnection = QObject::connect(
+            m_settingsBackend, &VimMotionsBindingBackend::bindingsChanged, this, [this]() { applyBackendBindings(); });
+    }
+
+    if(m_settingsManager) {
+        rebuildBindings();
+    }
 }
 
 int VimHandler::currentCount()
@@ -2563,92 +2657,19 @@ void VimHandler::swapVisualAnchor()
 void VimHandler::rebuildBindings()
 {
     m_configBindings.clear();
-    if(!m_settingsManager)
+    if(!m_settingsBackend)
         return;
 
-    // Track default keys so we skip them during the custom-key scan
-    QSet<QString> seenDefaultKeys;
+    m_settingsBackend->reloadBindings();
+}
 
-    for(const auto& b : VimMotionsSettings::defaultBindings()) {
-        const QString fullKey = QString::fromLatin1(b.key);
-        seenDefaultKeys.insert(fullKey);
+void VimHandler::applyBackendBindings()
+{
+    m_configBindings.clear();
+    if(!m_settingsBackend)
+        return;
 
-        // When UseDefaultBindings is false, only include bindings
-        // that the user has explicitly set in their config file
-        if(!m_useDefaultBindings) {
-            if(!m_settingsManager->fileContains(fullKey)) {
-                continue;
-            }
-        }
-
-        const QString val = m_settingsManager->value(fullKey).toString();
-
-        // Empty value = user wants to unmap this default binding
-        if(val.isEmpty())
-            continue;
-
-        const QStringList parts = fullKey.split(u'/');
-        if(parts.size() < 4)
-            continue;
-
-        const QString modeStr     = parts[parts.size() - 2];
-        const QString keyComboStr = parts[parts.size() - 1];
-
-        Mode mode = Mode::Normal;
-        if(modeStr == QStringLiteral("Visual"))
-            mode = Mode::Visual;
-        else if(modeStr == QStringLiteral("Insert"))
-            mode = Mode::Insert;
-
-        auto entry = parseBindingString(keyComboStr, val);
-        m_configBindings[mode].push_back(std::move(entry));
-    }
-
-    // Scan the settings file for user-defined custom bindings
-    // that are not in the defaults list (e.g. "d" or "f" in Normal mode)
-    {
-        const QString settingsPath
-            = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/fooyin.conf");
-        QSettings fileSettings{settingsPath, QSettings::IniFormat};
-        fileSettings.beginGroup(QStringLiteral("VimMotions"));
-        const QStringList allKeys = fileSettings.allKeys();
-
-        qCDebug(VIM_LOG) << "Custom binding scan:" << allKeys.size() << "keys under VimMotions in" << settingsPath;
-
-        for(const QString& key : allKeys) {
-            if(!key.startsWith(QStringLiteral("Bindings/")))
-                continue;
-
-            const QString fullKey = QStringLiteral("VimMotions/") + key;
-            if(seenDefaultKeys.contains(fullKey)) {
-                qCDebug(VIM_LOG) << "  custom-scan: skip (default key)" << key;
-                continue;
-            }
-
-            const QString val = fileSettings.value(key).toString();
-            qCDebug(VIM_LOG) << "  custom-scan:" << key << "=" << val << "(empty? " << val.isEmpty() << ")";
-            if(val.isEmpty())
-                continue;
-
-            const QStringList parts = fullKey.split(u'/');
-            if(parts.size() < 4)
-                continue;
-
-            const QString modeStr     = parts[parts.size() - 2];
-            const QString keyComboStr = parts[parts.size() - 1];
-
-            Mode mode = Mode::Normal;
-            if(modeStr == QStringLiteral("Visual"))
-                mode = Mode::Visual;
-            else if(modeStr == QStringLiteral("Insert"))
-                mode = Mode::Insert;
-
-            auto entry = parseBindingString(keyComboStr, val);
-            m_configBindings[mode].push_back(std::move(entry));
-            qCDebug(VIM_LOG) << "  custom-scan: added" << key << "->" << val << "in" << modeStr << "mode";
-        }
-        fileSettings.endGroup();
-    }
+    m_configBindings = convertBindings(m_settingsBackend->effectiveBindings());
 
     qCInfo(VIM_LOG) << "Rebuilt config bindings:" << m_configBindings[Mode::Normal].size() << "normal,"
                     << m_configBindings[Mode::Visual].size() << "visual," << m_configBindings[Mode::Insert].size()

@@ -5,6 +5,7 @@
 #include "vimbindingparser.h"
 #include "vimclipboard.h"
 
+#include <QMetaObject>
 #include <QObject>
 #include <QPersistentModelIndex>
 #include <QPointer>
@@ -34,6 +35,7 @@ namespace Fooyin::VimMotions {
 enum class Direction : int;
 
 class ViewLocator;
+class VimMotionsBindingBackend;
 class SpatialNavigator;
 class VimSearchBar;
 
@@ -67,6 +69,7 @@ public:
     void setPlaylistHandler(Fooyin::PlaylistHandler* handler);
     void setActionManager(Fooyin::ActionManager* manager);
     void setSettingsManager(Fooyin::SettingsManager* manager);
+    void setSettingsBackend(VimMotionsBindingBackend* backend);
     void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
@@ -145,6 +148,7 @@ private:
     };
 
     bool handleKeyPress(QKeyEvent* ev);
+    [[nodiscard]] bool shouldSkipBindings(QObject* watched) const;
     [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
     [[nodiscard]] bool hasPendingInput() const;
     [[nodiscard]] bool pendingConfigPrefixMatches(const BindingEntry& entry) const;
@@ -156,6 +160,7 @@ private:
     void setPendingKey(QChar key);
     void setPendingMarkOp(PendingMarkOp op);
     void refreshPendingTimeout();
+    void applyBackendBindings();
 
     void commitFilter();
     void cancelFilter();
@@ -230,6 +235,9 @@ private:
     Fooyin::ActionManager* m_actionManager{nullptr};
     Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
     Fooyin::SettingsManager* m_settingsManager{nullptr};
+    VimMotionsBindingBackend* m_settingsBackend{nullptr};
+    std::unique_ptr<VimMotionsBindingBackend> m_ownedSettingsBackend;
+    QMetaObject::Connection m_backendBindingsChangedConnection;
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
@@ -251,6 +259,7 @@ private:
 
     VimActions m_actions;
     bool m_useDefaultBindings{true};
+    bool m_useVimMotionsInSettings{false};
     bool m_wrapScan{true};
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};

@@ -221,7 +221,21 @@ QT_LOGGING_RULES="fy.vim.debug=true" fooyin 2>&1 | grep "fy.vim"
 
 The plugin reads vim bindings from fooyin's config file (`~/.config/fooyin/fooyin.conf`). By default, all built-in bindings are active through this config-driven system. Use `UseDefaultBindings` (see below) to start from a clean slate.
 
-After changing `fooyin.conf`, restart fooyin before expecting vim-binding changes to apply.
+You can also manage vim settings and bindings in **Settings -> Plugins -> Vim Motions -> Configure**. Changes made there apply on `Apply` or `OK` without restarting fooyin.
+
+Direct edits to `fooyin.conf` are still only picked up on startup, so restart fooyin after changing the file manually.
+
+### Settings UI
+
+The plugin's settings dialog includes:
+
+- `PendingSequenceTimeout` with an `ms` suffix
+- `WrapScan`
+- `UseVimMotionsInSettings`
+- `UseDefaultBindings`
+- an effective bindings tree with `Add`, `Edit`, `Remove`, `Unmap`, `Reset binding`, and `Discard unsaved bindings`
+
+The bindings tree shows the effective state that will be applied, including default rows, custom rows, custom overrides, disabled defaults, and explicit unmaps.
 
 ### Search options
 
@@ -327,7 +341,9 @@ The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]
 
 ### Runtime changes
 
-Bindings are read on startup. If you edit `fooyin.conf`, restart fooyin for those vim-binding changes to apply.
+Changes made through **Settings -> Plugins -> Vim Motions -> Configure** apply immediately on `Apply` or `OK`.
+
+If you edit `fooyin.conf` directly, those vim-binding changes are still read only on startup, so restart fooyin to pick them up.
 
 ### Binding fooyin actions directly
 
@@ -361,7 +377,18 @@ Bindings\Normal\G=jumpToLast
 
 With this config, only `j`, `k`, `gg`, and `G` are active in Normal mode — all other defaults are ignored. See the [Explicit default configuration](#explicit-default-configuration) section for the full list of all default bindings.
 
-After updating `fooyin.conf`, restart fooyin (see [Runtime changes](#runtime-changes)).
+If you make the same change through the settings dialog instead, it applies immediately. Manual `fooyin.conf` edits still require a restart (see [Runtime changes](#runtime-changes)).
+
+### UseVimMotionsInSettings
+
+By default (`UseVimMotionsInSettings=false`), vim bindings are ignored while focus is inside fooyin's main **Settings** dialog and any sub-dialog opened from it.
+
+Set `UseVimMotionsInSettings=true` to preserve the old behaviour and keep vim motions active there too:
+
+```ini
+[VimMotions]
+UseVimMotionsInSettings=true
+```
 
 ### Unmapping bindings
 

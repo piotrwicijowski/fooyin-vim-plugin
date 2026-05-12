@@ -1,20 +1,30 @@
 #include "vimhandler.h"
+#include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
+#include "vimmotionssettingsdialog.h"
 
 #include <utils/actions/actionmanager.h>
 #include <utils/settings/settingsmanager.h>
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
+#include <QFile>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMainWindow>
+#include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QTest>
+#include <QTimer>
 #include <QTreeView>
+#include <QVBoxLayout>
 
 namespace Fooyin {
 
@@ -25,6 +35,16 @@ class PlaylistView : public QTreeView
 public:
     explicit PlaylistView(QWidget* parent = nullptr)
         : QTreeView(parent)
+    { }
+};
+
+class SettingsDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit SettingsDialog(QWidget* parent = nullptr)
+        : QDialog(parent)
     { }
 };
 
@@ -68,6 +88,36 @@ void writeFooyinConfig(const std::function<void(QSettings&)>& configure)
     fileSettings.sync();
 }
 
+void acceptBindingEditor(Fooyin::VimMotions::BindingMode mode, const QString& keys, const QString& actionName,
+                         const QString& args = {})
+{
+    QTimer::singleShot(0, [mode, keys, actionName, args]() {
+        auto* dialog = qobject_cast<QDialog*>(qApp->activeModalWidget());
+        QVERIFY(dialog);
+
+        auto* modeBox    = dialog->findChild<QComboBox*>(QStringLiteral("bindingMode"));
+        auto* keysEdit   = dialog->findChild<QLineEdit*>(QStringLiteral("bindingKeys"));
+        auto* actionEdit = dialog->findChild<QLineEdit*>(QStringLiteral("bindingActionName"));
+        auto* argsEdit   = dialog->findChild<QLineEdit*>(QStringLiteral("bindingArgs"));
+        auto* buttons    = dialog->findChild<QDialogButtonBox*>(QStringLiteral("bindingEditButtons"));
+
+        QVERIFY(modeBox);
+        QVERIFY(keysEdit);
+        QVERIFY(actionEdit);
+        QVERIFY(argsEdit);
+        QVERIFY(buttons);
+
+        modeBox->setCurrentIndex(modeBox->findData(static_cast<int>(mode)));
+        keysEdit->setText(keys);
+        actionEdit->setText(actionName);
+        argsEdit->setText(args);
+
+        auto* okButton = buttons->button(QDialogButtonBox::Ok);
+        QVERIFY(okButton);
+        okButton->click();
+    });
+}
+
 } // namespace
 
 using namespace Fooyin;
@@ -85,6 +135,8 @@ private Q_SLOTS:
     void configNormalAmbiguousPrefixFallsBackAfterTimeout();
     void configVisualAmbiguousPrefixPrefersLongerSequence();
     void configVisualAmbiguousPrefixFallsBackAfterTimeout();
+    void settingsDialogApplyReloadsHandlerBindings();
+    void bindingsAreSkippedInSettingsDialogsByDefault();
 };
 
 void TestVimHandlerTimeout::twoKeyTimeoutClearsPendingSequence()
@@ -318,6 +370,106 @@ void TestVimHandlerTimeout::configVisualAmbiguousPrefixFallsBackAfterTimeout()
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
     QTest::qWait(50);
     QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerTimeout::settingsDialogApplyReloadsHandlerBindings()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_dialog_runtime_reload.ini");
+    QFile::remove(settingsPath);
+
+    SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+
+    VimMotionsBindingBackend backend{&settings};
+    VimHandler handler;
+    handler.setSettingsBackend(&backend);
+    handler.setSettingsManager(&settings);
+
+    QVERIFY(!handler.configBindings().contains(VimHandler::Mode::Normal)
+            || std::none_of(handler.configBindings().value(VimHandler::Mode::Normal).cbegin(),
+                            handler.configBindings().value(VimHandler::Mode::Normal).cend(), [](const auto& binding) {
+                                return binding.actionName == QStringLiteral("focusNowPlaying")
+                                    && binding.keys.size() == 2 && binding.keys.at(0).ch == QChar(u'z')
+                                    && binding.keys.at(1).ch == QChar(u'x');
+                            }));
+
+    VimMotionsSettingsDialog dialog{&settings, &backend};
+    auto* addButton = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
+    auto* buttons   = dialog.findChild<QDialogButtonBox*>();
+    QVERIFY(addButton);
+    QVERIFY(buttons);
+
+    acceptBindingEditor(BindingMode::Normal, QStringLiteral("zx"), QStringLiteral("focusNowPlaying"));
+    addButton->click();
+
+    auto* applyButton = buttons->button(QDialogButtonBox::Apply);
+    QVERIFY(applyButton);
+    applyButton->click();
+
+    const auto normalBindings = handler.configBindings().value(VimHandler::Mode::Normal);
+    QVERIFY(std::any_of(normalBindings.cbegin(), normalBindings.cend(), [](const auto& binding) {
+        return binding.actionName == QStringLiteral("focusNowPlaying") && binding.keys.size() == 2
+            && binding.keys.at(0).ch == QChar(u'z') && binding.keys.at(1).ch == QChar(u'x');
+    }));
+}
+
+void TestVimHandlerTimeout::bindingsAreSkippedInSettingsDialogsByDefault()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_skip_settings_dialog.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView regularView;
+    QStandardItemModel regularModel;
+    regularModel.appendRow(new QStandardItem(QStringLiteral("A")));
+    regularModel.appendRow(new QStandardItem(QStringLiteral("B")));
+    regularView.setModel(&regularModel);
+    regularView.setCurrentIndex(regularModel.index(0, 0));
+    focusView(&regularView);
+
+    QVERIFY(dispatchKey(handler, &regularView, u'j'));
+    QCOMPARE(regularView.currentIndex().row(), 1);
+
+    Fooyin::SettingsDialog settingsDialog;
+    auto* settingsPage   = new QWidget(&settingsDialog);
+    auto* settingsView   = new PlaylistView(settingsPage);
+    auto* settingsLayout = new QVBoxLayout(settingsPage);
+    settingsLayout->setContentsMargins(0, 0, 0, 0);
+    settingsLayout->addWidget(settingsView);
+    QStandardItemModel settingsModel;
+    settingsModel.appendRow(new QStandardItem(QStringLiteral("A")));
+    settingsModel.appendRow(new QStandardItem(QStringLiteral("B")));
+    settingsView->setModel(&settingsModel);
+    settingsView->setCurrentIndex(settingsModel.index(0, 0));
+    focusView(settingsView);
+
+    QVERIFY(!dispatchShortcutOverride(handler, settingsView, u'j'));
+    QVERIFY(!dispatchKey(handler, settingsView, u'j'));
+
+    settings.set(QStringLiteral("VimMotions/UseVimMotionsInSettings"), true);
+
+    QVERIFY(dispatchKey(handler, settingsView, u'j'));
+
+    auto* dialogPage = new QWidget(&settingsDialog);
+    QDialog subDialog(dialogPage);
+    PlaylistView subDialogView(&subDialog);
+    QVBoxLayout subDialogLayout(&subDialog);
+    subDialogLayout.setContentsMargins(0, 0, 0, 0);
+    subDialogLayout.addWidget(&subDialogView);
+    QStandardItemModel subDialogModel;
+    subDialogModel.appendRow(new QStandardItem(QStringLiteral("A")));
+    subDialogModel.appendRow(new QStandardItem(QStringLiteral("B")));
+    subDialogView.setModel(&subDialogModel);
+    subDialogView.setCurrentIndex(subDialogModel.index(0, 0));
+
+    settings.set(QStringLiteral("VimMotions/UseVimMotionsInSettings"), false);
+    focusView(&subDialogView);
+
+    QVERIFY(!dispatchShortcutOverride(handler, &subDialogView, u'j'));
+    QVERIFY(!dispatchKey(handler, &subDialogView, u'j'));
 }
 
 QTEST_MAIN(TestVimHandlerTimeout)

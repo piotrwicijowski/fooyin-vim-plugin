@@ -119,10 +119,14 @@ set(PLUGIN_SOURCES
     src/vimlog.h
     src/vimmodeindicatorwidget.cpp
     src/vimmodeindicatorwidget.h
+    src/vimmotionsbindingbackend.cpp
+    src/vimmotionsbindingbackend.h
     src/vimmotionsplugin.cpp
     src/vimmotionsplugin.h
     src/vimmotionssettings.cpp
     src/vimmotionssettings.h
+    src/vimmotionssettingsdialog.cpp
+    src/vimmotionssettingsdialog.h
     src/vimsearchbar.cpp
     src/vimsearchbar.h
     src/spatialnavigator.cpp
