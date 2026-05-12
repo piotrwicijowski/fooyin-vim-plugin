@@ -1,10 +1,14 @@
 #pragma once
 
+#include "vimmotionsbindingbackend.h"
+
 #include <QDialog>
+#include <QList>
 
 class QWidget;
 class QCheckBox;
 class QDialogButtonBox;
+class QPushButton;
 class QSpinBox;
 class QTreeView;
 
@@ -13,8 +17,6 @@ class SettingsManager;
 }
 
 namespace Fooyin::VimMotions {
-
-class VimMotionsBindingBackend;
 
 class VimMotionsSettingsDialog : public QDialog
 {
@@ -25,16 +27,34 @@ public:
     void accept() override;
 
 private:
+    void refreshBindingsTree();
+    void updateBindingButtons();
+    void loadPersistedBindings();
+    void loadDefaultBindings();
+    void discardUnsavedBindingChanges();
+    void addBinding();
+    void editBinding();
+    void removeBinding();
+    void unmapBinding();
+    void resetSelectedBinding();
+
     void load();
     void apply();
     void reset();
 
     Fooyin::SettingsManager* m_settingsManager{nullptr};
     VimMotionsBindingBackend* m_settingsBackend{nullptr};
+    QList<BindingDefinition> m_bindingDefinitions;
     QSpinBox* m_pendingSequenceTimeout{nullptr};
     QCheckBox* m_wrapScan{nullptr};
     QCheckBox* m_useDefaultBindings{nullptr};
     QTreeView* m_bindingsTree{nullptr};
+    QPushButton* m_addBindingButton{nullptr};
+    QPushButton* m_editBindingButton{nullptr};
+    QPushButton* m_removeBindingButton{nullptr};
+    QPushButton* m_unmapBindingButton{nullptr};
+    QPushButton* m_resetBindingButton{nullptr};
+    QPushButton* m_discardBindingChangesButton{nullptr};
     QDialogButtonBox* m_buttons{nullptr};
 };
 

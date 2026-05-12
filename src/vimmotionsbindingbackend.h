@@ -26,6 +26,43 @@ inline size_t qHash(BindingMode key, size_t seed = 0)
     return std::hash<int>{}(static_cast<int>(key)) ^ seed;
 }
 
+enum class BindingRowSource
+{
+    Default,
+    Custom,
+    CustomOverride,
+};
+
+enum class BindingRowStatus
+{
+    Active,
+    Disabled,
+    Unmapped,
+};
+
+struct BindingDefinition
+{
+    BindingMode mode{BindingMode::Normal};
+    QString keys;
+    QString defaultValue;
+    std::optional<QString> customValue;
+
+    [[nodiscard]] bool isDefaultBinding() const
+    {
+        return !defaultValue.isEmpty();
+    }
+};
+
+struct BindingRow
+{
+    BindingMode mode{BindingMode::Normal};
+    QString keys;
+    QString actionName;
+    QString args;
+    BindingRowSource source{BindingRowSource::Default};
+    BindingRowStatus status{BindingRowStatus::Active};
+};
+
 class VimMotionsBindingBackend
 {
 public:
@@ -39,6 +76,21 @@ public:
     void reloadBindings();
 
     [[nodiscard]] const QHash<BindingMode, QList<BindingEntry>>& effectiveBindings() const;
+    [[nodiscard]] QList<BindingDefinition> bindingDefinitions() const;
+    [[nodiscard]] QList<BindingDefinition> defaultBindingDefinitions() const;
+    [[nodiscard]] QList<BindingRow> bindingRows(const QList<BindingDefinition>& definitions,
+                                                bool useDefaultBindings) const;
+
+    [[nodiscard]] bool addCustomBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys,
+                                        const QString& actionName, const QString& args) const;
+    [[nodiscard]] bool updateCustomBinding(QList<BindingDefinition>& definitions, BindingMode originalMode,
+                                           const QString& originalKeys, BindingMode mode, const QString& keys,
+                                           const QString& actionName, const QString& args) const;
+    [[nodiscard]] bool removeCustomBinding(QList<BindingDefinition>& definitions, BindingMode mode,
+                                           const QString& keys) const;
+    [[nodiscard]] bool resetBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys) const;
+    [[nodiscard]] bool unmapBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys) const;
+    [[nodiscard]] bool saveBindingDefinitions(const QList<BindingDefinition>& definitions);
 
 private:
     [[nodiscard]] QHash<BindingMode, QList<BindingEntry>> loadBindings() const;

@@ -4,9 +4,13 @@
 #include "vimmotionssettingsdialog.h"
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QDialog>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSet>
 #include <QSettings>
@@ -14,6 +18,7 @@
 #include <QStandardItemModel>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QTreeView>
 
 #include <utils/settings/settingsmanager.h>
@@ -99,6 +104,68 @@ private:
         }
 
         return false;
+    }
+
+    static int findTreeRow(const QStandardItemModel* model, const QString& mode, const QString& keys)
+    {
+        if(!model)
+            return -1;
+
+        for(int row = 0; row < model->rowCount(); ++row) {
+            if(model->data(model->index(row, 0)).toString() == mode
+               && model->data(model->index(row, 1)).toString() == keys) {
+                return row;
+            }
+        }
+
+        return -1;
+    }
+
+    static QString treeCell(const QStandardItemModel* model, int row, int column)
+    {
+        if(!model || row < 0)
+            return {};
+
+        return model->data(model->index(row, column)).toString();
+    }
+
+    static void selectTreeRow(QTreeView* tree, const QStandardItemModel* model, const QString& mode,
+                              const QString& keys)
+    {
+        QVERIFY(tree);
+        const int row = findTreeRow(model, mode, keys);
+        QVERIFY(row >= 0);
+        tree->setCurrentIndex(model->index(row, 0));
+    }
+
+    static void acceptBindingEditor(BindingMode mode, const QString& keys, const QString& actionName,
+                                    const QString& args = {})
+    {
+        QTimer::singleShot(0, [mode, keys, actionName, args]() {
+            auto* dialog = qobject_cast<QDialog*>(qApp->activeModalWidget());
+            QVERIFY(dialog);
+
+            auto* modeBox    = dialog->findChild<QComboBox*>(QStringLiteral("bindingMode"));
+            auto* keysEdit   = dialog->findChild<QLineEdit*>(QStringLiteral("bindingKeys"));
+            auto* actionEdit = dialog->findChild<QLineEdit*>(QStringLiteral("bindingActionName"));
+            auto* argsEdit   = dialog->findChild<QLineEdit*>(QStringLiteral("bindingArgs"));
+            auto* buttons    = dialog->findChild<QDialogButtonBox*>(QStringLiteral("bindingEditButtons"));
+
+            QVERIFY(modeBox);
+            QVERIFY(keysEdit);
+            QVERIFY(actionEdit);
+            QVERIFY(argsEdit);
+            QVERIFY(buttons);
+
+            modeBox->setCurrentIndex(modeBox->findData(static_cast<int>(mode)));
+            keysEdit->setText(keys);
+            actionEdit->setText(actionName);
+            argsEdit->setText(args);
+
+            auto* okButton = buttons->button(QDialogButtonBox::Ok);
+            QVERIFY(okButton);
+            okButton->click();
+        });
     }
 
 private Q_SLOTS:
@@ -283,7 +350,10 @@ private Q_SLOTS:
         QVERIFY(treeModel);
         QVERIFY(
             hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
-        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
+        int jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(jRow >= 0);
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Disabled"));
 
         auto* timeout = dialog.findChild<QSpinBox*>(QStringLiteral("pendingSequenceTimeout"));
         QVERIFY(timeout);
@@ -327,27 +397,195 @@ private Q_SLOTS:
         QVERIFY(resetButton);
         resetButton->click();
 
-        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 0);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 450);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
         QCOMPARE(timeout->value(), 0);
         QVERIFY(wrapScan->isChecked());
         QVERIFY(useDefaultBindings->isChecked());
-        QCOMPARE(backend.pendingSequenceTimeout(), 0);
+        QCOMPARE(backend.pendingSequenceTimeout(), 450);
         QCOMPARE(backend.wrapScan(), true);
         QCOMPARE(backend.useDefaultBindings(), true);
         QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
         QVERIFY(
-            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+            !hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
         QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'j'),
                            QStringLiteral("moveCursor")));
+        QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'z'),
+                           QStringLiteral("focusNowPlaying")));
+
+        applyButton->click();
+
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 0);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
+        QCOMPARE(backend.pendingSequenceTimeout(), 0);
+        QCOMPARE(backend.wrapScan(), true);
+        QCOMPARE(backend.useDefaultBindings(), true);
+        QVERIFY(
+            !hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'z'),
+                            QStringLiteral("focusNowPlaying")));
 
         useDefaultBindings->setChecked(false);
         applyButton->click();
 
-        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
+        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(jRow >= 0);
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Disabled"));
+    }
+
+    void testBindingBackendEditableOperations()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_backend_editable.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        VimMotionsBindingBackend backend{&settings};
+        auto definitions = backend.bindingDefinitions();
+
+        QVERIFY(backend.addCustomBinding(definitions, BindingMode::Normal, QStringLiteral("z"),
+                                         QStringLiteral("focusNowPlaying"), {}));
+        QVERIFY(backend.updateCustomBinding(definitions, BindingMode::Normal, QStringLiteral("j"), BindingMode::Normal,
+                                            QStringLiteral("j"), QStringLiteral("focusNowPlaying"), {}));
+        QVERIFY(backend.unmapBinding(definitions, BindingMode::Normal, QStringLiteral("k")));
+
+        const auto rows = backend.bindingRows(definitions, false);
+        int jRow        = -1;
+        int kRow        = -1;
+        int zRow        = -1;
+        for(int i = 0; i < rows.size(); ++i) {
+            if(rows.at(i).mode == BindingMode::Normal && rows.at(i).keys == QStringLiteral("j"))
+                jRow = i;
+            if(rows.at(i).mode == BindingMode::Normal && rows.at(i).keys == QStringLiteral("k"))
+                kRow = i;
+            if(rows.at(i).mode == BindingMode::Normal && rows.at(i).keys == QStringLiteral("z"))
+                zRow = i;
+        }
+
+        QVERIFY(jRow >= 0);
+        QCOMPARE(rows.at(jRow).source, BindingRowSource::CustomOverride);
+        QCOMPARE(rows.at(jRow).status, BindingRowStatus::Active);
+        QCOMPARE(rows.at(jRow).actionName, QStringLiteral("focusNowPlaying"));
+
+        QVERIFY(kRow >= 0);
+        QCOMPARE(rows.at(kRow).source, BindingRowSource::CustomOverride);
+        QCOMPARE(rows.at(kRow).status, BindingRowStatus::Unmapped);
+
+        QVERIFY(zRow >= 0);
+        QCOMPARE(rows.at(zRow).source, BindingRowSource::Custom);
+        QCOMPARE(rows.at(zRow).status, BindingRowStatus::Active);
+
+        QVERIFY(backend.resetBinding(definitions, BindingMode::Normal, QStringLiteral("j")));
+        QVERIFY(backend.removeCustomBinding(definitions, BindingMode::Normal, QStringLiteral("z")));
+
+        const auto resetRows = backend.bindingRows(definitions, true);
+        bool foundDefaultJ   = false;
+        for(const auto& row : resetRows) {
+            if(row.mode == BindingMode::Normal && row.keys == QStringLiteral("j")) {
+                foundDefaultJ = true;
+                QCOMPARE(row.source, BindingRowSource::Default);
+                QCOMPARE(row.status, BindingRowStatus::Active);
+                QCOMPARE(row.actionName, QStringLiteral("moveCursor"));
+                QCOMPARE(row.args, QStringLiteral("+1"));
+            }
+            QVERIFY(!(row.mode == BindingMode::Normal && row.keys == QStringLiteral("z")));
+        }
+        QVERIFY(foundDefaultJ);
+    }
+
+    void testSettingsDialogStagesAndAppliesBindingEdits()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_dialog_stage6.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Normal/z"), QStringLiteral("focusNowPlaying"));
+
+        VimMotionsBindingBackend backend{&settings};
+        VimMotionsSettingsDialog dialog{&settings, &backend};
+        auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
+        QVERIFY(tree);
+        auto* treeModel = qobject_cast<QStandardItemModel*>(tree->model());
+        QVERIFY(treeModel);
+
+        auto* addButton          = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
+        auto* editButton         = dialog.findChild<QPushButton*>(QStringLiteral("editBinding"));
+        auto* removeButton       = dialog.findChild<QPushButton*>(QStringLiteral("removeBinding"));
+        auto* unmapButton        = dialog.findChild<QPushButton*>(QStringLiteral("unmapBinding"));
+        auto* resetBindingButton = dialog.findChild<QPushButton*>(QStringLiteral("resetBinding"));
+        auto* discardButton      = dialog.findChild<QPushButton*>(QStringLiteral("discardBindingChanges"));
+        auto* buttons            = dialog.findChild<QDialogButtonBox*>();
+        QVERIFY(addButton);
+        QVERIFY(editButton);
+        QVERIFY(removeButton);
+        QVERIFY(unmapButton);
+        QVERIFY(resetBindingButton);
+        QVERIFY(discardButton);
+        QVERIFY(buttons);
+
+        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
+        addButton->click();
         QVERIFY(
-            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'q'),
+                            QStringLiteral("focusNowPlaying")));
+
+        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        unmapButton->click();
+        int jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(jRow >= 0);
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Custom override"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Unmapped"));
+
+        discardButton->click();
+        QVERIFY(
+            !hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("focusNowPlaying")));
+        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(jRow >= 0);
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Active"));
+
+        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
+        addButton->click();
+        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("q"));
+        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("moveCursor"),
+                            QStringLiteral("+1"));
+        editButton->click();
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("moveCursor:+1")));
+
+        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("q"));
+        removeButton->click();
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("moveCursor:+1")));
+
+        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
+        addButton->click();
+        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        unmapButton->click();
+        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        resetBindingButton->click();
+        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(jRow >= 0);
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Active"));
+
+        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        unmapButton->click();
+        auto* applyButton = buttons->button(QDialogButtonBox::Apply);
+        QVERIFY(applyButton);
+        applyButton->click();
+
+        QVERIFY(hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'q'),
+                           QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasBinding(backend.effectiveBindings().value(BindingMode::Normal), QChar(u'j'),
+                            QStringLiteral("moveCursor")));
+
+        QSettings fileSettings(m_tempDir.filePath(QStringLiteral("vim_settings_dialog_stage6.ini")),
+                               QSettings::IniFormat);
+        QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Normal/q")).toString(),
+                 QStringLiteral("focusNowPlaying"));
+        QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Normal/j")).toString(), QString{});
     }
 };
 

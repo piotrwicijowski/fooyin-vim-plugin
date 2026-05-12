@@ -41,10 +41,17 @@ void TestVimMotionsSettingsDialog::testWidgetScaffold()
     auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
     QVERIFY(tree);
     QCOMPARE(tree->editTriggers(), QAbstractItemView::NoEditTriggers);
-    QCOMPARE(tree->selectionMode(), QAbstractItemView::NoSelection);
+    QCOMPARE(tree->selectionMode(), QAbstractItemView::SingleSelection);
     QVERIFY(tree->model());
-    QCOMPARE(tree->model()->columnCount(), 4);
+    QCOMPARE(tree->model()->columnCount(), 5);
     QCOMPARE(tree->model()->rowCount(), 0);
+
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("addBinding")));
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("editBinding")));
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("removeBinding")));
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("unmapBinding")));
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("resetBinding")));
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("discardBindingChanges")));
 
     auto* buttons = dialog.findChild<QDialogButtonBox*>();
     QVERIFY(buttons);
