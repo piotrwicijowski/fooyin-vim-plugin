@@ -450,6 +450,8 @@ private Q_SLOTS:
         QVERIFY(backend.updateCustomBinding(definitions, BindingMode::Normal, QStringLiteral("j"), BindingMode::Normal,
                                             QStringLiteral("j"), QStringLiteral("focusNowPlaying"), {}));
         QVERIFY(backend.unmapBinding(definitions, BindingMode::Normal, QStringLiteral("k")));
+        QVERIFY(backend.addCustomBinding(definitions, BindingMode::Normal, QStringLiteral("k"),
+                                         QStringLiteral("nextMatch"), {}));
 
         const auto rows = backend.bindingRows(definitions, false);
         int jRow        = -1;
@@ -471,7 +473,8 @@ private Q_SLOTS:
 
         QVERIFY(kRow >= 0);
         QCOMPARE(rows.at(kRow).source, BindingRowSource::CustomOverride);
-        QCOMPARE(rows.at(kRow).status, BindingRowStatus::Unmapped);
+        QCOMPARE(rows.at(kRow).status, BindingRowStatus::Active);
+        QCOMPARE(rows.at(kRow).actionName, QStringLiteral("nextMatch"));
 
         QVERIFY(zRow >= 0);
         QCOMPARE(rows.at(zRow).source, BindingRowSource::Custom);
@@ -541,6 +544,14 @@ private Q_SLOTS:
         QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Custom override"));
         QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Unmapped"));
         QVERIFY(!editButton->isEnabled());
+
+        acceptBindingEditor(BindingMode::Normal, QStringLiteral("j"), QStringLiteral("focusNowPlaying"));
+        addButton->click();
+        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(jRow >= 0);
+        QCOMPARE(treeCell(treeModel, jRow, 2), QStringLiteral("focusNowPlaying"));
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Custom override"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Active"));
 
         discardButton->click();
         QVERIFY(

@@ -328,8 +328,20 @@ bool VimMotionsBindingBackend::addCustomBinding(QList<BindingDefinition>& defini
                                                 const QString& keys, const QString& actionName,
                                                 const QString& args) const
 {
-    if(!isValidBinding(keys, actionName, args) || findDefinition(definitions, mode, keys))
+    if(!isValidBinding(keys, actionName, args))
         return false;
+
+    if(BindingDefinition* definition = findDefinition(definitions, mode, keys)) {
+        if(!definition->isDefaultBinding())
+            return false;
+
+        if(definition->customValue.has_value() && !definition->customValue->isEmpty())
+            return false;
+
+        definition->customValue = bindingValue(actionName, args);
+        sortDefinitions(definitions);
+        return true;
+    }
 
     BindingDefinition definition;
     definition.mode        = mode;
