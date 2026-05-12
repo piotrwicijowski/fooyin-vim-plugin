@@ -356,7 +356,7 @@ void VimMotionsSettingsDialog::updateBindingButtons()
                                            : m_bindingDefinitions.cend();
     const BindingDefinition* definition = definitionIt == m_bindingDefinitions.cend() ? nullptr : &(*definitionIt);
 
-    const bool canEdit   = hasSelection && definition;
+    const bool canEdit   = definition && !definition->isDefaultBinding();
     const bool canRemove = definition && !definition->isDefaultBinding();
     const bool canUnmap  = definition && definition->isDefaultBinding() && status != BindingRowStatus::Unmapped;
     const bool canReset  = definition && (definition->customValue.has_value() || !definition->isDefaultBinding());
@@ -421,6 +421,9 @@ void VimMotionsSettingsDialog::editBinding()
                                          return definition.mode == originalMode && definition.keys == originalKeys;
                                      });
     if(definitionIt == m_bindingDefinitions.end())
+        return;
+
+    if(definitionIt->isDefaultBinding())
         return;
 
     const QString value

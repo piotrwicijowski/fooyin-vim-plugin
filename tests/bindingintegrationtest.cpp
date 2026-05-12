@@ -533,11 +533,14 @@ private Q_SLOTS:
                             QStringLiteral("focusNowPlaying")));
 
         selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(!editButton->isEnabled());
+        QVERIFY(unmapButton->isEnabled());
         unmapButton->click();
         int jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
         QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Custom override"));
         QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Unmapped"));
+        QVERIFY(!editButton->isEnabled());
 
         discardButton->click();
         QVERIFY(
@@ -550,6 +553,7 @@ private Q_SLOTS:
         acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
         addButton->click();
         selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("q"));
+        QVERIFY(editButton->isEnabled());
         acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("moveCursor"),
                             QStringLiteral("+1"));
         editButton->click();
@@ -587,7 +591,6 @@ private Q_SLOTS:
                  QStringLiteral("focusNowPlaying"));
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Normal/j")).toString(), QString{});
     }
-
 };
 
 QTEST_MAIN(TestConfigFileBindings)
