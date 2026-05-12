@@ -587,6 +587,7 @@ private Q_SLOTS:
                  QStringLiteral("focusNowPlaying"));
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Normal/j")).toString(), QString{});
     }
+
 };
 
 QTEST_MAIN(TestConfigFileBindings)

@@ -90,6 +90,7 @@ add_executable(test_vimhandler_timeout
     ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmotionssettingsdialog.cpp
     ${CMAKE_SOURCE_DIR}/src/vimsearchbar.cpp
     ${CMAKE_SOURCE_DIR}/src/viewlocator.cpp
     ${CMAKE_SOURCE_DIR}/src/spatialnavigator.cpp

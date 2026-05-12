@@ -2433,8 +2433,10 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
         return;
 
     if(!m_settingsBackend) {
-        m_ownedSettingsBackend = std::make_unique<VimMotionsBindingBackend>(manager);
-        m_settingsBackend      = m_ownedSettingsBackend.get();
+        m_ownedSettingsBackend             = std::make_unique<VimMotionsBindingBackend>(manager, this);
+        m_settingsBackend                  = m_ownedSettingsBackend.get();
+        m_backendBindingsChangedConnection = QObject::connect(
+            m_settingsBackend, &VimMotionsBindingBackend::bindingsChanged, this, [this]() { applyBackendBindings(); });
     }
 
     m_useDefaultBindings       = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
@@ -2463,8 +2465,14 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
 
 void VimHandler::setSettingsBackend(VimMotionsBindingBackend* backend)
 {
+    QObject::disconnect(m_backendBindingsChangedConnection);
     m_ownedSettingsBackend.reset();
     m_settingsBackend = backend;
+
+    if(m_settingsBackend) {
+        m_backendBindingsChangedConnection = QObject::connect(
+            m_settingsBackend, &VimMotionsBindingBackend::bindingsChanged, this, [this]() { applyBackendBindings(); });
+    }
 
     if(m_settingsManager) {
         rebuildBindings();
@@ -2609,6 +2617,14 @@ void VimHandler::rebuildBindings()
         return;
 
     m_settingsBackend->reloadBindings();
+}
+
+void VimHandler::applyBackendBindings()
+{
+    m_configBindings.clear();
+    if(!m_settingsBackend)
+        return;
+
     m_configBindings = convertBindings(m_settingsBackend->effectiveBindings());
 
     qCInfo(VIM_LOG) << "Rebuilt config bindings:" << m_configBindings[Mode::Normal].size() << "normal,"

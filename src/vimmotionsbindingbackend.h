@@ -1,8 +1,10 @@
 #pragma once
 
 #include "vimbindingparser.h"
+
 #include <QHash>
 #include <QList>
+#include <QObject>
 #include <QString>
 
 #include <functional>
@@ -63,10 +65,12 @@ struct BindingRow
     BindingRowStatus status{BindingRowStatus::Active};
 };
 
-class VimMotionsBindingBackend
+class VimMotionsBindingBackend : public QObject
 {
+    Q_OBJECT
+
 public:
-    explicit VimMotionsBindingBackend(SettingsManager* settingsManager);
+    explicit VimMotionsBindingBackend(SettingsManager* settingsManager, QObject* parent = nullptr);
 
     [[nodiscard]] bool settingsUiEnabled() const;
     [[nodiscard]] bool useDefaultBindings() const;
@@ -91,6 +95,9 @@ public:
     [[nodiscard]] bool resetBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys) const;
     [[nodiscard]] bool unmapBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys) const;
     [[nodiscard]] bool saveBindingDefinitions(const QList<BindingDefinition>& definitions);
+
+signals:
+    void bindingsChanged();
 
 private:
     [[nodiscard]] QHash<BindingMode, QList<BindingEntry>> loadBindings() const;

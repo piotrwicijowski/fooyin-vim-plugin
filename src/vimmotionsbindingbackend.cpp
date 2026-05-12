@@ -178,8 +178,9 @@ BindingRow bindingRowFromValue(BindingMode mode, const QString& keys, const QStr
 
 } // namespace
 
-VimMotionsBindingBackend::VimMotionsBindingBackend(SettingsManager* settingsManager)
-    : m_settingsManager{settingsManager}
+VimMotionsBindingBackend::VimMotionsBindingBackend(SettingsManager* settingsManager, QObject* parent)
+    : QObject{parent}
+    , m_settingsManager{settingsManager}
 {
     reloadBindings();
 }
@@ -210,6 +211,7 @@ int VimMotionsBindingBackend::pendingSequenceTimeout() const
 void VimMotionsBindingBackend::reloadBindings()
 {
     m_effectiveBindings = loadBindings();
+    emit bindingsChanged();
 }
 
 const QHash<BindingMode, QList<BindingEntry>>& VimMotionsBindingBackend::effectiveBindings() const

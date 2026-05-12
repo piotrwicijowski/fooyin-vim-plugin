@@ -5,6 +5,7 @@
 #include "vimbindingparser.h"
 #include "vimclipboard.h"
 
+#include <QMetaObject>
 #include <QObject>
 #include <QPersistentModelIndex>
 #include <QPointer>
@@ -158,6 +159,7 @@ private:
     void setPendingKey(QChar key);
     void setPendingMarkOp(PendingMarkOp op);
     void refreshPendingTimeout();
+    void applyBackendBindings();
 
     void commitFilter();
     void cancelFilter();
@@ -234,6 +236,7 @@ private:
     Fooyin::SettingsManager* m_settingsManager{nullptr};
     VimMotionsBindingBackend* m_settingsBackend{nullptr};
     std::unique_ptr<VimMotionsBindingBackend> m_ownedSettingsBackend;
+    QMetaObject::Connection m_backendBindingsChangedConnection;
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
