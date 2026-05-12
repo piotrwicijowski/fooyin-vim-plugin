@@ -301,13 +301,13 @@ private Q_SLOTS:
         QCOMPARE(loadPendingSequenceTimeout(), 250);
     }
 
-    void testSettingsUiFlagDefaultsOff()
+    void testSettingsUiFlagDefaultsOn()
     {
         Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings.ini"))};
         VimMotionsSettings vimSettings{&settings};
         Q_UNUSED(vimSettings);
 
-        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::EnableSettingsUi>(), false);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::EnableSettingsUi>(), true);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(), false);
     }
 

@@ -256,9 +256,9 @@ Use this section across sessions. Update it as work lands so future sessions do 
 
 ### Overall status
 
-- Status: stage 6 complete; stage 7 next
-- Feature flag default: disabled
-- Shipping state: dormant
+- Status: complete
+- Feature flag default: enabled
+- Shipping state: user-visible settings dialog shipped
 
 ### Stage checklist
 
@@ -268,7 +268,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 - [x] Stage 4: Load / Apply / Reset wiring
 - [x] Stage 5: Read-only effective bindings tree
 - [x] Stage 6: Editable custom/default bindings tree
-- [ ] Stage 7: Documentation and visibility review
+- [x] Stage 7: Documentation and visibility review
 
 ### Session log
 
@@ -280,6 +280,7 @@ Use this section across sessions. Update it as work lands so future sessions do 
 - 2026-05-11: Stage 5 implemented with a read-only effective bindings tree populated from backend state and refresh coverage in integration tests.
 - 2026-05-11: Stage 6 scope redefined from a user quiz: effective-tree-first editing UX, disabled default rows when defaults are off, visible unmaps, simple source labels, and button-driven editing. Documentation/visibility review deferred to stage 7.
 - 2026-05-11: Stage 6 implemented with staged binding edits in the settings dialog, backend binding add/edit/remove/unmap/reset operations, source/status tree rows, discard-unsaved support, and integration/widget coverage.
+- 2026-05-12: Stage 7 implemented by enabling the settings UI by default, updating README documentation for the shipped settings dialog and apply semantics, and making the visibility decision explicit.
 
 ### Notes for future sessions
 
