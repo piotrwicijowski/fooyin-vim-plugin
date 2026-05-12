@@ -308,6 +308,7 @@ private Q_SLOTS:
         Q_UNUSED(vimSettings);
 
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::EnableSettingsUi>(), false);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(), false);
     }
 
     void testBindingBackendReloadsCustomBindings()
@@ -339,6 +340,7 @@ private Q_SLOTS:
 
         settings.set<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(120);
         settings.set<Fooyin::Settings::VimMotions::WrapScan>(false);
+        settings.set<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(true);
         settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false);
         settings.fileSet(QStringLiteral("VimMotions/Bindings/Normal/z"), QStringLiteral("focusNowPlaying"));
 
@@ -367,8 +369,13 @@ private Q_SLOTS:
         QVERIFY(useDefaultBindings);
         QVERIFY(!useDefaultBindings->isChecked());
 
+        auto* useVimMotionsInSettings = dialog.findChild<QCheckBox*>(QStringLiteral("useVimMotionsInSettings"));
+        QVERIFY(useVimMotionsInSettings);
+        QVERIFY(useVimMotionsInSettings->isChecked());
+
         timeout->setValue(450);
         wrapScan->setChecked(true);
+        useVimMotionsInSettings->setChecked(false);
         useDefaultBindings->setChecked(true);
 
         auto* buttons = dialog.findChild<QDialogButtonBox*>();
@@ -379,6 +386,7 @@ private Q_SLOTS:
 
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 450);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(), false);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
         QCOMPARE(backend.pendingSequenceTimeout(), 450);
         QCOMPARE(backend.wrapScan(), true);
@@ -391,6 +399,7 @@ private Q_SLOTS:
 
         timeout->setValue(30);
         wrapScan->setChecked(false);
+        useVimMotionsInSettings->setChecked(true);
         useDefaultBindings->setChecked(false);
 
         auto* resetButton = buttons->button(QDialogButtonBox::Reset);
@@ -399,9 +408,11 @@ private Q_SLOTS:
 
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 450);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(), false);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
         QCOMPARE(timeout->value(), 0);
         QVERIFY(wrapScan->isChecked());
+        QVERIFY(!useVimMotionsInSettings->isChecked());
         QVERIFY(useDefaultBindings->isChecked());
         QCOMPARE(backend.pendingSequenceTimeout(), 450);
         QCOMPARE(backend.wrapScan(), true);
@@ -418,6 +429,7 @@ private Q_SLOTS:
 
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::PendingSequenceTimeout>(), 0);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::WrapScan>(), true);
+        QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(), false);
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseDefaultBindings>(), true);
         QCOMPARE(backend.pendingSequenceTimeout(), 0);
         QCOMPARE(backend.wrapScan(), true);

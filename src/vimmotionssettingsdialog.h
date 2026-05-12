@@ -47,6 +47,7 @@ private:
     QList<BindingDefinition> m_bindingDefinitions;
     QSpinBox* m_pendingSequenceTimeout{nullptr};
     QCheckBox* m_wrapScan{nullptr};
+    QCheckBox* m_useVimMotionsInSettings{nullptr};
     QCheckBox* m_useDefaultBindings{nullptr};
     QTreeView* m_bindingsTree{nullptr};
     QPushButton* m_addBindingButton{nullptr};

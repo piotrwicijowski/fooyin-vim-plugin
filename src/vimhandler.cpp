@@ -62,6 +62,26 @@ QHash<VimHandler::Mode, QList<BindingEntry>> convertBindings(const QHash<Binding
     return bindings;
 }
 
+bool isSettingsDialogObject(const QObject* object)
+{
+    return object && QString::fromLatin1(object->metaObject()->className()).contains(QStringLiteral("SettingsDialog"));
+}
+
+bool hasSettingsDialogAncestor(const QObject* object)
+{
+    for(auto* current = object; current; current = current->parent()) {
+        if(isSettingsDialogObject(current))
+            return true;
+    }
+
+    if(const auto* widget = qobject_cast<const QWidget*>(object)) {
+        if(const QWidget* window = widget->window(); window && window != widget && hasSettingsDialogAncestor(window))
+            return true;
+    }
+
+    return false;
+}
+
 } // namespace
 
 static QTreeView* asTreeView(QAbstractItemView* v)
@@ -310,6 +330,9 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     if(m_suppressFilter)
         return false;
 
+    if(shouldSkipBindings(watched))
+        return false;
+
     const auto type = event->type();
 
     if((type == QEvent::ShortcutOverride || type == QEvent::KeyPress) && organiserEditorActive(watched))
@@ -354,6 +377,24 @@ bool VimHandler::handleKeyPress(QKeyEvent* ev)
         case Mode::Search:
             return false;
     }
+    return false;
+}
+
+bool VimHandler::shouldSkipBindings(QObject* watched) const
+{
+    if(m_useVimMotionsInSettings)
+        return false;
+
+    if(watched && hasSettingsDialogAncestor(watched))
+        return true;
+
+    for(QObject* candidate :
+        {static_cast<QObject*>(QApplication::focusWidget()), static_cast<QObject*>(QApplication::activeModalWidget()),
+         static_cast<QObject*>(QApplication::activeWindow())}) {
+        if(candidate && hasSettingsDialogAncestor(candidate))
+            return true;
+    }
+
     return false;
 }
 
@@ -2440,6 +2481,7 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
     }
 
     m_useDefaultBindings       = manager->value(QStringLiteral("VimMotions/UseDefaultBindings")).toBool();
+    m_useVimMotionsInSettings  = manager->value(QStringLiteral("VimMotions/UseVimMotionsInSettings")).toBool();
     m_wrapScan                 = manager->value(QStringLiteral("VimMotions/WrapScan")).toBool();
     m_pendingSequenceTimeoutMs = qMax(0, manager->value(QStringLiteral("VimMotions/PendingSequenceTimeout")).toInt());
 
@@ -2448,6 +2490,8 @@ void VimHandler::setSettingsManager(Fooyin::SettingsManager* manager)
         m_useDefaultBindings = val;
         rebuildBindings();
     });
+
+    manager->subscribe<UseVimMotionsInSettings>(this, [this](bool val) { m_useVimMotionsInSettings = val; });
 
     manager->subscribe<WrapScan>(this, [this](bool val) { m_wrapScan = val; });
 

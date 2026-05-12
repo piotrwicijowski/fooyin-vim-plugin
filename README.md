@@ -363,6 +363,17 @@ With this config, only `j`, `k`, `gg`, and `G` are active in Normal mode — all
 
 After updating `fooyin.conf`, restart fooyin (see [Runtime changes](#runtime-changes)).
 
+### UseVimMotionsInSettings
+
+By default (`UseVimMotionsInSettings=false`), vim bindings are ignored while focus is inside fooyin's main **Settings** dialog and any sub-dialog opened from it.
+
+Set `UseVimMotionsInSettings=true` to preserve the old behaviour and keep vim motions active there too:
+
+```ini
+[VimMotions]
+UseVimMotionsInSettings=true
+```
+
 ### Unmapping bindings
 
 To remove (unmap) a default binding, set its value to an empty string:

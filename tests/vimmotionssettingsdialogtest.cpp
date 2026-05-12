@@ -34,6 +34,10 @@ void TestVimMotionsSettingsDialog::testWidgetScaffold()
     QVERIFY(wrapScan);
     QVERIFY(wrapScan->isChecked());
 
+    auto* useVimMotionsInSettings = dialog.findChild<QCheckBox*>(QStringLiteral("useVimMotionsInSettings"));
+    QVERIFY(useVimMotionsInSettings);
+    QVERIFY(!useVimMotionsInSettings->isChecked());
+
     auto* useDefaultBindings = dialog.findChild<QCheckBox*>(QStringLiteral("useDefaultBindings"));
     QVERIFY(useDefaultBindings);
     QVERIFY(useDefaultBindings->isChecked());

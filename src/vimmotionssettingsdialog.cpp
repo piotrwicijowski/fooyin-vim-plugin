@@ -211,6 +211,7 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
     , m_settingsBackend{settingsBackend}
     , m_pendingSequenceTimeout{new QSpinBox(this)}
     , m_wrapScan{new QCheckBox(tr("Wrap scan"), this)}
+    , m_useVimMotionsInSettings{new QCheckBox(tr("Use vim motions in settings"), this)}
     , m_useDefaultBindings{new QCheckBox(tr("Use default bindings"), this)}
     , m_bindingsTree{new QTreeView(this)}
     , m_addBindingButton{new QPushButton(tr("Add"), this)}
@@ -231,6 +232,7 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
     m_pendingSequenceTimeout->setSuffix(u" ms"_s);
 
     m_wrapScan->setObjectName(u"wrapScan"_s);
+    m_useVimMotionsInSettings->setObjectName(u"useVimMotionsInSettings"_s);
     m_useDefaultBindings->setObjectName(u"useDefaultBindings"_s);
 
     m_bindingsTree->setObjectName(u"effectiveBindingsTree"_s);
@@ -280,6 +282,7 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(form);
     layout->addWidget(m_wrapScan);
+    layout->addWidget(m_useVimMotionsInSettings);
     layout->addWidget(m_useDefaultBindings);
     layout->addWidget(contentLabel);
     layout->addLayout(bindingsLayout);
@@ -494,11 +497,14 @@ void VimMotionsSettingsDialog::load()
         m_pendingSequenceTimeout->setValue(
             qMax(0, m_settingsManager->value<Settings::VimMotions::PendingSequenceTimeout>()));
         m_wrapScan->setChecked(m_settingsManager->value<Settings::VimMotions::WrapScan>());
+        m_useVimMotionsInSettings->setChecked(
+            m_settingsManager->value<Settings::VimMotions::UseVimMotionsInSettings>());
         m_useDefaultBindings->setChecked(m_settingsManager->value<Settings::VimMotions::UseDefaultBindings>());
     }
     else {
         m_pendingSequenceTimeout->setValue(0);
         m_wrapScan->setChecked(true);
+        m_useVimMotionsInSettings->setChecked(false);
         m_useDefaultBindings->setChecked(true);
     }
 
@@ -510,6 +516,7 @@ void VimMotionsSettingsDialog::apply()
     if(m_settingsManager) {
         m_settingsManager->set<Settings::VimMotions::PendingSequenceTimeout>(m_pendingSequenceTimeout->value());
         m_settingsManager->set<Settings::VimMotions::WrapScan>(m_wrapScan->isChecked());
+        m_settingsManager->set<Settings::VimMotions::UseVimMotionsInSettings>(m_useVimMotionsInSettings->isChecked());
         m_settingsManager->set<Settings::VimMotions::UseDefaultBindings>(m_useDefaultBindings->isChecked());
     }
 
@@ -528,6 +535,7 @@ void VimMotionsSettingsDialog::reset()
 {
     m_pendingSequenceTimeout->setValue(0);
     m_wrapScan->setChecked(true);
+    m_useVimMotionsInSettings->setChecked(false);
     m_useDefaultBindings->setChecked(true);
     loadDefaultBindings();
     refreshBindingsTree();

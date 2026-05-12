@@ -148,6 +148,7 @@ private:
     };
 
     bool handleKeyPress(QKeyEvent* ev);
+    [[nodiscard]] bool shouldSkipBindings(QObject* watched) const;
     [[nodiscard]] bool wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const;
     [[nodiscard]] bool hasPendingInput() const;
     [[nodiscard]] bool pendingConfigPrefixMatches(const BindingEntry& entry) const;
@@ -258,6 +259,7 @@ private:
 
     VimActions m_actions;
     bool m_useDefaultBindings{true};
+    bool m_useVimMotionsInSettings{false};
     bool m_wrapScan{true};
     int m_dispatchCount{0};
     bool m_hadExplicitCount{false};

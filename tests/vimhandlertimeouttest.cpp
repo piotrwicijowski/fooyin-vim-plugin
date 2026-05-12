@@ -24,6 +24,7 @@
 #include <QTest>
 #include <QTimer>
 #include <QTreeView>
+#include <QVBoxLayout>
 
 namespace Fooyin {
 
@@ -34,6 +35,16 @@ class PlaylistView : public QTreeView
 public:
     explicit PlaylistView(QWidget* parent = nullptr)
         : QTreeView(parent)
+    { }
+};
+
+class SettingsDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit SettingsDialog(QWidget* parent = nullptr)
+        : QDialog(parent)
     { }
 };
 
@@ -125,6 +136,7 @@ private Q_SLOTS:
     void configVisualAmbiguousPrefixPrefersLongerSequence();
     void configVisualAmbiguousPrefixFallsBackAfterTimeout();
     void settingsDialogApplyReloadsHandlerBindings();
+    void bindingsAreSkippedInSettingsDialogsByDefault();
 };
 
 void TestVimHandlerTimeout::twoKeyTimeoutClearsPendingSequence()
@@ -400,6 +412,64 @@ void TestVimHandlerTimeout::settingsDialogApplyReloadsHandlerBindings()
         return binding.actionName == QStringLiteral("focusNowPlaying") && binding.keys.size() == 2
             && binding.keys.at(0).ch == QChar(u'z') && binding.keys.at(1).ch == QChar(u'x');
     }));
+}
+
+void TestVimHandlerTimeout::bindingsAreSkippedInSettingsDialogsByDefault()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_skip_settings_dialog.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView regularView;
+    QStandardItemModel regularModel;
+    regularModel.appendRow(new QStandardItem(QStringLiteral("A")));
+    regularModel.appendRow(new QStandardItem(QStringLiteral("B")));
+    regularView.setModel(&regularModel);
+    regularView.setCurrentIndex(regularModel.index(0, 0));
+    focusView(&regularView);
+
+    QVERIFY(dispatchKey(handler, &regularView, u'j'));
+    QCOMPARE(regularView.currentIndex().row(), 1);
+
+    Fooyin::SettingsDialog settingsDialog;
+    auto* settingsPage   = new QWidget(&settingsDialog);
+    auto* settingsView   = new PlaylistView(settingsPage);
+    auto* settingsLayout = new QVBoxLayout(settingsPage);
+    settingsLayout->setContentsMargins(0, 0, 0, 0);
+    settingsLayout->addWidget(settingsView);
+    QStandardItemModel settingsModel;
+    settingsModel.appendRow(new QStandardItem(QStringLiteral("A")));
+    settingsModel.appendRow(new QStandardItem(QStringLiteral("B")));
+    settingsView->setModel(&settingsModel);
+    settingsView->setCurrentIndex(settingsModel.index(0, 0));
+    focusView(settingsView);
+
+    QVERIFY(!dispatchShortcutOverride(handler, settingsView, u'j'));
+    QVERIFY(!dispatchKey(handler, settingsView, u'j'));
+
+    settings.set(QStringLiteral("VimMotions/UseVimMotionsInSettings"), true);
+
+    QVERIFY(dispatchKey(handler, settingsView, u'j'));
+
+    auto* dialogPage = new QWidget(&settingsDialog);
+    QDialog subDialog(dialogPage);
+    PlaylistView subDialogView(&subDialog);
+    QVBoxLayout subDialogLayout(&subDialog);
+    subDialogLayout.setContentsMargins(0, 0, 0, 0);
+    subDialogLayout.addWidget(&subDialogView);
+    QStandardItemModel subDialogModel;
+    subDialogModel.appendRow(new QStandardItem(QStringLiteral("A")));
+    subDialogModel.appendRow(new QStandardItem(QStringLiteral("B")));
+    subDialogView.setModel(&subDialogModel);
+    subDialogView.setCurrentIndex(subDialogModel.index(0, 0));
+
+    settings.set(QStringLiteral("VimMotions/UseVimMotionsInSettings"), false);
+    focusView(&subDialogView);
+
+    QVERIFY(!dispatchShortcutOverride(handler, &subDialogView, u'j'));
+    QVERIFY(!dispatchKey(handler, &subDialogView, u'j'));
 }
 
 QTEST_MAIN(TestVimHandlerTimeout)

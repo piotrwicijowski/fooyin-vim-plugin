@@ -89,6 +89,8 @@ VimMotionsSettings::VimMotionsSettings(SettingsManager* settingsManager)
 
     settingsManager->createSetting<UseDefaultBindings>(true, u"VimMotions/UseDefaultBindings"_s);
 
+    settingsManager->createSetting<UseVimMotionsInSettings>(false, u"VimMotions/UseVimMotionsInSettings"_s);
+
     settingsManager->createSetting<WrapScan>(true, u"VimMotions/WrapScan"_s);
 
     settingsManager->createSetting<PendingSequenceTimeout>(0, u"VimMotions/PendingSequenceTimeout"_s);
