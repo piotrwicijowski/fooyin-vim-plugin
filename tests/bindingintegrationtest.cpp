@@ -4,6 +4,7 @@
 #include "vimmotionssettingsdialog.h"
 
 #include <QAbstractButton>
+#include <QAbstractItemModel>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -15,7 +16,6 @@
 #include <QSet>
 #include <QSettings>
 #include <QSpinBox>
-#include <QStandardItemModel>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -92,7 +92,7 @@ private:
         return bindings.value(mode).value(scope);
     }
 
-    static bool hasTreeRow(const QStandardItemModel* model, const QString& scope, const QString& mode,
+    static bool hasTreeRow(const QAbstractItemModel* model, const QString& scope, const QString& mode,
                            const QString& keys, const QString& action)
     {
         if(!model)
@@ -113,7 +113,7 @@ private:
         return false;
     }
 
-    static int findTreeRow(const QStandardItemModel* model, const QString& scope, const QString& mode,
+    static int findTreeRow(const QAbstractItemModel* model, const QString& scope, const QString& mode,
                            const QString& keys)
     {
         if(!model)
@@ -130,7 +130,7 @@ private:
         return -1;
     }
 
-    static QString treeCell(const QStandardItemModel* model, int row, int column)
+    static QString treeCell(const QAbstractItemModel* model, int row, int column)
     {
         if(!model || row < 0)
             return {};
@@ -138,7 +138,7 @@ private:
         return model->data(model->index(row, column)).toString();
     }
 
-    static void selectTreeRow(QTreeView* tree, const QStandardItemModel* model, const QString& scope,
+    static void selectTreeRow(QTreeView* tree, const QAbstractItemModel* model, const QString& scope,
                               const QString& mode, const QString& keys)
     {
         QVERIFY(tree);
@@ -362,7 +362,7 @@ private Q_SLOTS:
         VimMotionsSettingsDialog dialog{&settings, &backend};
         auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
         QVERIFY(tree);
-        auto* treeModel = qobject_cast<QStandardItemModel*>(tree->model());
+        const auto* treeModel = tree->model();
         QVERIFY(treeModel);
         QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("z"),
                            QStringLiteral("focusNowPlaying")));
@@ -540,7 +540,7 @@ private Q_SLOTS:
         VimMotionsSettingsDialog dialog{&settings, &backend};
         auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
         QVERIFY(tree);
-        auto* treeModel = qobject_cast<QStandardItemModel*>(tree->model());
+        const auto* treeModel = tree->model();
         QVERIFY(treeModel);
 
         auto* addButton          = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
@@ -598,15 +598,20 @@ private Q_SLOTS:
         addButton->click();
         selectTreeRow(tree, treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("q"));
         QVERIFY(editButton->isEnabled());
-        acceptBindingEditor(BindingScope::PlaylistView, BindingMode::Normal, QStringLiteral("q"),
+        acceptBindingEditor(BindingScope::PlaylistView, BindingMode::Normal, QStringLiteral("qq"),
                             QStringLiteral("moveCursor"), QStringLiteral("+1"));
-        editButton->click();
-        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("q"),
+        tree->doubleClicked(tree->currentIndex());
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("qq"),
                            QStringLiteral("moveCursor:+1")));
 
-        selectTreeRow(tree, treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("q"));
+        tree->sortByColumn(0, Qt::AscendingOrder);
+        QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Global"));
+        tree->sortByColumn(0, Qt::DescendingOrder);
+        QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Playlist Organiser"));
+
+        selectTreeRow(tree, treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("qq"));
         removeButton->click();
-        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("q"),
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("qq"),
                             QStringLiteral("moveCursor:+1")));
 
         acceptBindingEditor(BindingScope::PlaylistOrganiser, BindingMode::Normal, QStringLiteral("q"),

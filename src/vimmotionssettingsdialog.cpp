@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QPushButton>
+#include <QSortFilterProxyModel>
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QTreeView>
@@ -39,6 +40,7 @@ enum BindingRoles
     KeysRole,
     SourceRole,
     StatusRole,
+    SortRole,
 };
 
 QString modeText(BindingMode mode)
@@ -129,6 +131,13 @@ void populateBindingsTree(QStandardItemModel* model, const QList<BindingRow>& ro
         auto* actionItem = new QStandardItem(bindingActionText(row));
         auto* sourceItem = new QStandardItem(sourceText(row.source));
         auto* statusItem = new QStandardItem(statusText(row.status));
+
+        scopeItem->setData(static_cast<int>(row.scope), SortRole);
+        modeItem->setData(static_cast<int>(row.mode), SortRole);
+        keysItem->setData(row.keys, SortRole);
+        actionItem->setData(bindingActionText(row), SortRole);
+        sourceItem->setData(static_cast<int>(row.source), SortRole);
+        statusItem->setData(static_cast<int>(row.status), SortRole);
 
         for(auto* item : {scopeItem, modeItem, keysItem, actionItem, sourceItem, statusItem}) {
             item->setEditable(false);
@@ -257,6 +266,7 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
 {
     setWindowTitle(QApplication::translate("VimMotionsSettingsDialog", "Vim Motions Settings"));
     setModal(true);
+    resize(980, 640);
 
     m_pendingSequenceTimeout->setObjectName(u"pendingSequenceTimeout"_s);
     m_pendingSequenceTimeout->setRange(0, 60000);
@@ -274,6 +284,7 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
     m_bindingsTree->setRootIsDecorated(false);
     m_bindingsTree->setUniformRowHeights(true);
     m_bindingsTree->setAlternatingRowColors(true);
+    m_bindingsTree->setSortingEnabled(true);
 
     for(auto* button : {m_addBindingButton, m_editBindingButton, m_removeBindingButton, m_unmapBindingButton,
                         m_resetBindingButton, m_discardBindingChangesButton}) {
@@ -287,10 +298,14 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
     m_resetBindingButton->setObjectName(u"resetBinding"_s);
     m_discardBindingChangesButton->setObjectName(u"discardBindingChanges"_s);
 
-    auto* bindingModel = new QStandardItemModel(this);
-    m_bindingsTree->setModel(bindingModel);
+    m_bindingsModel      = new QStandardItemModel(this);
+    m_bindingsProxyModel = new QSortFilterProxyModel(this);
+    m_bindingsProxyModel->setSourceModel(m_bindingsModel);
+    m_bindingsProxyModel->setSortRole(SortRole);
+    m_bindingsTree->setModel(m_bindingsProxyModel);
     m_bindingsTree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_bindingsTree->header()->setStretchLastSection(true);
+    m_bindingsTree->sortByColumn(0, Qt::AscendingOrder);
 
     auto* form = new QFormLayout();
     form->addRow(tr("Pending sequence timeout"), m_pendingSequenceTimeout);
@@ -330,6 +345,14 @@ VimMotionsSettingsDialog::VimMotionsSettingsDialog(Fooyin::SettingsManager* sett
                      &VimMotionsSettingsDialog::reset);
     QObject::connect(m_bindingsTree->selectionModel(), &QItemSelectionModel::selectionChanged, this,
                      [this]() { updateBindingButtons(); });
+    QObject::connect(m_bindingsTree, &QTreeView::doubleClicked, this, [this](const QModelIndex& index) {
+        if(!index.isValid())
+            return;
+
+        m_bindingsTree->setCurrentIndex(index);
+        if(m_editBindingButton->isEnabled())
+            editBinding();
+    });
     QObject::connect(m_useDefaultBindings, &QCheckBox::toggled, this, [this]() { refreshBindingsTree(); });
     QObject::connect(m_addBindingButton, &QPushButton::clicked, this, &VimMotionsSettingsDialog::addBinding);
     QObject::connect(m_editBindingButton, &QPushButton::clicked, this, &VimMotionsSettingsDialog::editBinding);
@@ -349,8 +372,7 @@ void VimMotionsSettingsDialog::accept()
 
 void VimMotionsSettingsDialog::refreshBindingsTree()
 {
-    auto* bindingModel = qobject_cast<QStandardItemModel*>(m_bindingsTree->model());
-    if(!bindingModel)
+    if(!m_bindingsModel || !m_bindingsProxyModel)
         return;
 
     const QModelIndex currentIndex = m_bindingsTree->currentIndex();
@@ -358,18 +380,22 @@ void VimMotionsSettingsDialog::refreshBindingsTree()
     const int currentMode          = currentIndex.data(ModeRole).toInt();
     const QString currentKeys      = currentIndex.data(KeysRole).toString();
 
-    populateBindingsTree(bindingModel,
+    populateBindingsTree(m_bindingsModel,
                          m_settingsBackend
                              ? m_settingsBackend->bindingRows(m_bindingDefinitions, m_useDefaultBindings->isChecked())
                              : QList<BindingRow>{},
                          palette());
 
+    const int sortColumn = m_bindingsTree->header()->sortIndicatorSection();
+    const auto sortOrder = m_bindingsTree->header()->sortIndicatorOrder();
+    m_bindingsProxyModel->sort(sortColumn, sortOrder);
+
     if(!currentKeys.isEmpty()) {
-        for(int row = 0; row < bindingModel->rowCount(); ++row) {
-            const QModelIndex index = bindingModel->index(row, 0);
+        for(int row = 0; row < m_bindingsModel->rowCount(); ++row) {
+            const QModelIndex index = m_bindingsModel->index(row, 0);
             if(index.data(ScopeRole).toInt() == currentScope && index.data(ModeRole).toInt() == currentMode
                && index.data(KeysRole).toString() == currentKeys) {
-                m_bindingsTree->setCurrentIndex(index);
+                m_bindingsTree->setCurrentIndex(m_bindingsProxyModel->mapFromSource(index));
                 break;
             }
         }

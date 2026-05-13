@@ -47,9 +47,12 @@ void TestVimMotionsSettingsDialog::testWidgetScaffold()
     QVERIFY(tree);
     QCOMPARE(tree->editTriggers(), QAbstractItemView::NoEditTriggers);
     QCOMPARE(tree->selectionMode(), QAbstractItemView::SingleSelection);
+    QVERIFY(tree->isSortingEnabled());
     QVERIFY(tree->model());
     QCOMPARE(tree->model()->columnCount(), 6);
     QCOMPARE(tree->model()->rowCount(), 0);
+    QVERIFY(dialog.width() >= 900);
+    QVERIFY(dialog.height() >= 600);
 
     auto* scopeBox = dialog.findChild<QComboBox*>(QStringLiteral("bindingScope"));
     QVERIFY(!scopeBox);

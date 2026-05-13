@@ -9,7 +9,9 @@ class QWidget;
 class QCheckBox;
 class QDialogButtonBox;
 class QPushButton;
+class QSortFilterProxyModel;
 class QSpinBox;
+class QStandardItemModel;
 class QTreeView;
 
 namespace Fooyin {
@@ -50,6 +52,8 @@ private:
     QCheckBox* m_useVimMotionsInSettings{nullptr};
     QCheckBox* m_useDefaultBindings{nullptr};
     QTreeView* m_bindingsTree{nullptr};
+    QStandardItemModel* m_bindingsModel{nullptr};
+    QSortFilterProxyModel* m_bindingsProxyModel{nullptr};
     QPushButton* m_addBindingButton{nullptr};
     QPushButton* m_editBindingButton{nullptr};
     QPushButton* m_removeBindingButton{nullptr};
