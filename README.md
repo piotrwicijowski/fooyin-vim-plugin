@@ -263,16 +263,16 @@ Each binding is a single INI entry:
 
 ```ini
 [VimMotions]
-Bindings\Normal\j=moveCursor:+1
-Bindings\Normal\k=moveCursor:-1
-Bindings\Normal\gg=jumpToFirst
-Bindings\Normal\G=jumpToLast
-Bindings\Normal\dd=deleteRows
-Bindings\Visual\j=extendCursor:+1
-Bindings\Insert\<Esc>=leaveInsertMode
+Bindings\Global\Normal\j=moveCursor:+1
+Bindings\Global\Normal\k=moveCursor:-1
+Bindings\Global\Normal\gg=jumpToFirst
+Bindings\Global\Normal\G=jumpToLast
+Bindings\Global\Normal\dd=deleteRows
+Bindings\Global\Visual\j=extendCursor:+1
+Bindings\Global\Insert\<Esc>=leaveInsertMode
 ```
 
-The key path is `Bindings\{Mode}\{KeyCombo}` and the value is `ActionName[:args]`.
+The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionName[:args]`.
 
 **Key combo syntax:**
 - Single character: `j`, `k`, `G`, `;`, `'`, `` ` ``
@@ -351,9 +351,9 @@ Use `fooyinAction:<Action.Id>` when you want a vim binding to trigger an existin
 
 ```ini
 [VimMotions]
-Bindings\Normal\<Space>=fooyinAction:Playback.PlayPause
-Bindings\Normal\x=fooyinAction:Playback.Next
-Bindings\Normal\z=fooyinAction:View.ShowNowPlaying
+Bindings\Global\Normal\<Space>=fooyinAction:Playback.PlayPause
+Bindings\Global\Normal\x=fooyinAction:Playback.Next
+Bindings\Global\Normal\z=fooyinAction:View.ShowNowPlaying
 ```
 
 There is no default binding for `fooyinAction`; it is only available for custom config bindings.
@@ -369,10 +369,10 @@ Set `UseDefaultBindings=false` to start from a **clean slate** — no default bi
 ```ini
 [VimMotions]
 UseDefaultBindings=false
-Bindings\Normal\j=moveCursor:+1
-Bindings\Normal\k=moveCursor:-1
-Bindings\Normal\gg=jumpToFirst
-Bindings\Normal\G=jumpToLast
+Bindings\Global\Normal\j=moveCursor:+1
+Bindings\Global\Normal\k=moveCursor:-1
+Bindings\Global\Normal\gg=jumpToFirst
+Bindings\Global\Normal\G=jumpToLast
 ```
 
 With this config, only `j`, `k`, `gg`, and `G` are active in Normal mode — all other defaults are ignored. See the [Explicit default configuration](#explicit-default-configuration) section for the full list of all default bindings.
@@ -396,8 +396,8 @@ To remove (unmap) a default binding, set its value to an empty string:
 
 ```ini
 [VimMotions]
-Bindings\Normal\j=
-Bindings\Visual\<Esc>=
+Bindings\Global\Normal\j=
+Bindings\Global\Visual\<Esc>=
 ```
 
 This prevents the key from triggering any action in that mode. The key will fall through to fooyin's normal shortcut handling.
@@ -410,81 +410,89 @@ To opt into only the bindings you need, set `UseDefaultBindings=false` and copy 
 [VimMotions]
 UseDefaultBindings=false
 
-; -- Normal mode --
-Bindings\Normal\j=moveCursor:+1
-Bindings\Normal\k=moveCursor:-1
-Bindings\Normal\gg=jumpToFirst
-Bindings\Normal\G=jumpToLast
-Bindings\Normal\dd=deleteRows
-Bindings\Normal\yy=yankRows
-Bindings\Normal\i=enterInsert
-Bindings\Normal\v=enterVisual
-Bindings\Normal\u=undo
-Bindings\Normal\Ctrl+R=redo
-Bindings\Normal\h=treeCloseOrAscend
-Bindings\Normal\l=treeOpenOrDescend
-Bindings\Normal\o=focusNowPlaying
-Bindings\Normal\g;=focusNowPlaying
-Bindings\Normal\m=beginSetMark
-Bindings\Normal\'=beginJumpToMark
-Bindings\Normal\`=beginJumpToMark
-Bindings\Normal\p=pasteAfter
-Bindings\Normal\P=pasteBefore
-Bindings\Normal\a=organiserCreatePlaylist
-Bindings\Normal\A=organiserCreateGroup
-Bindings\Normal\<Slash>=enterSearch
-Bindings\Normal\n=nextMatch
-Bindings\Normal\N=prevMatch
-Bindings\Normal\<Esc>=clearPending
-Bindings\Normal\Ctrl+J=spatialMoveFocus:down
-Bindings\Normal\Ctrl+K=spatialMoveFocus:up
-Bindings\Normal\Ctrl+H=spatialMoveFocus:left
-Bindings\Normal\Ctrl+L=spatialMoveFocus:right
-Bindings\Normal\Ctrl+D=moveCursorHalfPage:+1
-Bindings\Normal\Ctrl+U=moveCursorHalfPage:-1
-Bindings\Normal\Ctrl+I=enterFilter
-Bindings\Normal\Ctrl+Shift+J=treeMoveSibling:+1
-Bindings\Normal\Ctrl+Shift+K=treeMoveSibling:-1
-Bindings\Normal\Alt+J=moveRows:+1
-Bindings\Normal\Alt+K=moveRows:-1
+; -- Global / Normal mode --
+Bindings\Global\Normal\j=moveCursor:+1
+Bindings\Global\Normal\k=moveCursor:-1
+Bindings\Global\Normal\gg=jumpToFirst
+Bindings\Global\Normal\G=jumpToLast
+Bindings\Global\Normal\dd=deleteRows
+Bindings\Global\Normal\i=enterInsert
+Bindings\Global\Normal\v=enterVisual
+Bindings\Global\Normal\h=treeCloseOrAscend
+Bindings\Global\Normal\l=treeOpenOrDescend
+Bindings\Global\Normal\o=focusNowPlaying
+Bindings\Global\Normal\g;=focusNowPlaying
+Bindings\Global\Normal\<Slash>=enterSearch
+Bindings\Global\Normal\n=nextMatch
+Bindings\Global\Normal\N=prevMatch
+Bindings\Global\Normal\<Esc>=clearPending
+Bindings\Global\Normal\Ctrl+J=spatialMoveFocus:down
+Bindings\Global\Normal\Ctrl+K=spatialMoveFocus:up
+Bindings\Global\Normal\Ctrl+H=spatialMoveFocus:left
+Bindings\Global\Normal\Ctrl+L=spatialMoveFocus:right
+Bindings\Global\Normal\Ctrl+D=moveCursorHalfPage:+1
+Bindings\Global\Normal\Ctrl+U=moveCursorHalfPage:-1
+Bindings\Global\Normal\Ctrl+I=enterFilter
+Bindings\Global\Normal\Alt+J=moveRows:+1
+Bindings\Global\Normal\Alt+K=moveRows:-1
 
-; -- Visual mode --
-Bindings\Visual\j=extendCursor:+1
-Bindings\Visual\k=extendCursor:-1
-Bindings\Visual\gg=extendToFirst
-Bindings\Visual\G=extendToEnd
-Bindings\Visual\o=swapAnchor
-Bindings\Visual\v=leaveVisualMode
-Bindings\Visual\d=deleteSelection
-Bindings\Visual\y=yankSelection
-Bindings\Visual\<Esc>=leaveVisualMode
-Bindings\Visual\n=nextMatchAndExit
-Bindings\Visual\N=prevMatchAndExit
-Bindings\Visual\<Slash>=enterSearchAndExit
-Bindings\Visual\m=beginSetMark
-Bindings\Visual\'=beginJumpToMark
-Bindings\Visual\`=beginJumpToMark
-Bindings\Visual\Ctrl+D=extendHalfPage:+1
-Bindings\Visual\Ctrl+U=extendHalfPage:-1
-Bindings\Visual\Ctrl+J=spatialMoveFocus:down
-Bindings\Visual\Ctrl+K=spatialMoveFocus:up
-Bindings\Visual\Ctrl+H=spatialMoveFocus:left
-Bindings\Visual\Ctrl+L=spatialMoveFocus:right
-Bindings\Visual\Alt+J=moveVisualSelection:+1
-Bindings\Visual\Alt+K=moveVisualSelection:-1
-Bindings\Visual\h=treeCloseOrAscend
-Bindings\Visual\l=treeOpenOrDescend
-Bindings\Visual\g;=focusNowPlayingAndExit
+; -- Playlist View / Normal mode --
+Bindings\PlaylistView\Normal\yy=yankRows
+Bindings\PlaylistView\Normal\u=undo
+Bindings\PlaylistView\Normal\Ctrl+R=redo
+Bindings\PlaylistView\Normal\m=beginSetMark
+Bindings\PlaylistView\Normal\'=beginJumpToMark
+Bindings\PlaylistView\Normal\`=beginJumpToMark
+Bindings\PlaylistView\Normal\p=pasteAfter
+Bindings\PlaylistView\Normal\P=pasteBefore
 
-; -- Insert mode --
-Bindings\Insert\<Esc>=leaveInsertMode
+; -- Playlist Organiser / Normal mode --
+Bindings\PlaylistOrganiser\Normal\a=organiserCreatePlaylist
+Bindings\PlaylistOrganiser\Normal\A=organiserCreateGroup
+Bindings\PlaylistOrganiser\Normal\Ctrl+Shift+J=treeMoveSibling:+1
+Bindings\PlaylistOrganiser\Normal\Ctrl+Shift+K=treeMoveSibling:-1
+
+; -- Global / Visual mode --
+Bindings\Global\Visual\j=extendCursor:+1
+Bindings\Global\Visual\k=extendCursor:-1
+Bindings\Global\Visual\gg=extendToFirst
+Bindings\Global\Visual\G=extendToEnd
+Bindings\Global\Visual\o=swapAnchor
+Bindings\Global\Visual\v=leaveVisualMode
+Bindings\Global\Visual\<Esc>=leaveVisualMode
+Bindings\Global\Visual\n=nextMatchAndExit
+Bindings\Global\Visual\N=prevMatchAndExit
+Bindings\Global\Visual\<Slash>=enterSearchAndExit
+Bindings\Global\Visual\Ctrl+D=extendHalfPage:+1
+Bindings\Global\Visual\Ctrl+U=extendHalfPage:-1
+Bindings\Global\Visual\Ctrl+J=spatialMoveFocus:down
+Bindings\Global\Visual\Ctrl+K=spatialMoveFocus:up
+Bindings\Global\Visual\Ctrl+H=spatialMoveFocus:left
+Bindings\Global\Visual\Ctrl+L=spatialMoveFocus:right
+Bindings\Global\Visual\h=treeCloseOrAscend
+Bindings\Global\Visual\l=treeOpenOrDescend
+Bindings\Global\Visual\g;=focusNowPlayingAndExit
+
+; -- Playlist View / Visual mode --
+Bindings\PlaylistView\Visual\d=deleteSelection
+Bindings\PlaylistView\Visual\y=yankSelection
+Bindings\PlaylistView\Visual\m=beginSetMark
+Bindings\PlaylistView\Visual\'=beginJumpToMark
+Bindings\PlaylistView\Visual\`=beginJumpToMark
+Bindings\PlaylistView\Visual\Alt+J=moveVisualSelection:+1
+Bindings\PlaylistView\Visual\Alt+K=moveVisualSelection:-1
+
+; -- Global / Insert mode --
+Bindings\Global\Insert\<Esc>=leaveInsertMode
 ```
 
 When adding new default configurable bindings to the plugin code, the entries above must also be added to this section to keep documentation in sync.
 
 ## Notes
 
-- Yank/delete/paste (`dd`, `yy`, `p`, `P`) operate on playlist views only. They read and write tracks via fooyin's `PlaylistHandler`. Other views (library browser, file browser) are read-only for these operations but support all cursor-navigation and spatial-focus bindings.
+- Default bindings are scoped where actions are view-specific. For example, mark, yank, paste, and playlist undo/redo defaults are playlist-view-only, while organiser creation and sibling-move defaults are organiser-only.
+- Yank/delete/paste (`dd`, `yy`, `p`, `P`) are not all scoped identically: `yy`, `p`, and `P` are playlist-view-only, while `dd` remains active in both playlist view and playlist organiser because it deletes playlist rows in the former and routes to organiser remove in the latter.
+- Bindings are stored under explicit scopes: `Bindings\<Scope>\<Mode>\<Keys>`. `Global` applies everywhere unless a narrower scope, such as `PlaylistView` or `PlaylistOrganiser`, defines the same key sequence for that mode.
 - `gg`, `dd`, and `yy` are two-keystroke sequences handled internally by the key parser; they do not appear as individual entries in Settings → Shortcuts.
 - Spatial focus (`Ctrl+j/k/h/l`) follows fooyin's `QSplitter` layout tree and remembers the last-focused pane per splitter, so returning to a split lands on the same widget you left.
 - From Visual mode, spatial focus exits to Normal on the newly focused pane but preserves the original selection in the old pane.

@@ -16,6 +16,18 @@ class SettingsManager;
 
 namespace Fooyin::VimMotions {
 
+enum class BindingScope
+{
+    Global,
+    PlaylistView,
+    PlaylistOrganiser,
+};
+
+inline size_t qHash(BindingScope key, size_t seed = 0)
+{
+    return std::hash<int>{}(static_cast<int>(key)) ^ seed;
+}
+
 enum class BindingMode
 {
     Normal,
@@ -44,6 +56,7 @@ enum class BindingRowStatus
 
 struct BindingDefinition
 {
+    BindingScope scope{BindingScope::Global};
     BindingMode mode{BindingMode::Normal};
     QString keys;
     QString defaultValue;
@@ -57,6 +70,7 @@ struct BindingDefinition
 
 struct BindingRow
 {
+    BindingScope scope{BindingScope::Global};
     BindingMode mode{BindingMode::Normal};
     QString keys;
     QString actionName;
@@ -64,6 +78,9 @@ struct BindingRow
     BindingRowSource source{BindingRowSource::Default};
     BindingRowStatus status{BindingRowStatus::Active};
 };
+
+using ScopedBindingEntries = QHash<BindingScope, QList<BindingEntry>>;
+using EffectiveBindings    = QHash<BindingMode, ScopedBindingEntries>;
 
 class VimMotionsBindingBackend : public QObject
 {
@@ -79,32 +96,36 @@ public:
 
     void reloadBindings();
 
-    [[nodiscard]] const QHash<BindingMode, QList<BindingEntry>>& effectiveBindings() const;
+    [[nodiscard]] const EffectiveBindings& effectiveBindings() const;
     [[nodiscard]] QList<BindingDefinition> bindingDefinitions() const;
     [[nodiscard]] QList<BindingDefinition> defaultBindingDefinitions() const;
     [[nodiscard]] QList<BindingRow> bindingRows(const QList<BindingDefinition>& definitions,
                                                 bool useDefaultBindings) const;
 
-    [[nodiscard]] bool addCustomBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys,
-                                        const QString& actionName, const QString& args) const;
-    [[nodiscard]] bool updateCustomBinding(QList<BindingDefinition>& definitions, BindingMode originalMode,
-                                           const QString& originalKeys, BindingMode mode, const QString& keys,
-                                           const QString& actionName, const QString& args) const;
-    [[nodiscard]] bool removeCustomBinding(QList<BindingDefinition>& definitions, BindingMode mode,
+    [[nodiscard]] bool addCustomBinding(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
+                                        const QString& keys, const QString& actionName, const QString& args) const;
+    [[nodiscard]] bool updateCustomBinding(QList<BindingDefinition>& definitions, BindingScope originalScope,
+                                           BindingMode originalMode, const QString& originalKeys, BindingScope scope,
+                                           BindingMode mode, const QString& keys, const QString& actionName,
+                                           const QString& args) const;
+    [[nodiscard]] bool removeCustomBinding(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
                                            const QString& keys) const;
-    [[nodiscard]] bool resetBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys) const;
-    [[nodiscard]] bool unmapBinding(QList<BindingDefinition>& definitions, BindingMode mode, const QString& keys) const;
+    [[nodiscard]] bool resetBinding(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
+                                    const QString& keys) const;
+    [[nodiscard]] bool unmapBinding(QList<BindingDefinition>& definitions, BindingScope scope, BindingMode mode,
+                                    const QString& keys) const;
     [[nodiscard]] bool saveBindingDefinitions(const QList<BindingDefinition>& definitions);
 
 signals:
     void bindingsChanged();
 
 private:
-    [[nodiscard]] QHash<BindingMode, QList<BindingEntry>> loadBindings() const;
+    [[nodiscard]] EffectiveBindings loadBindings() const;
     [[nodiscard]] static std::optional<BindingMode> modeFromString(const QString& mode);
+    [[nodiscard]] static std::optional<BindingScope> scopeFromString(const QString& scope);
 
     SettingsManager* m_settingsManager{nullptr};
-    QHash<BindingMode, QList<BindingEntry>> m_effectiveBindings;
+    EffectiveBindings m_effectiveBindings;
 };
 
 } // namespace Fooyin::VimMotions

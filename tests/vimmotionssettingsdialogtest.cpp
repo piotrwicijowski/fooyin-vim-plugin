@@ -2,6 +2,7 @@
 
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QSpinBox>
@@ -47,8 +48,11 @@ void TestVimMotionsSettingsDialog::testWidgetScaffold()
     QCOMPARE(tree->editTriggers(), QAbstractItemView::NoEditTriggers);
     QCOMPARE(tree->selectionMode(), QAbstractItemView::SingleSelection);
     QVERIFY(tree->model());
-    QCOMPARE(tree->model()->columnCount(), 5);
+    QCOMPARE(tree->model()->columnCount(), 6);
     QCOMPARE(tree->model()->rowCount(), 0);
+
+    auto* scopeBox = dialog.findChild<QComboBox*>(QStringLiteral("bindingScope"));
+    QVERIFY(!scopeBox);
 
     QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("addBinding")));
     QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("editBinding")));
