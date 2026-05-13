@@ -92,18 +92,20 @@ private:
         return bindings.value(mode).value(scope);
     }
 
-    static bool hasTreeRow(const QStandardItemModel* model, const QString& mode, const QString& keys,
-                           const QString& action)
+    static bool hasTreeRow(const QStandardItemModel* model, const QString& scope, const QString& mode,
+                           const QString& keys, const QString& action)
     {
         if(!model)
             return false;
 
         for(int row = 0; row < model->rowCount(); ++row) {
-            if(model->data(model->index(row, 0)).toString() != mode)
+            if(model->data(model->index(row, 0)).toString() != scope)
                 continue;
-            if(model->data(model->index(row, 1)).toString() != keys)
+            if(model->data(model->index(row, 1)).toString() != mode)
                 continue;
-            if(model->data(model->index(row, 2)).toString() != action)
+            if(model->data(model->index(row, 2)).toString() != keys)
+                continue;
+            if(model->data(model->index(row, 3)).toString() != action)
                 continue;
             return true;
         }
@@ -111,14 +113,16 @@ private:
         return false;
     }
 
-    static int findTreeRow(const QStandardItemModel* model, const QString& mode, const QString& keys)
+    static int findTreeRow(const QStandardItemModel* model, const QString& scope, const QString& mode,
+                           const QString& keys)
     {
         if(!model)
             return -1;
 
         for(int row = 0; row < model->rowCount(); ++row) {
-            if(model->data(model->index(row, 0)).toString() == mode
-               && model->data(model->index(row, 1)).toString() == keys) {
+            if(model->data(model->index(row, 0)).toString() == scope
+               && model->data(model->index(row, 1)).toString() == mode
+               && model->data(model->index(row, 2)).toString() == keys) {
                 return row;
             }
         }
@@ -134,34 +138,37 @@ private:
         return model->data(model->index(row, column)).toString();
     }
 
-    static void selectTreeRow(QTreeView* tree, const QStandardItemModel* model, const QString& mode,
-                              const QString& keys)
+    static void selectTreeRow(QTreeView* tree, const QStandardItemModel* model, const QString& scope,
+                              const QString& mode, const QString& keys)
     {
         QVERIFY(tree);
-        const int row = findTreeRow(model, mode, keys);
+        const int row = findTreeRow(model, scope, mode, keys);
         QVERIFY(row >= 0);
         tree->setCurrentIndex(model->index(row, 0));
     }
 
-    static void acceptBindingEditor(BindingMode mode, const QString& keys, const QString& actionName,
-                                    const QString& args = {})
+    static void acceptBindingEditor(BindingScope scope, BindingMode mode, const QString& keys,
+                                    const QString& actionName, const QString& args = {})
     {
-        QTimer::singleShot(0, [mode, keys, actionName, args]() {
+        QTimer::singleShot(0, [scope, mode, keys, actionName, args]() {
             auto* dialog = qobject_cast<QDialog*>(qApp->activeModalWidget());
             QVERIFY(dialog);
 
+            auto* scopeBox   = dialog->findChild<QComboBox*>(QStringLiteral("bindingScope"));
             auto* modeBox    = dialog->findChild<QComboBox*>(QStringLiteral("bindingMode"));
             auto* keysEdit   = dialog->findChild<QLineEdit*>(QStringLiteral("bindingKeys"));
             auto* actionEdit = dialog->findChild<QLineEdit*>(QStringLiteral("bindingActionName"));
             auto* argsEdit   = dialog->findChild<QLineEdit*>(QStringLiteral("bindingArgs"));
             auto* buttons    = dialog->findChild<QDialogButtonBox*>(QStringLiteral("bindingEditButtons"));
 
+            QVERIFY(scopeBox);
             QVERIFY(modeBox);
             QVERIFY(keysEdit);
             QVERIFY(actionEdit);
             QVERIFY(argsEdit);
             QVERIFY(buttons);
 
+            scopeBox->setCurrentIndex(scopeBox->findData(static_cast<int>(scope)));
             modeBox->setCurrentIndex(modeBox->findData(static_cast<int>(mode)));
             keysEdit->setText(keys);
             actionEdit->setText(actionName);
@@ -357,12 +364,12 @@ private Q_SLOTS:
         QVERIFY(tree);
         auto* treeModel = qobject_cast<QStandardItemModel*>(tree->model());
         QVERIFY(treeModel);
-        QVERIFY(
-            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
-        int jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("z"),
+                           QStringLiteral("focusNowPlaying")));
+        int jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
-        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
-        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Disabled"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 5), QStringLiteral("Disabled"));
 
         auto* timeout = dialog.findChild<QSpinBox*>(QStringLiteral("pendingSequenceTimeout"));
         QVERIFY(timeout);
@@ -398,9 +405,10 @@ private Q_SLOTS:
         QCOMPARE(backend.pendingSequenceTimeout(), 450);
         QCOMPARE(backend.wrapScan(), true);
         QCOMPARE(backend.useDefaultBindings(), true);
-        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
-        QVERIFY(
-            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"),
+                           QStringLiteral("moveCursor:+1")));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("z"),
+                           QStringLiteral("focusNowPlaying")));
         QVERIFY(hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                            QChar(u'j'), QStringLiteral("moveCursor")));
 
@@ -424,9 +432,10 @@ private Q_SLOTS:
         QCOMPARE(backend.pendingSequenceTimeout(), 450);
         QCOMPARE(backend.wrapScan(), true);
         QCOMPARE(backend.useDefaultBindings(), true);
-        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"), QStringLiteral("moveCursor:+1")));
-        QVERIFY(
-            !hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"),
+                           QStringLiteral("moveCursor:+1")));
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("z"),
+                            QStringLiteral("focusNowPlaying")));
         QVERIFY(hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                            QChar(u'j'), QStringLiteral("moveCursor")));
         QVERIFY(hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
@@ -441,18 +450,18 @@ private Q_SLOTS:
         QCOMPARE(backend.pendingSequenceTimeout(), 0);
         QCOMPARE(backend.wrapScan(), true);
         QCOMPARE(backend.useDefaultBindings(), true);
-        QVERIFY(
-            !hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("z"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("z"),
+                            QStringLiteral("focusNowPlaying")));
         QVERIFY(!hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                             QChar(u'z'), QStringLiteral("focusNowPlaying")));
 
         useDefaultBindings->setChecked(false);
         applyButton->click();
 
-        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
-        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
-        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Disabled"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 5), QStringLiteral("Disabled"));
     }
 
     void testBindingBackendEditableOperations()
@@ -549,77 +558,86 @@ private Q_SLOTS:
         QVERIFY(discardButton);
         QVERIFY(buttons);
 
-        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
+        acceptBindingEditor(BindingScope::Global, BindingMode::Normal, QStringLiteral("q"),
+                            QStringLiteral("focusNowPlaying"));
         addButton->click();
-        QVERIFY(
-            hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("focusNowPlaying")));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("q"),
+                           QStringLiteral("focusNowPlaying")));
         QVERIFY(!hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                             QChar(u'q'), QStringLiteral("focusNowPlaying")));
 
-        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        selectTreeRow(tree, treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(!editButton->isEnabled());
         QVERIFY(unmapButton->isEnabled());
         unmapButton->click();
-        int jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        int jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
-        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Custom override"));
-        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Unmapped"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Custom override"));
+        QCOMPARE(treeCell(treeModel, jRow, 5), QStringLiteral("Unmapped"));
         QVERIFY(!editButton->isEnabled());
 
-        acceptBindingEditor(BindingMode::Normal, QStringLiteral("j"), QStringLiteral("focusNowPlaying"));
+        acceptBindingEditor(BindingScope::Global, BindingMode::Normal, QStringLiteral("j"),
+                            QStringLiteral("focusNowPlaying"));
         addButton->click();
-        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
-        QCOMPARE(treeCell(treeModel, jRow, 2), QStringLiteral("focusNowPlaying"));
-        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Custom override"));
-        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Active"));
+        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("focusNowPlaying"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Custom override"));
+        QCOMPARE(treeCell(treeModel, jRow, 5), QStringLiteral("Active"));
 
         discardButton->click();
-        QVERIFY(
-            !hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("focusNowPlaying")));
-        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("q"),
+                            QStringLiteral("focusNowPlaying")));
+        jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
-        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
-        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Active"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 5), QStringLiteral("Active"));
 
-        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
+        acceptBindingEditor(BindingScope::Global, BindingMode::Normal, QStringLiteral("q"),
+                            QStringLiteral("focusNowPlaying"));
         addButton->click();
-        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("q"));
+        selectTreeRow(tree, treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("q"));
         QVERIFY(editButton->isEnabled());
-        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("moveCursor"),
-                            QStringLiteral("+1"));
+        acceptBindingEditor(BindingScope::PlaylistView, BindingMode::Normal, QStringLiteral("q"),
+                            QStringLiteral("moveCursor"), QStringLiteral("+1"));
         editButton->click();
-        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("moveCursor:+1")));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("q"),
+                           QStringLiteral("moveCursor:+1")));
 
-        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("q"));
+        selectTreeRow(tree, treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("q"));
         removeButton->click();
-        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("q"), QStringLiteral("moveCursor:+1")));
+        QVERIFY(!hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("q"),
+                            QStringLiteral("moveCursor:+1")));
 
-        acceptBindingEditor(BindingMode::Normal, QStringLiteral("q"), QStringLiteral("focusNowPlaying"));
+        acceptBindingEditor(BindingScope::PlaylistOrganiser, BindingMode::Normal, QStringLiteral("q"),
+                            QStringLiteral("focusNowPlaying"));
         addButton->click();
-        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Playlist Organiser"), QStringLiteral("Normal"),
+                           QStringLiteral("q"), QStringLiteral("focusNowPlaying")));
+        selectTreeRow(tree, treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         unmapButton->click();
-        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        selectTreeRow(tree, treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         resetBindingButton->click();
-        jRow = findTreeRow(treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
-        QCOMPARE(treeCell(treeModel, jRow, 3), QStringLiteral("Default"));
-        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Active"));
+        QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Default"));
+        QCOMPARE(treeCell(treeModel, jRow, 5), QStringLiteral("Active"));
 
-        selectTreeRow(tree, treeModel, QStringLiteral("Normal"), QStringLiteral("j"));
+        selectTreeRow(tree, treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         unmapButton->click();
         auto* applyButton = buttons->button(QDialogButtonBox::Apply);
         QVERIFY(applyButton);
         applyButton->click();
 
-        QVERIFY(hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
-                           QChar(u'q'), QStringLiteral("focusNowPlaying")));
+        QVERIFY(hasBinding(
+            scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::PlaylistOrganiser),
+            QChar(u'q'), QStringLiteral("focusNowPlaying")));
         QVERIFY(!hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                             QChar(u'j'), QStringLiteral("moveCursor")));
 
         QSettings fileSettings(m_tempDir.filePath(QStringLiteral("vim_settings_dialog_stage6.ini")),
                                QSettings::IniFormat);
-        QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Global/Normal/q")).toString(),
+        QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/PlaylistOrganiser/Normal/q")).toString(),
                  QStringLiteral("focusNowPlaying"));
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Global/Normal/j")).toString(), QString{});
     }

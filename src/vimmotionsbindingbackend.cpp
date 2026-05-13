@@ -268,13 +268,17 @@ QList<BindingDefinition> VimMotionsBindingBackend::bindingDefinitions() const
 
     for(auto it = customValues.constBegin(); it != customValues.constEnd(); ++it) {
         const QStringList parts = it.key().split(u'/');
-        if(parts.size() != 5)
+        if(parts.size() != 5) {
+            qWarning() << "Skipping invalid binding key" << it.key();
             continue;
+        }
 
         const auto scope = scopeFromString(parts[2]);
         const auto mode  = modeFromString(parts[3]);
-        if(!scope || !mode)
+        if(!scope || !mode) {
+            qWarning() << "Skipping binding with unknown scope or mode" << it.key();
             continue;
+        }
 
         const QString keys = parts[4];
         if(auto* definition = findDefinition(definitions, *scope, *mode, keys)) {
@@ -308,13 +312,17 @@ QList<BindingDefinition> VimMotionsBindingBackend::defaultBindingDefinitions() c
     for(const auto& binding : VimMotionsSettings::defaultBindings()) {
         const QString fullKey   = QString::fromLatin1(binding.key);
         const QStringList parts = fullKey.split(u'/');
-        if(parts.size() != 5)
+        if(parts.size() != 5) {
+            qWarning() << "Skipping invalid default binding key" << fullKey;
             continue;
+        }
 
         const auto scope = scopeFromString(parts[2]);
         const auto mode  = modeFromString(parts[3]);
-        if(!scope || !mode)
+        if(!scope || !mode) {
+            qWarning() << "Skipping default binding with unknown scope or mode" << fullKey;
             continue;
+        }
 
         BindingDefinition definition;
         definition.scope        = *scope;
