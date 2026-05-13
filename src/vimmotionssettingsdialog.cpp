@@ -12,6 +12,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -19,6 +20,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSortFilterProxyModel>
 #include <QSpinBox>
 #include <QStandardItemModel>
@@ -110,6 +112,61 @@ QString bindingActionText(const BindingRow& row)
     return row.actionName + u':' + row.args;
 }
 
+QString keysHelpText()
+{
+    return QApplication::translate(
+        "VimMotionsSettingsDialog",
+        "Examples: j, G, ;, <Esc>, <CR>, <Tab>, <Space>, <Slash>, Ctrl+J, Alt+J, Ctrl+Shift+K, gg, dd, g<Space>, "
+        "<Space><Space>");
+}
+
+QString actionsHelpText()
+{
+    return QApplication::translate(
+        "VimMotionsSettingsDialog",
+        "Built-in actions:\n"
+        "moveCursor(+/-N), jumpToFirst, jumpToLast, jumpToRow(N), moveCursorHalfPage(+/-1), activateCurrentRow\n"
+        "treeMoveSibling(+/-1), treeOpenOrDescend, treeCloseOrAscend, organiserCreatePlaylist, organiserCreateGroup\n"
+        "enterInsert, leaveInsertMode, enterVisual, selectAll, leaveVisualMode\n"
+        "deleteRows, yankRows, pasteAfter, pasteBefore, copyAfterCurrentPlaying, moveAfterCurrentPlaying\n"
+        "moveRows(+/-1), extendCursor(+/-N), extendToFirst, extendToEnd, extendToRow(N), swapAnchor, "
+        "deleteSelection, yankSelection, extendHalfPage(+/-1), moveVisualSelection(+/-1)\n"
+        "spatialMoveFocus(down/up/left/right), undo, redo, focusNowPlaying, fooyinAction(Action.Id), "
+        "focusNowPlayingAndExit, beginSetMark, beginJumpToMark\n"
+        "enterSearch, nextMatch, prevMatch, enterFilter, nextMatchAndExit, prevMatchAndExit, enterSearchAndExit, "
+        "clearPending");
+}
+
+void showHelpDialog(QWidget* parent, const QString& title, const QString& text, const QString& objectName)
+{
+    QDialog dialog(parent);
+    dialog.setModal(true);
+    dialog.setWindowTitle(title);
+    dialog.setObjectName(objectName);
+    dialog.resize(640, 420);
+
+    auto* textLabel = new QLabel(text, &dialog);
+    textLabel->setObjectName(objectName + u"Text"_s);
+    textLabel->setWordWrap(true);
+    textLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    textLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+
+    auto* scrollArea = new QScrollArea(&dialog);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setWidget(textLabel);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    buttons->setObjectName(objectName + u"Buttons"_s);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->addWidget(scrollArea);
+    layout->addWidget(buttons);
+
+    dialog.exec();
+}
+
 void populateBindingsTree(QStandardItemModel* model, const QList<BindingRow>& rows, const QPalette& palette)
 {
     if(!model)
@@ -187,16 +244,42 @@ public:
         m_args->setObjectName(u"bindingArgs"_s);
         m_buttons->setObjectName(u"bindingEditButtons"_s);
 
+        auto* keysHelpButton = new QPushButton(QApplication::translate("VimMotionsSettingsDialog", "Help"), this);
+        keysHelpButton->setObjectName(u"bindingKeysHelpButton"_s);
+        keysHelpButton->setAutoDefault(false);
+
+        auto* actionHelpButton = new QPushButton(QApplication::translate("VimMotionsSettingsDialog", "Help"), this);
+        actionHelpButton->setObjectName(u"bindingActionHelpButton"_s);
+        actionHelpButton->setAutoDefault(false);
+
+        auto* keysLayout = new QHBoxLayout();
+        keysLayout->setContentsMargins(0, 0, 0, 0);
+        keysLayout->addWidget(m_keys, 1);
+        keysLayout->addWidget(keysHelpButton);
+
+        auto* actionLayout = new QHBoxLayout();
+        actionLayout->setContentsMargins(0, 0, 0, 0);
+        actionLayout->addWidget(m_actionName, 1);
+        actionLayout->addWidget(actionHelpButton);
+
         auto* form = new QFormLayout(this);
         form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Scope"), m_scope);
         form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Mode"), m_mode);
-        form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Keys"), m_keys);
-        form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Action"), m_actionName);
+        form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Keys"), keysLayout);
+        form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Action"), actionLayout);
         form->addRow(QApplication::translate("VimMotionsSettingsDialog", "Arguments"), m_args);
         form->addRow(m_buttons);
 
         QObject::connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
         QObject::connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+        QObject::connect(keysHelpButton, &QPushButton::clicked, this, [this]() {
+            showHelpDialog(this, QApplication::translate("VimMotionsSettingsDialog", "Key Format Help"), keysHelpText(),
+                           u"bindingKeysHelpDialog"_s);
+        });
+        QObject::connect(actionHelpButton, &QPushButton::clicked, this, [this]() {
+            showHelpDialog(this, QApplication::translate("VimMotionsSettingsDialog", "Action Help"), actionsHelpText(),
+                           u"bindingActionHelpDialog"_s);
+        });
     }
 
     void setBinding(BindingScope scope, BindingMode mode, const QString& keys, const QString& actionName,

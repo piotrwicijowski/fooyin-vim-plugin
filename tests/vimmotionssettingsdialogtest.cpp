@@ -3,11 +3,20 @@
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialog>
 #include <QDialogButtonBox>
+#include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QTreeView>
+
+#include <utils/settings/settingsmanager.h>
+
+#include "vimmotionsbindingbackend.h"
+#include "vimmotionssettings.h"
 
 using namespace Fooyin::VimMotions;
 
@@ -17,6 +26,7 @@ class TestVimMotionsSettingsDialog : public QObject
 
 private Q_SLOTS:
     void testWidgetScaffold();
+    void testBindingEditorShowsHelp();
 };
 
 void TestVimMotionsSettingsDialog::testWidgetScaffold()
@@ -73,6 +83,83 @@ void TestVimMotionsSettingsDialog::testWidgetScaffold()
     QVERIFY(buttons->button(QDialogButtonBox::Apply));
     QVERIFY(buttons->button(QDialogButtonBox::Reset));
     QVERIFY(buttons->button(QDialogButtonBox::Cancel));
+}
+
+void TestVimMotionsSettingsDialog::testBindingEditorShowsHelp()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("vim_settings_dialog_help.ini"))};
+    VimMotionsSettings vimSettings{&settings};
+    Q_UNUSED(vimSettings);
+    VimMotionsBindingBackend backend{&settings};
+    VimMotionsSettingsDialog dialog{&settings, &backend};
+
+    QTimer::singleShot(0, [&dialog]() {
+        auto* addButton = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
+        QVERIFY(addButton);
+
+        QTimer::singleShot(0, []() {
+            auto* editor = qobject_cast<QDialog*>(qApp->activeModalWidget());
+            QVERIFY(editor);
+
+            auto* keysHelpButton   = editor->findChild<QPushButton*>(QStringLiteral("bindingKeysHelpButton"));
+            auto* actionHelpButton = editor->findChild<QPushButton*>(QStringLiteral("bindingActionHelpButton"));
+            auto* buttons          = editor->findChild<QDialogButtonBox*>(QStringLiteral("bindingEditButtons"));
+
+            QVERIFY(keysHelpButton);
+            QVERIFY(actionHelpButton);
+
+            QTimer::singleShot(0, []() {
+                auto* helpDialog = qobject_cast<QDialog*>(qApp->activeModalWidget());
+                QVERIFY(helpDialog);
+                QCOMPARE(helpDialog->objectName(), QStringLiteral("bindingKeysHelpDialog"));
+
+                auto* text = helpDialog->findChild<QLabel*>(QStringLiteral("bindingKeysHelpDialogText"));
+                QVERIFY(text);
+                QVERIFY(text->text().contains(QStringLiteral("Ctrl+J")));
+                QVERIFY(text->text().contains(QStringLiteral("g<Space>")));
+
+                auto* closeButtons
+                    = helpDialog->findChild<QDialogButtonBox*>(QStringLiteral("bindingKeysHelpDialogButtons"));
+                QVERIFY(closeButtons);
+                auto* closeButton = closeButtons->button(QDialogButtonBox::Close);
+                QVERIFY(closeButton);
+                closeButton->click();
+            });
+            keysHelpButton->click();
+
+            QTimer::singleShot(0, []() {
+                auto* helpDialog = qobject_cast<QDialog*>(qApp->activeModalWidget());
+                QVERIFY(helpDialog);
+                QCOMPARE(helpDialog->objectName(), QStringLiteral("bindingActionHelpDialog"));
+
+                auto* text = helpDialog->findChild<QLabel*>(QStringLiteral("bindingActionHelpDialogText"));
+                QVERIFY(text);
+                QVERIFY(text->text().contains(QStringLiteral("moveCursor(+/-N)")));
+                QVERIFY(text->text().contains(QStringLiteral("fooyinAction(Action.Id)")));
+
+                auto* closeButtons
+                    = helpDialog->findChild<QDialogButtonBox*>(QStringLiteral("bindingActionHelpDialogButtons"));
+                QVERIFY(closeButtons);
+                auto* closeButton = closeButtons->button(QDialogButtonBox::Close);
+                QVERIFY(closeButton);
+                closeButton->click();
+            });
+            actionHelpButton->click();
+
+            QVERIFY(buttons);
+            auto* cancelButton = buttons->button(QDialogButtonBox::Cancel);
+            QVERIFY(cancelButton);
+            cancelButton->click();
+        });
+
+        addButton->click();
+    });
+
+    dialog.show();
+    QTest::qWait(50);
 }
 
 QTEST_MAIN(TestVimMotionsSettingsDialog)
