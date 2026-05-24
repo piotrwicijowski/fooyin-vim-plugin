@@ -18,14 +18,19 @@
 #include <utils/settings/settingsmanager.h>
 
 #include <QAbstractItemView>
+#include <QAbstractSpinBox>
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QItemSelection>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMimeData>
 #include <QPersistentModelIndex>
+#include <QPlainTextEdit>
 #include <QPointer>
+#include <QTextEdit>
 #include <QTimer>
 #include <QTreeView>
 #include <algorithm>
@@ -83,6 +88,26 @@ bool hasSettingsDialogAncestor(const QObject* object)
 
     if(const auto* widget = qobject_cast<const QWidget*>(object)) {
         if(const QWidget* window = widget->window(); window && window != widget && hasSettingsDialogAncestor(window))
+            return true;
+    }
+
+    return false;
+}
+
+bool isEditableInputObject(const QObject* object)
+{
+    for(auto* current = object; current; current = current->parent()) {
+        if(qobject_cast<const QLineEdit*>(current) || qobject_cast<const QTextEdit*>(current)
+           || qobject_cast<const QPlainTextEdit*>(current) || qobject_cast<const QAbstractSpinBox*>(current)) {
+            return true;
+        }
+
+        if(const auto* comboBox = qobject_cast<const QComboBox*>(current); comboBox && comboBox->isEditable())
+            return true;
+    }
+
+    if(const auto* widget = qobject_cast<const QWidget*>(object)) {
+        if(const QWidget* window = widget->window(); window && window != widget && isEditableInputObject(window))
             return true;
     }
 
@@ -389,6 +414,16 @@ bool VimHandler::handleKeyPress(QKeyEvent* ev)
 
 bool VimHandler::shouldSkipBindings(QObject* watched) const
 {
+    if(watched && isEditableInputObject(watched))
+        return true;
+
+    for(QObject* candidate :
+        {static_cast<QObject*>(QApplication::focusWidget()), static_cast<QObject*>(QApplication::activeModalWidget()),
+         static_cast<QObject*>(QApplication::activeWindow())}) {
+        if(candidate && isEditableInputObject(candidate))
+            return true;
+    }
+
     if(m_useVimMotionsInSettings)
         return false;
 

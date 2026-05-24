@@ -14,4 +14,4 @@
 - Pasting to empty playlist - needs public API
 - Search and delete changes offsets/indexes - fixed
 - yc not working when the yy is not unmapped - fixed
-- text input in search bar
+- text input in search bar - fixed

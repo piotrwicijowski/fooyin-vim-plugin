@@ -147,6 +147,7 @@ private Q_SLOTS:
     void configVisualAmbiguousPrefixFallsBackAfterTimeout();
     void settingsDialogApplyReloadsHandlerBindings();
     void bindingsAreSkippedInSettingsDialogsByDefault();
+    void bindingsAreSkippedForFocusedLineEdit();
 };
 
 void TestVimHandlerTimeout::twoKeyTimeoutClearsPendingSequence()
@@ -574,6 +575,50 @@ void TestVimHandlerTimeout::bindingsAreSkippedInSettingsDialogsByDefault()
 
     QVERIFY(!dispatchShortcutOverride(handler, &subDialogView, u'j'));
     QVERIFY(!dispatchKey(handler, &subDialogView, u'j'));
+}
+
+void TestVimHandlerTimeout::bindingsAreSkippedForFocusedLineEdit()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_skip_line_edit.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    QDialog dialog;
+    QVBoxLayout layout(&dialog);
+    auto* searchEdit = new QLineEdit(&dialog);
+    auto* view       = new PlaylistView(&dialog);
+    layout.addWidget(searchEdit);
+    layout.addWidget(view);
+
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    model.appendRow(new QStandardItem(QStringLiteral("B")));
+    view->setModel(&model);
+    view->setCurrentIndex(model.index(0, 0));
+
+    dialog.show();
+    searchEdit->setFocus();
+    qApp->processEvents();
+
+    QVERIFY(searchEdit->hasFocus());
+    QVERIFY(!dispatchShortcutOverride(handler, searchEdit, u'j'));
+    QVERIFY(!dispatchShortcutOverride(handler, &dialog, u'j'));
+
+    qApp->installEventFilter(&handler);
+    searchEdit->clear();
+    QTest::keyClicks(searchEdit, QStringLiteral("aj"));
+    qApp->processEvents();
+    qApp->removeEventFilter(&handler);
+
+    QCOMPARE(searchEdit->text(), QStringLiteral("aj"));
+
+    focusView(view);
+    QVERIFY(dispatchShortcutOverride(handler, view, u'j'));
+    QVERIFY(dispatchKey(handler, view, u'j'));
+    QCOMPARE(view->currentIndex().row(), 1);
 }
 
 QTEST_MAIN(TestVimHandlerTimeout)
