@@ -26,8 +26,11 @@ set(FOOYIN_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../fooyin"
     CACHE PATH "Path to fooyin source tree")
 set(FOOYIN_BUILD_DIR "${FOOYIN_SRC_DIR}/build"
     CACHE PATH "Path to fooyin CMake build directory")
+option(FOOYIN_FORCE_DEV_TREE "Use the sibling fooyin source/build tree instead of find_package(Fooyin)" ON)
 
-find_package(Fooyin QUIET)
+if(NOT FOOYIN_FORCE_DEV_TREE)
+    find_package(Fooyin QUIET)
+endif()
 
 if(Fooyin_FOUND)
     message(STATUS "Using installed Fooyin")

@@ -28,7 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   clang-tidy \
   pkg-config \
   git \
+  libgtest-dev \
   qt6-base-dev \
+  libqt6sql6-sqlite \
   libqt6svg6-dev \
   libasound2-dev \
   libtag-dev \

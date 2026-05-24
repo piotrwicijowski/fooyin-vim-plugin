@@ -61,6 +61,7 @@ add_test(NAME test_searchnavigation COMMAND test_searchnavigation)
 
 add_executable(test_vimhandler_viewcontext
     vimhandlerviewcontexttest.cpp
+    ${FOOYIN_SRC_DIR}/data/data.qrc
     ${CMAKE_SOURCE_DIR}/src/vimactions.cpp
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
@@ -73,6 +74,7 @@ add_executable(test_vimhandler_viewcontext
 )
 target_include_directories(test_vimhandler_viewcontext PRIVATE
     ${CMAKE_SOURCE_DIR}/src
+    ${FOOYIN_SRC_DIR}/src
 )
 target_link_libraries(test_vimhandler_viewcontext PRIVATE
     Fooyin::Gui

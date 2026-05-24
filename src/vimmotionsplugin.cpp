@@ -7,6 +7,7 @@
 #include "vimmotionssettingsdialog.h"
 
 #include <core/plugins/coreplugincontext.h>
+#include <gui/playlist/playlistselectionobserver.h>
 #include <gui/plugins/guiplugincontext.h>
 #include <gui/widgetprovider.h>
 
@@ -94,15 +95,17 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 {
-    m_searchController = context.searchController;
-    m_actionManager    = context.actionManager;
-    m_trackSelection   = context.trackSelection;
+    m_searchController  = context.searchController;
+    m_actionManager     = context.actionManager;
+    m_trackSelection    = context.trackSelection;
+    m_playlistSelection = context.playlistSelection;
 
     qCInfo(VIM_LOG) << "VimMotionsPlugin: GUI initialising, installing event filter";
     m_vimHandler = new VimHandler(this);
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
     m_vimHandler->setActionManager(m_actionManager);
     m_vimHandler->setTrackSelectionController(m_trackSelection);
+    m_vimHandler->setPlaylistSelectionObserver(m_playlistSelection);
     m_vimHandler->setSettingsBackend(m_settingsBackend.get());
     m_vimHandler->setSettingsManager(m_settingsManager);
     qApp->installEventFilter(m_vimHandler);
