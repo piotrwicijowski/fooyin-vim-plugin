@@ -2758,21 +2758,170 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     m_count            = 0;
 
     const BindingScope activeScope = activeBindingScope();
+    const auto scopedBindings      = m_configBindings.value(mode).value(activeScope);
+    const auto globalBindings      = m_configBindings.value(mode).value(BindingScope::Global);
+
+    const auto bestSingleBinding = [ev](const QList<BindingEntry>& bindings) -> const BindingEntry* {
+        const BindingEntry* best = nullptr;
+        int bestModCount         = -1;
+
+        for(const auto& binding : bindings) {
+            if(binding.keys.size() != 1 || !binding.keys.front().matches(ev))
+                continue;
+
+            int modCount         = 0;
+            const auto modifiers = binding.keys.front().modifiers;
+            if(modifiers & Qt::ControlModifier)
+                ++modCount;
+            if(modifiers & Qt::AltModifier)
+                ++modCount;
+            if(modifiers & Qt::ShiftModifier)
+                ++modCount;
+            if(modifiers & Qt::MetaModifier)
+                ++modCount;
+
+            if(modCount > bestModCount) {
+                bestModCount = modCount;
+                best         = &binding;
+            }
+        }
+
+        return best;
+    };
+
+    const auto sequencePrefixBinding = [ev](const QList<BindingEntry>& bindings) -> const BindingEntry* {
+        for(const auto& binding : bindings) {
+            if(binding.keys.size() >= 2 && binding.keys.front().matches(ev))
+                return &binding;
+        }
+
+        return nullptr;
+    };
+
+    struct PendingSequenceMatch
+    {
+        const BindingEntry* complete{nullptr};
+        QList<KeyCombo> nextPrefix;
+    };
+
+    const auto matchPendingSequence = [this, ev](const QList<BindingEntry>& bindings) {
+        PendingSequenceMatch match;
+
+        for(const auto& binding : bindings) {
+            if(!pendingConfigPrefixMatches(binding))
+                continue;
+            if(binding.keys.size() <= m_pendingConfigSequence.size())
+                continue;
+            if(!binding.keys[m_pendingConfigSequence.size()].matches(ev))
+                continue;
+
+            const auto prefix = binding.keys.mid(0, m_pendingConfigSequence.size() + 1);
+            if(binding.keys.size() == prefix.size()) {
+                match.complete = &binding;
+                continue;
+            }
+
+            match.nextPrefix = prefix;
+            return match;
+        }
+
+        return match;
+    };
 
     if(m_pendingConfigScope.has_value()) {
-        const auto scopedBindings = m_configBindings.value(mode).value(*m_pendingConfigScope);
-        if(dispatchFromBindings(ev, *m_pendingConfigScope, scopedBindings))
+        const BindingScope pendingScope = *m_pendingConfigScope;
+        const auto pendingBindings      = m_configBindings.value(mode).value(pendingScope);
+        const auto pendingMatch         = matchPendingSequence(pendingBindings);
+        if(!pendingMatch.nextPrefix.isEmpty()) {
+            m_pendingConfigSequence = pendingMatch.nextPrefix;
+            m_pendingConfigScope    = pendingScope;
+            refreshPendingTimeout();
+            qCDebug(VIM_LOG) << "ConfigDispatch: sequence pending length" << m_pendingConfigSequence.size();
             return true;
+        }
+
+        if(pendingMatch.complete) {
+            qCDebug(VIM_LOG) << "ConfigDispatch: sequence complete" << pendingMatch.complete->actionName;
+            clearPendingInputState();
+            executeAction(*pendingMatch.complete);
+            return true;
+        }
+
+        if(pendingScope != BindingScope::Global) {
+            const auto globalMatch = matchPendingSequence(globalBindings);
+            if(!globalMatch.nextPrefix.isEmpty()) {
+                m_pendingConfigSequence = globalMatch.nextPrefix;
+                m_pendingConfigScope    = BindingScope::Global;
+                refreshPendingTimeout();
+                qCDebug(VIM_LOG) << "ConfigDispatch: sequence pending length" << m_pendingConfigSequence.size();
+                return true;
+            }
+
+            if(globalMatch.complete) {
+                qCDebug(VIM_LOG) << "ConfigDispatch: sequence complete" << globalMatch.complete->actionName;
+                clearPendingInputState();
+                executeAction(*globalMatch.complete);
+                return true;
+            }
+        }
+
+        if(m_pendingConfigFallback.has_value()) {
+            const auto fallback = *m_pendingConfigFallback;
+            qCDebug(VIM_LOG) << "ConfigDispatch: sequence mismatch, using fallback" << fallback.actionName;
+            clearPendingInputState();
+            executeAction(fallback);
+            return true;
+        }
+
+        clearPendingInputState();
+        qCDebug(VIM_LOG) << "ConfigDispatch: pending sequence cleared on mismatch";
+        return true;
     }
 
-    const auto scopedBindings = m_configBindings.value(mode).value(activeScope);
-    if(dispatchFromBindings(ev, activeScope, scopedBindings))
-        return true;
+    const BindingEntry* scopedBest = bestSingleBinding(scopedBindings);
+    const BindingEntry* globalBest = activeScope == BindingScope::Global ? nullptr : bestSingleBinding(globalBindings);
+    const BindingEntry* scopedSequenceStart = sequencePrefixBinding(scopedBindings);
+    const BindingEntry* globalSequenceStart
+        = activeScope == BindingScope::Global ? nullptr : sequencePrefixBinding(globalBindings);
 
-    if(activeScope != BindingScope::Global) {
-        const auto globalBindings = m_configBindings.value(mode).value(BindingScope::Global);
-        if(dispatchFromBindings(ev, BindingScope::Global, globalBindings))
-            return true;
+    if(scopedSequenceStart) {
+        m_pendingConfigSequence = {scopedSequenceStart->keys.front()};
+        m_pendingConfigFallback.reset();
+        m_pendingConfigScope = activeScope;
+        if(scopedBest) {
+            m_pendingConfigFallback = *scopedBest;
+        }
+        else if(globalBest) {
+            m_pendingConfigFallback = *globalBest;
+        }
+        refreshPendingTimeout();
+        qCDebug(VIM_LOG) << "ConfigDispatch: sequence start length" << m_pendingConfigSequence.size()
+                         << "fallback=" << (m_pendingConfigFallback ? m_pendingConfigFallback->actionName : QString{});
+        return true;
+    }
+
+    if(scopedBest) {
+        qCDebug(VIM_LOG) << "ConfigDispatch: action" << scopedBest->actionName << "args=" << scopedBest->args;
+        executeAction(*scopedBest);
+        return true;
+    }
+
+    if(globalSequenceStart) {
+        m_pendingConfigSequence = {globalSequenceStart->keys.front()};
+        m_pendingConfigFallback.reset();
+        m_pendingConfigScope = BindingScope::Global;
+        if(globalBest)
+            m_pendingConfigFallback = *globalBest;
+        refreshPendingTimeout();
+        qCDebug(VIM_LOG) << "ConfigDispatch: sequence start length" << m_pendingConfigSequence.size()
+                         << "fallback=" << (m_pendingConfigFallback ? m_pendingConfigFallback->actionName : QString{});
+        return true;
+    }
+
+    if(globalBest) {
+        qCDebug(VIM_LOG) << "ConfigDispatch: action" << globalBest->actionName << "args=" << globalBest->args;
+        executeAction(*globalBest);
+        return true;
     }
 
     qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << qtKey << "text=" << text

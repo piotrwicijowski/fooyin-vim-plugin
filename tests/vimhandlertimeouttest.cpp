@@ -141,6 +141,8 @@ private Q_SLOTS:
     void configNormalAmbiguousPrefixPrefersLongerSequence();
     void configNormalAmbiguousPrefixFallsBackAfterTimeout();
     void scopedSequenceOverridesGlobalSingleKey();
+    void defaultScopedSequenceAllowsGlobalSequenceCompletion();
+    void defaultScopedSequenceFallsBackToGlobalSingleAfterTimeout();
     void configVisualAmbiguousPrefixPrefersLongerSequence();
     void configVisualAmbiguousPrefixFallsBackAfterTimeout();
     void settingsDialogApplyReloadsHandlerBindings();
@@ -337,6 +339,66 @@ void TestVimHandlerTimeout::scopedSequenceOverridesGlobalSingleKey()
     QVERIFY(dispatchKey(handler, &view, u'g'));
     QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     QCOMPARE(view.currentIndex().row(), 0);
+}
+
+void TestVimHandlerTimeout::defaultScopedSequenceAllowsGlobalSequenceCompletion()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_default_scoped_global_sequence.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), true);
+    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
+
+    writeFooyinConfig([](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/yc"), QStringLiteral("enterVisual"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    model.appendRow(new QStandardItem(QStringLiteral("B")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'y'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'c'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerTimeout::defaultScopedSequenceFallsBackToGlobalSingleAfterTimeout()
+{
+    SettingsManager settings{QDir::tempPath() + QStringLiteral("/fooyin_vim_default_scoped_global_single.ini")};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), true);
+    settings.set(QStringLiteral("VimMotions/PendingSequenceTimeout"), 30);
+
+    writeFooyinConfig([](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/y"), QStringLiteral("enterVisual"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    model.appendRow(new QStandardItem(QStringLiteral("B")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(dispatchKey(handler, &view, u'y'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QTest::qWait(50);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
 }
 
 void TestVimHandlerTimeout::configVisualAmbiguousPrefixPrefersLongerSequence()
