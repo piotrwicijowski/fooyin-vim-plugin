@@ -1,13 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "formatter": true,
   "plugin": ["opencode-with-claude", "opencode-plugin-codex-usage"],
   "lsp": true,
   "permission": {
     "external_directory": {
       "/fooyin/**": "allow"
-    },
-    "edit": {
-      "/fooyin/**": "deny"
     }
   },
   "provider": {

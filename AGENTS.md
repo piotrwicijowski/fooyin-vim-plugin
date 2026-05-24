@@ -15,6 +15,8 @@ The fooyin source at `/fooyin` is the host directory `../fooyin` relative to thi
 
 Configuration lives in `.devcontainer/`. The container is launched with devpod-cli.
 
+Builds performed inside the devcontainer must use separate build directories from any host-side builds, because the same mounted repository appears at different absolute paths inside and outside the container. Use `build-agent/` and `build-test-agent/` for in-container configure/build/test work, and leave `build/` and `build-test/` available for host-side runs.
+
 ## README maintenance
 
 When making changes to features, key bindings, or modes, update `README.md` to match. The README documents all modes, bindings, and behaviour — keep it in sync with the code.
@@ -36,10 +38,11 @@ When adding a new default configurable binding (in `VimMotionsSettings::defaultB
 Once a feature is code-complete, build the plugin and build and run the tests:
 
 ```bash
-cmake --build build
-cmake -B build-test -DBUILD_TESTING=ON -G Ninja
-cmake --build build-test
-QT_QPA_PLATFORM=offscreen ctest --test-dir build-test -V
+cmake -B build-agent -G Ninja
+cmake --build build-agent
+cmake -B build-test-agent -DBUILD_TESTING=ON -G Ninja
+cmake --build build-test-agent
+QT_QPA_PLATFORM=offscreen ctest --test-dir build-test-agent -V
 ```
 
 ## Planning new features

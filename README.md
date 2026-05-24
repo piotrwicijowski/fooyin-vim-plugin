@@ -119,6 +119,22 @@ cmake --build build
 
 Output: `build/fyplugin_vimmotions.so`
 
+For a faster local loop, the repository also includes a `Makefile` that wraps the common dev-tree workflow:
+
+```bash
+make dev             # configure/build fooyin, build plugin, copy plugin into fooyin build tree
+make run             # launch fooyin (set FOOYIN_BIN if auto-detection does not match your layout)
+make run-debug       # same, with fy.vim debug logging enabled
+```
+
+Useful overrides:
+
+```bash
+make dev FOOYIN_SRC_DIR=/path/to/fooyin FOOYIN_BUILD_DIR=/path/to/fooyin/build
+make run FOOYIN_BIN=/path/to/fooyin/build/run/fooyin
+XDG_CONFIG_HOME=/tmp/fooyin-dev-config make run-debug FOOYIN_BIN=/path/to/fooyin/build/run/fooyin
+```
+
 If your fooyin checkout is not a sibling directory, pass the paths explicitly:
 
 ```bash
