@@ -12,6 +12,7 @@
 #include <core/plugins/coreplugincontext.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
+#include <gui/playlist/playlistselectionobserver.h>
 #include <gui/trackselectioncontroller.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/actions/command.h>
@@ -834,6 +835,27 @@ void VimHandler::setTrackSelectionController(Fooyin::TrackSelectionController* c
     m_trackSelectionController = controller;
 }
 
+void VimHandler::setPlaylistSelectionObserver(Fooyin::PlaylistSelectionObserver* observer)
+{
+    qCDebug(VIM_LOG) << "setPlaylistSelectionObserver:" << (observer ? "set" : "cleared");
+
+    if(m_playlistSelectionChangedConnection)
+        QObject::disconnect(m_playlistSelectionChangedConnection);
+
+    m_playlistSelectionObserver  = observer;
+    m_observedSelectedPlaylistId = {};
+
+    if(!m_playlistSelectionObserver)
+        return;
+
+    m_observedSelectedPlaylistId = m_playlistSelectionObserver->currentPlaylistId();
+    m_playlistSelectionChangedConnection
+        = QObject::connect(m_playlistSelectionObserver, &Fooyin::PlaylistSelectionObserver::currentPlaylistChanged,
+                           this, [this](Fooyin::Playlist* /*previous*/, Fooyin::Playlist* current) {
+                               m_observedSelectedPlaylistId = current ? current->id() : Fooyin::UId{};
+                           });
+}
+
 void VimHandler::setActionManager(Fooyin::ActionManager* manager)
 {
     qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
@@ -1093,6 +1115,13 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
 
     if(auto* playlist = selectedPlaylist())
         return playlist;
+
+    if(m_playlistSelectionObserver && m_observedSelectedPlaylistId.isValid()) {
+        if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId)) {
+            qCDebug(VIM_LOG) << "targetPlaylist: observed selected playlist =" << playlist->name();
+            return playlist;
+        }
+    }
 
     // Prefer the playlist the active view is currently displaying, identified
     // by matching its row count. This ensures yank/paste target what the user

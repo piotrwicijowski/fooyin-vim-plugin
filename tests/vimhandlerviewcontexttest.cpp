@@ -1,7 +1,16 @@
 #include "vimhandler.h"
 #include "vimmotionssettings.h"
 
+#include <core/engine/audioloader.h>
+#include <core/library/musiclibrary.h>
+#include <core/playlist/playlisthandler.h>
+#include <core/track.h>
 #include <gui/fywidget.h>
+#include <gui/playlist/playlistselectionobserver.h>
+#include <utils/database/dbconnectionhandler.h>
+#include <utils/database/dbconnectionpool.h>
+#include <utils/database/dbconnectionprovider.h>
+#include <utils/database/dbquery.h>
 #include <utils/settings/settingsmanager.h>
 
 #include <QAbstractItemModel>
@@ -10,6 +19,7 @@
 #include <QLineEdit>
 #include <QMimeData>
 #include <QStandardItemModel>
+#include <QStandardPaths>
 #include <QTest>
 #include <QTreeView>
 #include <QVBoxLayout>
@@ -18,6 +28,7 @@
 #include <QFile>
 #include <QKeyEvent>
 #include <QSettings>
+#include <QTemporaryDir>
 
 #include <memory>
 
@@ -36,6 +47,167 @@ public:
 } // namespace Fooyin
 
 namespace {
+
+using namespace Qt::StringLiterals;
+
+bool createPlaylistTables(const Fooyin::DbConnectionPoolPtr& dbPool)
+{
+    const Fooyin::DbConnectionProvider dbProvider{dbPool};
+
+    Fooyin::DbQuery createPlaylists{dbProvider.db(), u"CREATE TABLE IF NOT EXISTS Playlists ("
+                                                     "PlaylistID INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                                     "Name TEXT NOT NULL UNIQUE, "
+                                                     "PlaylistIndex INTEGER, "
+                                                     "IsAutoPlaylist INTEGER DEFAULT 0, "
+                                                     "Query TEXT, "
+                                                     "SortQuery TEXT, "
+                                                     "ForceSorted INTEGER DEFAULT 1);"_s};
+    if(!createPlaylists.exec())
+        return false;
+
+    Fooyin::DbQuery createPlaylistTracks{dbProvider.db(), u"CREATE TABLE IF NOT EXISTS PlaylistTracks ("
+                                                          "PlaylistID INTEGER NOT NULL, "
+                                                          "TrackID INTEGER NOT NULL, "
+                                                          "TrackIndex INTEGER NOT NULL);"_s};
+    return createPlaylistTracks.exec();
+}
+
+class StubMusicLibrary : public Fooyin::MusicLibrary
+{
+public:
+    explicit StubMusicLibrary(QObject* parent = nullptr)
+        : Fooyin::MusicLibrary(parent)
+    { }
+
+    bool hasLibrary() const override
+    {
+        return false;
+    }
+    std::optional<Fooyin::LibraryInfo> libraryInfo(int) const override
+    {
+        return std::nullopt;
+    }
+    std::optional<Fooyin::LibraryInfo> libraryForPath(const QString&) const override
+    {
+        return std::nullopt;
+    }
+    void loadAllTracks() override { }
+    bool isEmpty() const override
+    {
+        return m_tracks.empty();
+    }
+    void refreshAll() override { }
+    void rescanAll() override { }
+    Fooyin::ScanRequest refresh(const Fooyin::LibraryInfo&) override
+    {
+        return {.type = Fooyin::ScanRequest::Library, .cancel = []() {
+                }};
+    }
+    Fooyin::ScanRequest rescan(const Fooyin::LibraryInfo&) override
+    {
+        return {.type = Fooyin::ScanRequest::Library, .cancel = []() {
+                }};
+    }
+    void cancelScan(int) override { }
+    Fooyin::ScanRequest scanTracks(const Fooyin::TrackList&) override
+    {
+        return {.type = Fooyin::ScanRequest::Tracks, .cancel = []() {
+                }};
+    }
+    Fooyin::ScanRequest scanModifiedTracks(const Fooyin::TrackList&) override
+    {
+        return {.type = Fooyin::ScanRequest::Tracks, .cancel = []() {
+                }};
+    }
+    Fooyin::ScanRequest scanFiles(const QList<QUrl>&) override
+    {
+        return {.type = Fooyin::ScanRequest::Files, .cancel = []() {
+                }};
+    }
+    Fooyin::ScanRequest loadPlaylist(const QList<QUrl>&) override
+    {
+        return {.type = Fooyin::ScanRequest::Playlist, .cancel = []() {
+                }};
+    }
+    Fooyin::TrackList tracks() const override
+    {
+        return m_tracks;
+    }
+    Fooyin::TrackList libraryTracks() const override
+    {
+        return m_tracks;
+    }
+    Fooyin::Track trackForId(int id) const override
+    {
+        for(const auto& track : m_tracks) {
+            if(track.id() == id)
+                return track;
+        }
+        return {};
+    }
+    Fooyin::TrackList tracksForIds(const Fooyin::TrackIds& ids) const override
+    {
+        Fooyin::TrackList result;
+        result.reserve(ids.size());
+        for(const int id : ids) {
+            if(const Fooyin::Track track = trackForId(id); track.isValid())
+                result.emplace_back(track);
+        }
+        return result;
+    }
+    std::shared_ptr<Fooyin::TrackMetadataStore> metadataStore() const override
+    {
+        return {};
+    }
+    void updateTrack(const Fooyin::Track&) override { }
+    void updateTracks(const Fooyin::TrackList&) override { }
+    void updateTrackMetadata(const Fooyin::TrackList&) override { }
+    Fooyin::WriteRequest writeTrackMetadata(const Fooyin::TrackList&) override
+    {
+        return {};
+    }
+    Fooyin::WriteRequest writeTrackCovers(const Fooyin::TrackCoverData&) override
+    {
+        return {};
+    }
+    void updateTrackStats(const Fooyin::TrackList&) override { }
+    void updateTrackStats(const Fooyin::Track&) override { }
+    Fooyin::WriteRequest removeUnavailbleTracks() override
+    {
+        return {};
+    }
+    Fooyin::WriteRequest deleteTracks(const Fooyin::TrackList&) override
+    {
+        return {};
+    }
+
+private:
+    Fooyin::TrackList m_tracks;
+};
+
+struct PlaylistHandlerHarness
+{
+    explicit PlaylistHandlerHarness(Fooyin::SettingsManager& settings)
+        : dbPool{[this]() {
+            Fooyin::DbConnection::DbParams params;
+            params.type     = u"QSQLITE"_s;
+            params.filePath = dbDir.filePath(u"playlisthandler.sqlite"_s);
+            return Fooyin::DbConnectionPool::create(params, u"vimplugin_playlisthandler_test"_s);
+        }()}
+        , dbConnectionHandler{dbPool}
+        , dbInitialised{dbConnectionHandler.hasConnection() && createPlaylistTables(dbPool)}
+        , audioLoader{std::make_shared<Fooyin::AudioLoader>()}
+        , handler{dbPool, audioLoader, &library, &settings}
+    { }
+
+    QTemporaryDir dbDir;
+    Fooyin::DbConnectionPoolPtr dbPool;
+    Fooyin::DbConnectionHandler dbConnectionHandler;
+    bool dbInitialised{false};
+    std::shared_ptr<Fooyin::AudioLoader> audioLoader;
+    StubMusicLibrary library;
+    Fooyin::PlaylistHandler handler;
+};
 
 class FakeOrganiserWidget : public Fooyin::FyWidget
 {
@@ -101,6 +273,37 @@ public:
 
 private:
     QTreeView* m_view;
+};
+
+class FakePlaylistSelectionObserver : public Fooyin::PlaylistSelectionObserver
+{
+    Q_OBJECT
+
+public:
+    explicit FakePlaylistSelectionObserver(QObject* parent = nullptr)
+        : Fooyin::PlaylistSelectionObserver(parent)
+    { }
+
+    [[nodiscard]] Fooyin::Playlist* currentPlaylist() const override
+    {
+        return m_currentPlaylist;
+    }
+
+    [[nodiscard]] Fooyin::UId currentPlaylistId() const override
+    {
+        return m_currentPlaylist ? m_currentPlaylist->id() : Fooyin::UId{};
+    }
+
+    void changeCurrentPlaylist(Fooyin::Playlist* playlist)
+    {
+        auto* previous    = m_currentPlaylist;
+        m_currentPlaylist = playlist;
+        if(previous != m_currentPlaylist)
+            emit currentPlaylistChanged(previous, m_currentPlaylist);
+    }
+
+private:
+    Fooyin::Playlist* m_currentPlaylist{nullptr};
 };
 
 class RecordingTreeModel : public QStandardItemModel
@@ -438,6 +641,7 @@ private Q_SLOTS:
     void organiserInlineEditorSuspendsVimCapture();
     void searchBarTypingKeepsFocus();
     void scopedBindingsPreferActiveViewOverGlobalFallback();
+    void pasteTargetsObservedEmptySelectedPlaylist();
     void organiserSearchFindsVisibleChild();
     void organiserSearchSkipsCollapsedChildren();
     void organiserSearchNavigatesVisibleMatches();
@@ -925,6 +1129,64 @@ void TestVimHandlerViewContext::scopedBindingsPreferActiveViewOverGlobalFallback
 
     QVERIFY(dispatchKey(handler, otherWidget.view(), u'j'));
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerViewContext::pasteTargetsObservedEmptySelectedPlaylist()
+{
+    QStandardPaths::setTestModeEnabled(true);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    qputenv("XDG_CONFIG_HOME", tempDir.path().toUtf8());
+    qputenv("XDG_DATA_HOME", tempDir.path().toUtf8());
+
+    const QString settingsPath = tempDir.filePath(QStringLiteral("fooyin_vim_empty_playlist_paste.ini"));
+    Fooyin::SettingsManager settings{settingsPath};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+    auto* playlistHandler = &harness.handler;
+
+    Fooyin::Track sourceTrack{tempDir.filePath(QStringLiteral("source.flac")), 0};
+    sourceTrack.setTitle(QStringLiteral("Source"));
+    sourceTrack.setId(1);
+    sourceTrack.generateHash();
+
+    auto* sourcePlaylist = playlistHandler->createNewPlaylist(QStringLiteral("Source Playlist"), {sourceTrack});
+    auto* emptyPlaylist  = playlistHandler->createNewPlaylist(QStringLiteral("Empty Playlist"));
+    QVERIFY(sourcePlaylist);
+    QVERIFY(emptyPlaylist);
+    QCOMPARE(sourcePlaylist->trackCount(), 1);
+    QCOMPARE(emptyPlaylist->trackCount(), 0);
+
+    playlistHandler->changeActivePlaylist(sourcePlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(playlistHandler);
+
+    FakePlaylistSelectionObserver observer;
+    handler.setPlaylistSelectionObserver(&observer);
+
+    Fooyin::PlaylistView sourceView;
+    QStandardItemModel sourceModel;
+    sourceModel.appendRow(new QStandardItem(QStringLiteral("Source")));
+    sourceView.setModel(&sourceModel);
+    sourceView.setCurrentIndex(sourceModel.index(0, 0));
+
+    focusTree(&sourceView);
+    observer.changeCurrentPlaylist(sourcePlaylist);
+    handler.yankRows(1);
+
+    Fooyin::PlaylistView emptyView;
+    QStandardItemModel emptyModel;
+    emptyView.setModel(&emptyModel);
+
+    focusTree(&emptyView);
+    observer.changeCurrentPlaylist(emptyPlaylist);
+    handler.pasteAfter();
+
+    QCOMPARE(sourcePlaylist->trackCount(), 1);
+    QCOMPARE(emptyPlaylist->trackCount(), 1);
+    QCOMPARE(emptyPlaylist->tracks().front().title(), QStringLiteral("Source"));
 }
 
 void TestVimHandlerViewContext::organiserSearchFindsVisibleChild()
