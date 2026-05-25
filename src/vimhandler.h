@@ -191,6 +191,15 @@ private:
         Fooyin::PlaylistTrackList tracks;
     };
 
+    struct PlaylistCursorState
+    {
+        int row{0};
+        int col{0};
+        Mode mode{Mode::Normal};
+        int visualAnchor{-1};
+        int visualCursor{-1};
+    };
+
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
                        int cursorBefore, int cursorAfter, int col);
     void pushUndoEntry(std::vector<PlaylistSnapshot> before, std::vector<PlaylistSnapshot> after, int cursorBefore,
@@ -214,6 +223,13 @@ private:
     void scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row);
     void insertSelectionAfterCurrentPlaying(bool move);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
+    [[nodiscard]] QAbstractItemView* playlistViewForState() const;
+    void updateLastPlaylistView(QAbstractItemView* view);
+    void tryRestorePendingPlaylistState(QAbstractItemView* candidateView = nullptr);
+    void savePlaylistCursorState(Fooyin::Playlist* playlist);
+    void restorePlaylistCursorState(Fooyin::Playlist* playlist);
+    void applyPlaylistCursorState(QAbstractItemView* view, Fooyin::Playlist* playlist,
+                                  const PlaylistCursorState& state);
 
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
     void scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId, const Fooyin::UId& entryId,
@@ -228,6 +244,7 @@ private:
 
     ViewLocator* m_viewLocator{nullptr};
     SpatialNavigator* m_spatialNavigator{nullptr};
+    QPointer<QAbstractItemView> m_lastPlaylistView;
 
     struct UndoEntry
     {
@@ -253,9 +270,12 @@ private:
     QPointer<Fooyin::PlaylistSelectionObserver> m_playlistSelectionObserver;
     QMetaObject::Connection m_playlistSelectionChangedConnection;
     Fooyin::UId m_observedSelectedPlaylistId;
+    Fooyin::UId m_pendingPlaylistRestoreId;
+    Fooyin::UId m_preserveVisualStateOnNextPlaylistSaveId;
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
+    QHash<Fooyin::UId, PlaylistCursorState> m_playlistCursorStates;
 
     std::vector<UndoEntry> m_undoStack;
     int m_undoIndex{-1};

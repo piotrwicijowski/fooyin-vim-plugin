@@ -18,6 +18,15 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 
 Enable **Layout Editing Mode** in fooyin and add the `Vim Mode Indicator` widget from the `Vim Motions` submenu to place a compact current-mode display anywhere in your layout.
 
+### Playlist-local cursor restore
+
+When you switch between main playlist tabs, the plugin remembers the last vim cursor position for each playlist during the current session.
+
+- Returning to a playlist restores the previous cursor row and column when possible.
+- If you left that playlist in Visual mode, the previous visual selection is restored when possible.
+- If the playlist shrank while you were away, the restored cursor and selection are clamped to the remaining rows.
+- If the playlist is now empty, the plugin restores Normal mode without an invalid selection.
+
 ### Normal mode bindings
 
 | Key | Action |
