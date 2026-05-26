@@ -27,6 +27,10 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 - If the playlist shrank while you were away, the restored cursor and selection are clamped to the remaining rows.
 - If the playlist is now empty, the plugin restores Normal mode without an invalid selection.
 
+### Script variable
+
+The plugin exposes `%mark%` for playlist script evaluation. It resolves to the local vim mark letter for the current playlist entry, or empty when the entry is unmarked. If multiple local marks point at the same entry, `%mark%` returns the lowest-letter mark.
+
 ### Normal mode bindings
 
 Default bindings are installed per scope. `Global` bindings apply everywhere unless a narrower scope overrides them.
