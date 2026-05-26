@@ -1,6 +1,7 @@
 #include "vimmotionsplugin.h"
 #include "vimhandler.h"
 #include "vimlog.h"
+#include "vimmarkvariableprovider.h"
 #include "vimmodeindicatorwidget.h"
 #include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
@@ -8,7 +9,9 @@
 
 #include <core/plugins/coreplugincontext.h>
 #include <gui/playlist/currentplaylistcontroller.h>
+#include <gui/playlist/playlistviewrefresher.h>
 #include <gui/plugins/guiplugincontext.h>
+#include <gui/scripting/scriptvariableregistry.h>
 #include <gui/widgetprovider.h>
 
 #include <gui/plugins/pluginsettingsprovider.h>
@@ -100,14 +103,26 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
     m_trackSelection    = context.trackSelection;
     m_playlistSelection = context.playlistSelection;
 
+    m_searchController      = context.searchController;
+    m_actionManager         = context.actionManager;
+    m_trackSelection        = context.trackSelection;
+    m_playlistViewRefresher = context.playlistViewRefresher;
+
     qCInfo(VIM_LOG) << "VimMotionsPlugin: GUI initialising, installing event filter";
     m_vimHandler = new VimHandler(this);
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
     m_vimHandler->setActionManager(m_actionManager);
     m_vimHandler->setTrackSelectionController(m_trackSelection);
     m_vimHandler->setCurrentPlaylistController(m_playlistSelection);
+    m_vimHandler->setPlaylistViewRefresher(m_playlistViewRefresher);
+    m_vimHandler->setCurrentPlaylistController(m_playlistSelection);
+    m_vimHandler->setPlaylistViewRefresher(m_playlistViewRefresher);
     m_vimHandler->setSettingsBackend(m_settingsBackend.get());
     m_vimHandler->setSettingsManager(m_settingsManager);
+    m_markVariableProvider = std::make_unique<VimMarkVariableProvider>(m_vimHandler);
+    if(context.scriptVariableRegistry) {
+        context.scriptVariableRegistry->registerProvider(*m_markVariableProvider);
+    }
     qApp->installEventFilter(m_vimHandler);
 
     context.widgetProvider->registerWidget(
@@ -132,6 +147,9 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 void VimMotionsPlugin::shutdown()
 {
     qCInfo(VIM_LOG) << "VimMotionsPlugin: shutting down";
+    if(m_markVariableProvider) {
+        m_markVariableProvider->setHandler(nullptr);
+    }
     if(m_vimHandler) {
         qApp->removeEventFilter(m_vimHandler);
         m_vimHandler = nullptr;

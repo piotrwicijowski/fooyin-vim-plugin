@@ -10,9 +10,11 @@
 #include <core/playlist/playlist.h>
 #include <core/playlist/playlisthandler.h>
 #include <core/plugins/coreplugincontext.h>
+#include <core/scripting/scripttypes.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
 #include <gui/playlist/currentplaylistcontroller.h>
+#include <gui/playlist/playlistviewrefresher.h>
 #include <gui/trackselectioncontroller.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/actions/command.h>
@@ -40,7 +42,6 @@
 Q_LOGGING_CATEGORY(VIM_LOG, "fy.vim")
 
 namespace Fooyin::VimMotions {
-
 namespace {
 
 using ScopedConfigBindings = VimHandler::ScopedConfigBindings;
@@ -938,76 +939,94 @@ void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController*
                                m_observedSelectedPlaylistId = current ? current->id() : Fooyin::UId{};
                                restorePlaylistCursorState(current);
                            });
-}
 
-void VimHandler::setActionManager(Fooyin::ActionManager* manager)
-{
-    qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
-    m_actionManager = manager;
-}
+    void VimHandler::setPlaylistViewRefresher(Fooyin::PlaylistViewRefresher * refresher)
+    {
+        qCDebug(VIM_LOG) << "setPlaylistViewRefresher:" << (refresher ? "set" : "cleared");
+        m_playlistViewRefresher = refresher;
+    }
 
-void VimHandler::beginSetMark()
-{
-    qCDebug(VIM_LOG) << "beginSetMark";
-    setPendingMarkOp(PendingMarkOp::Set);
-    m_count = 0;
-}
+    void VimHandler::setActionManager(Fooyin::ActionManager * manager)
+    {
+        qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
+        m_actionManager = manager;
+    }
 
-void VimHandler::beginJumpToMark()
-{
-    qCDebug(VIM_LOG) << "beginJumpToMark";
-    setPendingMarkOp(PendingMarkOp::Jump);
-    m_count = 0;
-}
+    void VimHandler::beginSetMark()
+    {
+        qCDebug(VIM_LOG) << "beginSetMark";
+        setPendingMarkOp(PendingMarkOp::Set);
+        m_count = 0;
+    }
 
-bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
-{
-    if(m_pendingMarkOp == PendingMarkOp::None)
-        return false;
+    void VimHandler::beginJumpToMark()
+    {
+        qCDebug(VIM_LOG) << "beginJumpToMark";
+        setPendingMarkOp(PendingMarkOp::Jump);
+        m_count = 0;
+    }
 
-    if(ev->key() == Qt::Key_Escape && ev->modifiers() == Qt::NoModifier) {
-        qCDebug(VIM_LOG) << "handlePendingMarkOp: cancelled";
+    bool VimHandler::handlePendingMarkOp(QKeyEvent * ev)
+    {
+        if(m_pendingMarkOp == PendingMarkOp::None)
+            return false;
+
+        if(ev->key() == Qt::Key_Escape && ev->modifiers() == Qt::NoModifier) {
+            qCDebug(VIM_LOG) << "handlePendingMarkOp: cancelled";
+            clearPendingInputState();
+            return true;
+        }
+
+        const QChar ch                             = ev->text().isEmpty() ? QChar{} : ev->text().front();
+        const Qt::KeyboardModifiers disallowedMods = ev->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+        if(disallowedMods == Qt::NoModifier && !ch.isNull() && ch.isLetter()) {
+            const PendingMarkOp op = m_pendingMarkOp;
+            clearPendingInputState();
+            if(op == PendingMarkOp::Set) {
+                if(ch.isUpper())
+                    setGlobalMark(ch);
+                else
+                    setLocalMark(ch);
+            }
+            else {
+                if(ch.isUpper())
+                    jumpToGlobalMark(ch);
+                else
+                    jumpToLocalMark(ch);
+            }
+            return true;
+        }
+
+        qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-letter completion";
         clearPendingInputState();
         return true;
     }
 
-    const QChar ch                             = ev->text().isEmpty() ? QChar{} : ev->text().front();
-    const Qt::KeyboardModifiers disallowedMods = ev->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
-    if(disallowedMods == Qt::NoModifier && !ch.isNull() && ch.isLetter()) {
-        const PendingMarkOp op = m_pendingMarkOp;
-        clearPendingInputState();
-        if(op == PendingMarkOp::Set) {
-            if(ch.isUpper())
-                setGlobalMark(ch);
-            else
-                setLocalMark(ch);
+    void VimHandler::focusNowPlaying()
+    {
+        qCDebug(VIM_LOG) << "focusNowPlaying";
+        if(!m_actionManager) {
+            qCWarning(VIM_LOG) << "focusNowPlaying: no ActionManager";
+            return;
         }
-        else {
-            if(ch.isUpper())
-                jumpToGlobalMark(ch);
-            else
-                jumpToLocalMark(ch);
+
+        Fooyin::Command* cmd = m_actionManager->command(Fooyin::Id(Constants::Actions::ShowNowPlaying));
+        if(!cmd || !cmd->action()) {
+            qCWarning(VIM_LOG) << "focusNowPlaying: ShowNowPlaying action not found";
+            return;
         }
-        return true;
+
+        cmd->action()->trigger();
     }
 
-    qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-letter completion";
-    clearPendingInputState();
-    return true;
-}
-
-void VimHandler::focusNowPlaying()
-{
-    qCDebug(VIM_LOG) << "focusNowPlaying";
-    if(!m_actionManager) {
-        qCWarning(VIM_LOG) << "focusNowPlaying: no ActionManager";
-        return;
+    void VimHandler::nextPlaylist()
+    {
+        changePlaylistByOffset((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1);
     }
 
-    Fooyin::Command* cmd = m_actionManager->command(Fooyin::Id(Constants::Actions::ShowNowPlaying));
-    if(!cmd || !cmd->action()) {
-        qCWarning(VIM_LOG) << "focusNowPlaying: ShowNowPlaying action not found";
-        return;
+    void VimHandler::previousPlaylist()
+    {
+        changePlaylistByOffset(-((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1));
     }
 
     if(m_playlistHandler) {
@@ -1136,6 +1155,58 @@ std::optional<std::pair<int, int>> VimHandler::selectedTrackRowRange(Fooyin::Pla
     return std::pair{row, end};
 }
 
+void VimHandler::refreshPlaylistEntries(const Fooyin::UId& playlistId, std::span<const Fooyin::UId> entryIds) const
+{
+    if(m_playlistViewRefresher == nullptr || !playlistId.isValid() || entryIds.empty()) {
+        return;
+    }
+
+    std::vector<Fooyin::UId> refreshedEntryIds;
+    refreshedEntryIds.reserve(entryIds.size());
+
+    for(const Fooyin::UId& entryId : entryIds) {
+        if(entryId.isValid() && std::ranges::find(refreshedEntryIds, entryId) == refreshedEntryIds.cend()) {
+            refreshedEntryIds.push_back(entryId);
+        }
+    }
+
+    if(!refreshedEntryIds.empty()) {
+        m_playlistViewRefresher->refreshEntries(playlistId, refreshedEntryIds);
+    }
+}
+
+QString VimHandler::localMarkForScriptContext(const Fooyin::ScriptContext& context) const
+{
+    const auto* playlistEnvironment = context.environment ? context.environment->playlistEnvironment() : nullptr;
+    if(context.playlist == nullptr || playlistEnvironment == nullptr) {
+        return {};
+    }
+
+    const int row = playlistEnvironment->currentPlaylistTrackIndex();
+    if(row < 0) {
+        return {};
+    }
+
+    const auto playlistTrack = context.playlist->playlistTrack(row);
+    if(!playlistTrack) {
+        return {};
+    }
+
+    const auto playlistMarks = m_localMarks.constFind(context.playlist->id());
+    if(playlistMarks == m_localMarks.cend()) {
+        return {};
+    }
+
+    QChar firstMark;
+    for(auto it = playlistMarks->cbegin(); it != playlistMarks->cend(); ++it) {
+        if(it.value() == playlistTrack->entryId && (firstMark.isNull() || it.key() < firstMark)) {
+            firstMark = it.key();
+        }
+    }
+
+    return firstMark.isNull() ? QString{} : QString{firstMark};
+}
+
 void VimHandler::setLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
@@ -1150,7 +1221,10 @@ void VimHandler::setLocalMark(QChar mark)
         return;
     }
 
+    const Fooyin::UId previousEntryId  = m_localMarks[playlist->id()].value(mark);
     m_localMarks[playlist->id()][mark] = entryId;
+    const std::array refreshedEntryIds{previousEntryId, entryId};
+    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
     qCDebug(VIM_LOG) << "setLocalMark:" << mark << "playlist=" << playlist->name() << "entryId=" << entryId;
 }
 
@@ -1194,6 +1268,7 @@ void VimHandler::jumpToLocalMark(QChar mark)
         m_localMarks[playlist->id()].remove(mark);
         if(m_localMarks[playlist->id()].isEmpty())
             m_localMarks.remove(playlist->id());
+        refreshPlaylistEntries(playlist->id(), std::array{entryId});
         return;
     }
 
@@ -1283,6 +1358,7 @@ void VimHandler::jumpToGlobalMark(QChar mark)
 std::vector<VimClipboard::MarkTransfer> VimHandler::takeCutMarks(Fooyin::Playlist* playlist, int startRow, int endRow)
 {
     std::vector<VimClipboard::MarkTransfer> transfers;
+    std::vector<Fooyin::UId> refreshedEntryIds;
     if(!playlist || startRow >= endRow)
         return transfers;
 
@@ -1295,6 +1371,7 @@ std::vector<VimClipboard::MarkTransfer> VimHandler::takeCutMarks(Fooyin::Playlis
         const int row = playlist->indexOfTrackEntry(it.value());
         if(row >= startRow && row < endRow) {
             transfers.push_back({row - startRow, it.key()});
+            refreshedEntryIds.push_back(it.value());
             it = marks.erase(it);
         }
         else {
@@ -1304,6 +1381,8 @@ std::vector<VimClipboard::MarkTransfer> VimHandler::takeCutMarks(Fooyin::Playlis
 
     if(marks.isEmpty())
         m_localMarks.erase(playlistIt);
+
+    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
 
     return transfers;
 }
@@ -1515,6 +1594,16 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
             m_localMarks[destinationPlaylist->id()][transfer.mark]
                 = insertedEntries[static_cast<size_t>(transfer.offset)].entryId;
         }
+    }
+    if(!cutMarks.empty()) {
+        std::vector<Fooyin::UId> refreshedEntryIds;
+        refreshedEntryIds.reserve(cutMarks.size());
+        for(const auto& transfer : cutMarks) {
+            if(transfer.offset >= 0 && transfer.offset < static_cast<int>(insertedEntries.size())) {
+                refreshedEntryIds.push_back(insertedEntries[static_cast<size_t>(transfer.offset)].entryId);
+            }
+        }
+        refreshPlaylistEntries(destinationPlaylist->id(), refreshedEntryIds);
     }
 
     int adjustedPlayingIndex = playingIndex;
@@ -2014,10 +2103,14 @@ void VimHandler::pasteAfter()
     const int insertPos                      = std::clamp(targetRow, 0, static_cast<int>(all.size()));
     auto newEntries                          = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
     const auto markTransfers                 = m_clipboard.markTransfers();
+    std::vector<Fooyin::UId> refreshedEntryIds;
     for(const auto& transfer : markTransfers) {
-        if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size()))
+        if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size())) {
             m_localMarks[playlist->id()][transfer.mark] = newEntries[static_cast<size_t>(transfer.offset)].entryId;
+            refreshedEntryIds.push_back(newEntries[static_cast<size_t>(transfer.offset)].entryId);
+        }
     }
+    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
     qCDebug(VIM_LOG) << "pasteAfter: playlist=" << playlist->name() << "originalRow=" << originalRow
                      << "insertPos=" << insertPos << "trackCount=" << newEntries.size();
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
@@ -2060,10 +2153,14 @@ void VimHandler::pasteBefore()
     const int insertPos                      = std::clamp(originalRow, 0, static_cast<int>(all.size()));
     auto newEntries                          = Fooyin::PlaylistTrack::fromTracks(m_clipboard.tracks(), playlist->id());
     const auto markTransfers                 = m_clipboard.markTransfers();
+    std::vector<Fooyin::UId> refreshedEntryIds;
     for(const auto& transfer : markTransfers) {
-        if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size()))
+        if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size())) {
             m_localMarks[playlist->id()][transfer.mark] = newEntries[static_cast<size_t>(transfer.offset)].entryId;
+            refreshedEntryIds.push_back(newEntries[static_cast<size_t>(transfer.offset)].entryId);
+        }
     }
+    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
     qCDebug(VIM_LOG) << "pasteBefore: playlist=" << playlist->name() << "originalRow=" << originalRow
                      << "insertPos=" << insertPos << "trackCount=" << newEntries.size();
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
@@ -2683,8 +2780,8 @@ void VimHandler::restorePlaylistCursorState(Fooyin::Playlist* playlist)
 
     auto tryRestore = [this, viewPtr, playlistId, state]() -> bool {
         if(!viewPtr || !viewPtr->model() || !viewPtr->selectionModel()) {
-            qCDebug(VIM_LOG)
-                << "restorePlaylistCursorState: tryRestore failed because view/model/selectionModel disappeared";
+            qCDebug(VIM_LOG) << "restorePlaylistCursorState: tryRestore failed because "
+                                "view/model/selectionModel disappeared";
             m_pendingPlaylistRestoreId = playlistId;
             return false;
         }
