@@ -12,11 +12,13 @@
 #include <QObject>
 #include <QPersistentModelIndex>
 #include <QPointer>
+#include <QString>
 #include <QTimer>
 #include <core/playlist/playlist.h>
 #include <utils/id.h>
 
 #include <optional>
+#include <span>
 #include <vector>
 
 class QAbstractItemView;
@@ -29,7 +31,9 @@ class ActionManager;
 class FyWidget;
 class Playlist;
 class PlaylistHandler;
+class PlaylistViewRefresher;
 class SettingsManager;
+struct ScriptContext;
 class TrackSelectionController;
 } // namespace Fooyin
 
@@ -76,6 +80,7 @@ public:
     void setSettingsManager(Fooyin::SettingsManager* manager);
     void setSettingsBackend(VimMotionsBindingBackend* backend);
     void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
+    void setPlaylistViewRefresher(Fooyin::PlaylistViewRefresher* refresher);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -86,6 +91,7 @@ public:
     {
         return m_configBindings;
     }
+    [[nodiscard]] QString localMarkForScriptContext(const Fooyin::ScriptContext& context) const;
 
     void moveCursor(int delta);
     void jumpToFirst();
@@ -209,6 +215,7 @@ private:
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
     [[nodiscard]] std::optional<std::pair<int, int>> selectedTrackRowRange(Fooyin::Playlist* playlist);
+    void refreshPlaylistEntries(const Fooyin::UId& playlistId, std::span<const Fooyin::UId> entryIds) const;
     void scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row);
     void insertSelectionAfterCurrentPlaying(bool move);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
@@ -248,6 +255,7 @@ private:
     std::unique_ptr<VimMotionsBindingBackend> m_ownedSettingsBackend;
     QMetaObject::Connection m_backendBindingsChangedConnection;
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
+    Fooyin::PlaylistViewRefresher* m_playlistViewRefresher{nullptr};
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;

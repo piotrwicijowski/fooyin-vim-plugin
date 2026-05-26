@@ -18,6 +18,10 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 
 Enable **Layout Editing Mode** in fooyin and add the `Vim Mode Indicator` widget from the `Vim Motions` submenu to place a compact current-mode display anywhere in your layout.
 
+### Script variable
+
+The plugin exposes `%mark%` for playlist script evaluation. It resolves to the local vim mark letter for the current playlist entry, or empty when the entry is unmarked. If multiple local marks point at the same entry, `%mark%` returns the lowest-letter mark.
+
 ### Normal mode bindings
 
 | Key | Action |
