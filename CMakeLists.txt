@@ -120,6 +120,8 @@ set(PLUGIN_SOURCES
     src/vimclipboard.cpp
     src/vimclipboard.h
     src/vimlog.h
+    src/vimmarkvariableprovider.cpp
+    src/vimmarkvariableprovider.h
     src/vimmodeindicatorwidget.cpp
     src/vimmodeindicatorwidget.h
     src/vimmotionsbindingbackend.cpp
