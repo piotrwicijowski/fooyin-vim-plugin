@@ -54,19 +54,21 @@ namespace {
 
 int letterKey(QChar ch)
 {
-    Q_ASSERT(ch.isLower());
-    return Qt::Key_A + (ch.unicode() - u'a');
+    Q_ASSERT(ch.isLetter());
+    return Qt::Key_A + (ch.toLower().unicode() - u'a');
 }
 
 bool dispatchKey(Fooyin::VimMotions::VimHandler& handler, QObject* watched, QChar ch)
 {
-    QKeyEvent event(QEvent::KeyPress, letterKey(ch), Qt::NoModifier, QString(ch));
+    const Qt::KeyboardModifiers modifiers = ch.isUpper() ? Qt::ShiftModifier : Qt::NoModifier;
+    QKeyEvent event(QEvent::KeyPress, letterKey(ch), modifiers, QString(ch));
     return handler.eventFilter(watched, &event);
 }
 
 bool dispatchShortcutOverride(Fooyin::VimMotions::VimHandler& handler, QObject* watched, QChar ch)
 {
-    QKeyEvent event(QEvent::ShortcutOverride, letterKey(ch), Qt::NoModifier, QString(ch));
+    const Qt::KeyboardModifiers modifiers = ch.isUpper() ? Qt::ShiftModifier : Qt::NoModifier;
+    QKeyEvent event(QEvent::ShortcutOverride, letterKey(ch), modifiers, QString(ch));
     return handler.eventFilter(watched, &event);
 }
 

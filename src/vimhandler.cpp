@@ -971,18 +971,27 @@ bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
         return true;
     }
 
-    const QChar ch = ev->text().isEmpty() ? QChar{} : ev->text().front();
-    if(ev->modifiers() == Qt::NoModifier && !ch.isNull() && ch.isLower()) {
+    const QChar ch                             = ev->text().isEmpty() ? QChar{} : ev->text().front();
+    const Qt::KeyboardModifiers disallowedMods = ev->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+    if(disallowedMods == Qt::NoModifier && !ch.isNull() && ch.isLetter()) {
         const PendingMarkOp op = m_pendingMarkOp;
         clearPendingInputState();
-        if(op == PendingMarkOp::Set)
-            setLocalMark(ch);
-        else
-            jumpToLocalMark(ch);
+        if(op == PendingMarkOp::Set) {
+            if(ch.isUpper())
+                setGlobalMark(ch);
+            else
+                setLocalMark(ch);
+        }
+        else {
+            if(ch.isUpper())
+                jumpToGlobalMark(ch);
+            else
+                jumpToLocalMark(ch);
+        }
         return true;
     }
 
-    qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-lowercase completion";
+    qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-letter completion";
     clearPendingInputState();
     return true;
 }
@@ -1126,6 +1135,24 @@ void VimHandler::setLocalMark(QChar mark)
     qCDebug(VIM_LOG) << "setLocalMark:" << mark << "playlist=" << playlist->name() << "entryId=" << entryId;
 }
 
+void VimHandler::setGlobalMark(QChar mark)
+{
+    auto* playlist = targetPlaylist();
+    if(!playlist) {
+        qCWarning(VIM_LOG) << "setGlobalMark: no playlist found";
+        return;
+    }
+
+    const Fooyin::UId entryId = currentTrackEntryId();
+    if(!entryId.isValid()) {
+        qCWarning(VIM_LOG) << "setGlobalMark: no current playlist entry";
+        return;
+    }
+
+    m_globalMarks.insert(mark, {.playlistId = playlist->id(), .entryId = entryId});
+    qCDebug(VIM_LOG) << "setGlobalMark:" << mark << "playlist=" << playlist->name() << "entryId=" << entryId;
+}
+
 void VimHandler::jumpToLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
@@ -1167,6 +1194,71 @@ void VimHandler::jumpToLocalMark(QChar mark)
     view->selectionModel()->setCurrentIndex(idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     view->scrollTo(idx);
     qCDebug(VIM_LOG) << "jumpToLocalMark:" << mark << "row=" << row;
+}
+
+void VimHandler::jumpToGlobalMark(QChar mark)
+{
+    auto* view = m_viewLocator->activeView();
+    if(!m_playlistHandler || !view || !view->model() || !view->selectionModel()) {
+        qCWarning(VIM_LOG) << "jumpToGlobalMark: no playlist/view context";
+        return;
+    }
+
+    const auto markIt = m_globalMarks.constFind(mark);
+    if(markIt == m_globalMarks.cend()) {
+        qCDebug(VIM_LOG) << "jumpToGlobalMark: mark not set" << mark;
+        return;
+    }
+
+    const GlobalMark globalMark = markIt.value();
+    auto* playlist              = m_playlistHandler->playlistById(globalMark.playlistId);
+    if(!playlist) {
+        qCDebug(VIM_LOG) << "jumpToGlobalMark: stale playlist mark cleared" << mark;
+        m_globalMarks.remove(mark);
+        return;
+    }
+
+    const int row = playlist->indexOfTrackEntry(globalMark.entryId);
+    if(row < 0) {
+        qCDebug(VIM_LOG) << "jumpToGlobalMark: stale entry mark cleared" << mark;
+        m_globalMarks.remove(mark);
+        return;
+    }
+
+    const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+    if(m_currentPlaylistController && m_currentPlaylistController->currentPlaylistId() != playlist->id()) {
+        PlaylistCursorState state;
+        state.row = row;
+        state.col = col;
+
+        if(m_mode == Mode::Visual) {
+            state.mode         = Mode::Visual;
+            state.visualAnchor = row;
+            state.visualCursor = row;
+        }
+
+        m_playlistCursorStates.insert(playlist->id(), state);
+        qCDebug(VIM_LOG) << "jumpToGlobalMark: switching playlist for" << mark << "playlist=" << playlist->name()
+                         << "row=" << row;
+        m_currentPlaylistController->changeCurrentPlaylist(playlist->id());
+        return;
+    }
+
+    const QModelIndex idx = view->model()->index(row, col);
+    if(!idx.isValid())
+        return;
+
+    if(m_mode == Mode::Visual) {
+        qCDebug(VIM_LOG) << "jumpToGlobalMark (visual):" << mark << "row=" << row;
+        m_visualCursor = row;
+        updateVisualSelection();
+        view->scrollTo(idx);
+        return;
+    }
+
+    view->selectionModel()->setCurrentIndex(idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    view->scrollTo(idx);
+    qCDebug(VIM_LOG) << "jumpToGlobalMark:" << mark << "row=" << row;
 }
 
 std::vector<VimClipboard::MarkTransfer> VimHandler::takeCutMarks(Fooyin::Playlist* playlist, int startRow, int endRow)

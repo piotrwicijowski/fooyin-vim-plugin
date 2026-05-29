@@ -38,8 +38,11 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 | `o` | Focus currently playing item |
 | `g;` | Focus currently playing item |
 | `m` + `a-z` | Set a local mark on the current playlist item |
+| `m` + `A-Z` | Set a global mark on the current playlist item |
 | `'` + `a-z` | Jump to a local mark in the current playlist |
+| `'` + `A-Z` | Jump to a global mark, switching playlists if needed |
 | `` ` `` + `a-z` | Jump to a local mark in the current playlist |
+| `` ` `` + `A-Z` | Jump to a global mark, switching playlists if needed |
 | `Ctrl+d` | Half page down |
 | `Ctrl+u` | Half page up |
 | `v` | Enter Visual mode |
@@ -80,8 +83,11 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 | `n` / `N` | Next / previous search match (return to Normal) |
 | `/` | Enter Search mode (return to Normal) |
 | `m` + `a-z` | Set a local mark on the current playlist item |
+| `m` + `A-Z` | Set a global mark on the current playlist item |
 | `'` + `a-z` | Jump to a local mark, extending the selection |
+| `'` + `A-Z` | Jump to a global mark, switching playlists if needed |
 | `` ` `` + `a-z` | Jump to a local mark, extending the selection |
+| `` ` `` + `A-Z` | Jump to a global mark, switching playlists if needed |
 | `g;` | Focus currently playing item (return to Normal) |
 | `Alt+j` / `Alt+k` | Move entire selection down / up in the playlist |
 | `[count]Alt+j` / `[count]Alt+k` | Move entire selection N positions down / up |
@@ -305,7 +311,7 @@ The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionNam
 - Special punctuation keys that need explicit names in config paths: `<Slash>`, `<Bslash>`, `<Bar>`, `<Lt>`
 - Modifier combos: `Ctrl+J`, `Alt+J`, `Ctrl+Shift+K`
 - Multi-key sequences: `gg`, `dd`, `yy`, `g;`, `g<Space>`, `<Space><Space>`
-- Operator-pending prefixes: `m`, `'`, `` ` `` can be bound to mark actions that consume the next lowercase letter
+- Operator-pending prefixes: `m`, `'`, `` ` `` can be bound to mark actions that consume the next letter; lowercase uses local marks and uppercase uses global marks
 
 **Action name + args:**
 - No args: `undo`, `enterInsert`, `jumpToFirst`
@@ -348,8 +354,8 @@ The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionNam
 | `nextPlaylist` | — | Normal, Visual | Switch the selected playlist forward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `previousPlaylist` | — | Normal, Visual | Switch the selected playlist backward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
-| `beginSetMark` | — | Normal | Begin setting a local mark; the next lowercase letter chooses the mark |
-| `beginJumpToMark` | — | Normal | Begin jumping to a local mark; the next lowercase letter chooses the mark |
+| `beginSetMark` | — | Normal | Begin setting a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
+| `beginJumpToMark` | — | Normal | Begin jumping to a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
 | `moveRows` | `+1` / `-1` | Normal | Move current row in playlist |
 | `extendCursor` | `+1` / `-1` | Visual | Extend visual selection by N rows |
 | `extendToFirst` | — | Visual | Extend selection to first row |

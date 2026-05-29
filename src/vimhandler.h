@@ -202,6 +202,12 @@ private:
         int visualCursor{-1};
     };
 
+    struct GlobalMark
+    {
+        Fooyin::UId playlistId;
+        Fooyin::UId entryId;
+    };
+
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
                        int cursorBefore, int cursorAfter, int col);
     void pushUndoEntry(std::vector<PlaylistSnapshot> before, std::vector<PlaylistSnapshot> after, int cursorBefore,
@@ -210,7 +216,9 @@ private:
     void applyPlaylistSnapshots(const std::vector<PlaylistSnapshot>& snapshots) const;
 
     void setLocalMark(QChar mark);
+    void setGlobalMark(QChar mark);
     void jumpToLocalMark(QChar mark);
+    void jumpToGlobalMark(QChar mark);
     [[nodiscard]] Fooyin::Playlist* selectedPlaylist() const;
     [[nodiscard]] Fooyin::UId currentTrackEntryId() const;
     [[nodiscard]] std::vector<VimClipboard::MarkTransfer> takeCutMarks(Fooyin::Playlist* playlist, int startRow,
@@ -278,6 +286,7 @@ private:
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
+    QHash<QChar, GlobalMark> m_globalMarks;
     QHash<Fooyin::UId, PlaylistCursorState> m_playlistCursorStates;
 
     std::vector<UndoEntry> m_undoStack;
