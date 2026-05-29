@@ -625,7 +625,8 @@ void pumpEvents()
 
 bool dispatchKey(Fooyin::VimMotions::VimHandler& handler, QObject* watched, QChar ch)
 {
-    QKeyEvent event(QEvent::KeyPress, Qt::Key_A + (ch.toLower().unicode() - u'a'), Qt::NoModifier, QString(ch));
+    const Qt::KeyboardModifiers modifiers = ch.isUpper() ? Qt::ShiftModifier : Qt::NoModifier;
+    QKeyEvent event(QEvent::KeyPress, Qt::Key_A + (ch.toLower().unicode() - u'a'), modifiers, QString(ch));
     return handler.eventFilter(watched, &event);
 }
 
@@ -696,6 +697,8 @@ private Q_SLOTS:
     void playlistSwitchingClampsAtEnds();
     void playlistSwitchingUsesCount();
     void playlistSwitchingFollowsOrganiserTreeOrder();
+    void jumpsToGlobalMarkInAnotherPlaylist();
+    void clearsStaleGlobalMarkWhenMarkedEntryIsDeleted();
     void restoresSavedCursorWhenReturningToPlaylist();
     void clampsRestoredCursorWhenPlaylistShrinks();
     void restoresVisualSelectionWhenReturningToPlaylist();
@@ -1450,6 +1453,156 @@ void TestVimHandlerViewContext::playlistSwitchingFollowsOrganiserTreeOrder()
 
     handler.previousPlaylist();
     QCOMPARE(observer.currentPlaylist(), playlistC);
+}
+
+void TestVimHandlerViewContext::jumpsToGlobalMarkInAnotherPlaylist()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("global_mark_cross_playlist.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(41);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(42);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList bTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b1.flac"), 0};
+            track.setId(43);
+            track.setTitle(QStringLiteral("B1"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"), bTracks);
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    view.setModel(&model);
+
+    syncPlaylistModel(model, playlistA);
+    view.setCurrentIndex(model.index(1, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.beginSetMark();
+    QVERIFY(dispatchKey(handler, &view, u'A'));
+
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(model, playlistB);
+    pumpEvents();
+    view.setCurrentIndex(model.index(0, 0));
+
+    handler.beginJumpToMark();
+    QVERIFY(dispatchKey(handler, &view, u'A'));
+
+    QCOMPARE(observer.currentPlaylist(), playlistA);
+    syncPlaylistModel(model, playlistA);
+    pumpEvents();
+    dispatchFocusIn(handler, &view);
+
+    QCOMPARE(view.currentIndex().row(), 1);
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("A2"));
+}
+
+void TestVimHandlerViewContext::clearsStaleGlobalMarkWhenMarkedEntryIsDeleted()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("global_mark_stale_entry.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(51);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(52);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList bTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b1.flac"), 0};
+            track.setId(53);
+            track.setTitle(QStringLiteral("B1"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"), bTracks);
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    view.setModel(&model);
+
+    syncPlaylistModel(model, playlistA);
+    view.setCurrentIndex(model.index(1, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.beginSetMark();
+    QVERIFY(dispatchKey(handler, &view, u'B'));
+
+    harness.handler.replacePlaylistTracks(playlistA->id(), Fooyin::TrackList{aTracks.front()});
+
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(model, playlistB);
+    pumpEvents();
+
+    handler.beginJumpToMark();
+    QVERIFY(dispatchKey(handler, &view, u'B'));
+    QCOMPARE(observer.currentPlaylist(), playlistB);
+
+    handler.beginJumpToMark();
+    QVERIFY(dispatchKey(handler, &view, u'B'));
+    QCOMPARE(observer.currentPlaylist(), playlistB);
 }
 
 void TestVimHandlerViewContext::restoresSavedCursorWhenReturningToPlaylist()
