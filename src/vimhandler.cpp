@@ -80,6 +80,55 @@ bool isSettingsDialogObject(const QObject* object)
     return object && QString::fromLatin1(object->metaObject()->className()).contains(QStringLiteral("SettingsDialog"));
 }
 
+constexpr int kOrganiserItemTypeRole     = Qt::UserRole;
+constexpr int kOrganiserPlaylistDataRole = Qt::UserRole + 1;
+constexpr int kOrganiserPlaylistItemType = 2;
+
+void appendOrganiserPlaylists(QAbstractItemModel* model, const QModelIndex& parent, std::vector<Fooyin::Playlist*>& out)
+{
+    if(!model) {
+        return;
+    }
+
+    for(int row = 0; row < model->rowCount(parent); ++row) {
+        const QModelIndex index = model->index(row, 0, parent);
+        if(!index.isValid()) {
+            continue;
+        }
+
+        if(index.data(kOrganiserItemTypeRole).toInt() == kOrganiserPlaylistItemType) {
+            if(auto* playlist = index.data(kOrganiserPlaylistDataRole).value<Fooyin::Playlist*>()) {
+                out.push_back(playlist);
+            }
+        }
+
+        if(model->hasChildren(index)) {
+            appendOrganiserPlaylists(model, index, out);
+        }
+    }
+}
+
+QTreeView* findPlaylistOrganiserTree(const VimHandler& handler)
+{
+    if(auto* focused = qobject_cast<QTreeView*>(qApp->focusWidget())) {
+        if(handler.viewContext(focused) == VimHandler::ViewContext::PlaylistOrganiser) {
+            return focused;
+        }
+    }
+
+    for(QWidget* widget : QApplication::allWidgets()) {
+        auto* tree = qobject_cast<QTreeView*>(widget);
+        if(!tree || !tree->model() || !tree->isVisible()) {
+            continue;
+        }
+        if(handler.viewContext(tree) == VimHandler::ViewContext::PlaylistOrganiser) {
+            return tree;
+        }
+    }
+
+    return nullptr;
+}
+
 bool hasSettingsDialogAncestor(const QObject* object)
 {
     for(auto* current = object; current; current = current->parent()) {
@@ -955,6 +1004,16 @@ void VimHandler::focusNowPlaying()
     cmd->action()->trigger();
 }
 
+void VimHandler::nextPlaylist()
+{
+    changePlaylistByOffset((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1);
+}
+
+void VimHandler::previousPlaylist()
+{
+    changePlaylistByOffset(-((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1));
+}
+
 void VimHandler::copyAfterCurrentPlaying()
 {
     insertSelectionAfterCurrentPlaying(false);
@@ -1188,6 +1247,70 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
 
     qCWarning(VIM_LOG) << "targetPlaylist: no playlist found";
     return nullptr;
+}
+
+void VimHandler::changePlaylistByOffset(const int delta)
+{
+    if(delta == 0) {
+        return;
+    }
+
+    if(!m_playlistHandler || !m_playlistSelectionObserver) {
+        qCWarning(VIM_LOG) << "changePlaylistByOffset: missing playlist services";
+        return;
+    }
+
+    const Fooyin::UId currentId = m_playlistSelectionObserver->currentPlaylistId();
+    if(!currentId.isValid()) {
+        qCWarning(VIM_LOG) << "changePlaylistByOffset: no selected playlist";
+        return;
+    }
+
+    auto* currentPlaylist = m_playlistHandler->playlistById(currentId);
+    if(!currentPlaylist) {
+        qCWarning(VIM_LOG) << "changePlaylistByOffset: selected playlist not found";
+        return;
+    }
+
+    if(auto* organiserTree = findPlaylistOrganiserTree(*this)) {
+        std::vector<Fooyin::Playlist*> organiserPlaylists;
+        appendOrganiserPlaylists(organiserTree->model(), {}, organiserPlaylists);
+
+        const auto currentIt = std::find(organiserPlaylists.cbegin(), organiserPlaylists.cend(), currentPlaylist);
+        if(currentIt != organiserPlaylists.cend()) {
+            const int currentSequenceIndex = static_cast<int>(std::distance(organiserPlaylists.cbegin(), currentIt));
+            const int targetSequenceIndex
+                = std::clamp(currentSequenceIndex + delta, 0, static_cast<int>(organiserPlaylists.size()) - 1);
+            if(targetSequenceIndex == currentSequenceIndex) {
+                qCDebug(VIM_LOG) << "changePlaylistByOffset: already at organiser boundary index"
+                                 << currentSequenceIndex;
+                return;
+            }
+
+            if(auto* targetPlaylist = organiserPlaylists[static_cast<size_t>(targetSequenceIndex)]) {
+                qCDebug(VIM_LOG) << "changePlaylistByOffset organiser:" << currentPlaylist->name() << "->"
+                                 << targetPlaylist->name() << "delta=" << delta;
+                m_playlistSelectionObserver->changeCurrentPlaylist(targetPlaylist->id());
+                return;
+            }
+        }
+    }
+
+    const int currentIndex = currentPlaylist->index();
+    const int targetIndex  = std::clamp(currentIndex + delta, 0, m_playlistHandler->playlistCount() - 1);
+    if(targetIndex == currentIndex) {
+        qCDebug(VIM_LOG) << "changePlaylistByOffset: already at boundary index" << currentIndex;
+        return;
+    }
+
+    if(auto* targetPlaylist = m_playlistHandler->playlistByIndex(targetIndex)) {
+        qCDebug(VIM_LOG) << "changePlaylistByOffset:" << currentPlaylist->name() << "->" << targetPlaylist->name()
+                         << "delta=" << delta;
+        m_playlistSelectionObserver->changeCurrentPlaylist(targetPlaylist->id());
+        return;
+    }
+
+    qCWarning(VIM_LOG) << "changePlaylistByOffset: target playlist missing at index" << targetIndex;
 }
 
 void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
@@ -3086,6 +3209,9 @@ void VimHandler::executeAction(const BindingEntry& entry)
     else {
         qCWarning(VIM_LOG) << "executeAction: unknown action" << entry.actionName;
     }
+
+    m_hadExplicitCount = false;
+    m_dispatchCount    = 0;
 }
 
 // ---------------------------------------------------------------------------
