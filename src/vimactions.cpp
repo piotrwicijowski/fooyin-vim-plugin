@@ -90,6 +90,8 @@ void VimActions::registerAll()
 
     // -- Focus --
     registerAction(u"focusNowPlaying"_s, [](VimHandler& h, const QStringView&) { h.focusNowPlaying(); });
+    registerAction(u"nextPlaylist"_s, [](VimHandler& h, const QStringView&) { h.nextPlaylist(); });
+    registerAction(u"previousPlaylist"_s, [](VimHandler& h, const QStringView&) { h.previousPlaylist(); });
     registerAction(u"fooyinAction"_s, [](VimHandler& h, const QStringView& a) { h.triggerFooyinAction(a); });
     registerAction(u"focusNowPlayingAndExit"_s, [](VimHandler& h, const QStringView&) {
         h.enterNormal();

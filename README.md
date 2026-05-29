@@ -345,6 +345,8 @@ The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionNam
 | `undo` | — | Normal | Undo last playlist change |
 | `redo` | — | Normal | Redo last undone change |
 | `focusNowPlaying` | — | Normal | Focus currently playing track |
+| `nextPlaylist` | — | Normal, Visual | Switch the selected playlist forward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
+| `previousPlaylist` | — | Normal, Visual | Switch the selected playlist backward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
 | `beginSetMark` | — | Normal | Begin setting a local mark; the next lowercase letter chooses the mark |
 | `beginJumpToMark` | — | Normal | Begin jumping to a local mark; the next lowercase letter chooses the mark |
@@ -382,6 +384,8 @@ Bindings\Global\Normal\z=fooyinAction:View.ShowNowPlaying
 ```
 
 There is no default binding for `fooyinAction`; it is only available for custom config bindings.
+
+`nextPlaylist` and `previousPlaylist` are also available for custom config bindings only. They do not have default bindings.
 
 You can discover action IDs in **Settings -> Shortcuts**. The command ID is shown alongside each shortcut entry, for example `Playback.Next` or `View.ShowNowPlaying`.
 

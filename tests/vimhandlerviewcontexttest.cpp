@@ -296,6 +296,20 @@ public:
         return m_currentPlaylist ? m_currentPlaylist->id() : Fooyin::UId{};
     }
 
+    void changeCurrentPlaylist(const Fooyin::UId& id) override
+    {
+        if(!m_playlistHandler) {
+            return;
+        }
+
+        changeCurrentPlaylist(m_playlistHandler->playlistById(id));
+    }
+
+    void setPlaylistHandler(Fooyin::PlaylistHandler* playlistHandler)
+    {
+        m_playlistHandler = playlistHandler;
+    }
+
     void changeCurrentPlaylist(Fooyin::Playlist* playlist)
     {
         auto* previous    = m_currentPlaylist;
@@ -305,6 +319,7 @@ public:
     }
 
 private:
+    Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
     Fooyin::Playlist* m_currentPlaylist{nullptr};
 };
 
@@ -624,6 +639,15 @@ QStandardItem* makeGroupItem(const QString& text)
 {
     auto* item = new QStandardItem(text);
     item->setData(true, RecordingTreeModel::GroupRole);
+    item->setData(1, Qt::UserRole);
+    return item;
+}
+
+QStandardItem* makeOrganiserPlaylistItem(const QString& text, Fooyin::Playlist* playlist)
+{
+    auto* item = new QStandardItem(text);
+    item->setData(2, Qt::UserRole);
+    item->setData(QVariant::fromValue(playlist), Qt::UserRole + 1);
     return item;
 }
 
@@ -667,6 +691,11 @@ private Q_SLOTS:
     void searchBarTypingKeepsFocus();
     void scopedBindingsPreferActiveViewOverGlobalFallback();
     void pasteTargetsObservedEmptySelectedPlaylist();
+    void switchesToNextPlaylist();
+    void switchesToPreviousPlaylist();
+    void playlistSwitchingClampsAtEnds();
+    void playlistSwitchingUsesCount();
+    void playlistSwitchingFollowsOrganiserTreeOrder();
     void restoresSavedCursorWhenReturningToPlaylist();
     void clampsRestoredCursorWhenPlaylistShrinks();
     void restoresVisualSelectionWhenReturningToPlaylist();
@@ -1216,6 +1245,211 @@ void TestVimHandlerViewContext::pasteTargetsObservedEmptySelectedPlaylist()
     QCOMPARE(sourcePlaylist->trackCount(), 1);
     QCOMPARE(emptyPlaylist->trackCount(), 1);
     QCOMPARE(emptyPlaylist->tracks().front().title(), QStringLiteral("Source"));
+}
+
+void TestVimHandlerViewContext::switchesToNextPlaylist()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("next_playlist.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist A"));
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist B"));
+
+    const auto playlists = harness.handler.playlists();
+    QVERIFY(playlists.size() >= 2);
+
+    auto* currentPlaylist  = playlists[static_cast<size_t>(playlists.size() - 2)];
+    auto* expectedPlaylist = playlists.back();
+    QVERIFY(currentPlaylist);
+    QVERIFY(expectedPlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakePlaylistSelectionObserver observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setPlaylistSelectionObserver(&observer);
+    observer.changeCurrentPlaylist(currentPlaylist);
+
+    handler.nextPlaylist();
+
+    QCOMPARE(observer.currentPlaylist(), expectedPlaylist);
+    QCOMPARE(observer.currentPlaylistId(), expectedPlaylist->id());
+}
+
+void TestVimHandlerViewContext::switchesToPreviousPlaylist()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("previous_playlist.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist A"));
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist B"));
+
+    const auto playlists = harness.handler.playlists();
+    QVERIFY(playlists.size() >= 2);
+
+    auto* expectedPlaylist = playlists.front();
+    auto* currentPlaylist  = playlists[1];
+    QVERIFY(currentPlaylist);
+    QVERIFY(expectedPlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakePlaylistSelectionObserver observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setPlaylistSelectionObserver(&observer);
+    observer.changeCurrentPlaylist(currentPlaylist);
+
+    handler.previousPlaylist();
+
+    QCOMPARE(observer.currentPlaylist(), expectedPlaylist);
+    QCOMPARE(observer.currentPlaylistId(), expectedPlaylist->id());
+}
+
+void TestVimHandlerViewContext::playlistSwitchingClampsAtEnds()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("playlist_switch_clamp.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist A"));
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist B"));
+
+    const auto playlists = harness.handler.playlists();
+    QVERIFY(playlists.size() >= 2);
+
+    auto* firstPlaylist = playlists.front();
+    auto* lastPlaylist  = playlists.back();
+    QVERIFY(firstPlaylist);
+    QVERIFY(lastPlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakePlaylistSelectionObserver observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setPlaylistSelectionObserver(&observer);
+
+    observer.changeCurrentPlaylist(firstPlaylist);
+    handler.previousPlaylist();
+    QCOMPARE(observer.currentPlaylist(), firstPlaylist);
+
+    observer.changeCurrentPlaylist(lastPlaylist);
+    handler.nextPlaylist();
+    QCOMPARE(observer.currentPlaylist(), lastPlaylist);
+}
+
+bool dispatchDigit(Fooyin::VimMotions::VimHandler& handler, QObject* watched, int digit)
+{
+    const QString text = QString::number(digit);
+    QKeyEvent event(QEvent::KeyPress, Qt::Key_0 + digit, Qt::NoModifier, text);
+    return handler.eventFilter(watched, &event);
+}
+
+void TestVimHandlerViewContext::playlistSwitchingUsesCount()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("playlist_switch_count.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist A"));
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist B"));
+    harness.handler.createNewPlaylist(QStringLiteral("Playlist C"));
+
+    const auto playlists = harness.handler.playlists();
+    QVERIFY(playlists.size() >= 3);
+
+    auto* playlistA = playlists[0];
+    auto* playlistC = playlists[2];
+    QVERIFY(playlistA);
+    QVERIFY(playlistC);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakePlaylistSelectionObserver observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setPlaylistSelectionObserver(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusTree(&view);
+
+    QVERIFY(dispatchDigit(handler, &view, 2));
+
+    observer.changeCurrentPlaylist(playlistA);
+    handler.nextPlaylist();
+    QCOMPARE(observer.currentPlaylist(), playlistC);
+
+    handler.clearPendingState();
+    QVERIFY(dispatchDigit(handler, &view, 2));
+
+    handler.previousPlaylist();
+    QCOMPARE(observer.currentPlaylist(), playlistA);
+}
+
+void TestVimHandlerViewContext::playlistSwitchingFollowsOrganiserTreeOrder()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("playlist_switch_organiser.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"));
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"));
+    auto* playlistC = harness.handler.createNewPlaylist(QStringLiteral("Playlist C"));
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+    QVERIFY(playlistC);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakePlaylistSelectionObserver observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setPlaylistSelectionObserver(&observer);
+
+    FakeOrganiserWidget organiser;
+    QStandardItemModel model;
+    model.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist A"), playlistA));
+    auto* group = makeGroupItem(QStringLiteral("Group"));
+    group->appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist C"), playlistC));
+    group->appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist B"), playlistB));
+    model.appendRow(group);
+    organiser.view()->setModel(&model);
+    organiser.view()->expand(model.index(1, 0));
+    organiser.window()->show();
+    qApp->processEvents();
+
+    observer.changeCurrentPlaylist(playlistA);
+    handler.nextPlaylist();
+    QCOMPARE(observer.currentPlaylist(), playlistC);
+
+    handler.nextPlaylist();
+    QCOMPARE(observer.currentPlaylist(), playlistB);
+
+    handler.previousPlaylist();
+    QCOMPARE(observer.currentPlaylist(), playlistC);
 }
 
 void TestVimHandlerViewContext::restoresSavedCursorWhenReturningToPlaylist()

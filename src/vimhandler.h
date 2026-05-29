@@ -118,6 +118,8 @@ public:
     void redo();
 
     void focusNowPlaying();
+    void nextPlaylist();
+    void previousPlaylist();
     void triggerFooyinAction(const QStringView& actionId);
     void beginSetMark();
     void beginJumpToMark();
@@ -234,6 +236,7 @@ private:
     void scheduleIndexRestore(QAbstractItemView* view, int row, int col, int expectedRowCount);
     void scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId, const Fooyin::UId& entryId,
                               int fallbackRow, int col, int expectedRowCount);
+    void changePlaylistByOffset(int delta);
 
     Mode m_mode{Mode::Normal};
     int m_count{0};
