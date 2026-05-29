@@ -12,7 +12,7 @@
 #include <core/plugins/coreplugincontext.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
-#include <gui/playlist/playlistselectionobserver.h>
+#include <gui/playlist/currentplaylistcontroller.h>
 #include <gui/trackselectioncontroller.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/actions/command.h>
@@ -913,22 +913,22 @@ void VimHandler::setTrackSelectionController(Fooyin::TrackSelectionController* c
     m_trackSelectionController = controller;
 }
 
-void VimHandler::setPlaylistSelectionObserver(Fooyin::PlaylistSelectionObserver* observer)
+void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController* controller)
 {
-    qCDebug(VIM_LOG) << "setPlaylistSelectionObserver:" << (observer ? "set" : "cleared");
+    qCDebug(VIM_LOG) << "setCurrentPlaylistController:" << (controller ? "set" : "cleared");
 
     if(m_playlistSelectionChangedConnection)
         QObject::disconnect(m_playlistSelectionChangedConnection);
 
-    m_playlistSelectionObserver  = observer;
+    m_currentPlaylistController  = controller;
     m_observedSelectedPlaylistId = {};
 
-    if(!m_playlistSelectionObserver)
+    if(!m_currentPlaylistController)
         return;
 
-    m_observedSelectedPlaylistId = m_playlistSelectionObserver->currentPlaylistId();
+    m_observedSelectedPlaylistId = m_currentPlaylistController->currentPlaylistId();
     m_playlistSelectionChangedConnection
-        = QObject::connect(m_playlistSelectionObserver, &Fooyin::PlaylistSelectionObserver::currentPlaylistChanged,
+        = QObject::connect(m_currentPlaylistController, &Fooyin::CurrentPlaylistController::currentPlaylistChanged,
                            this, [this](Fooyin::Playlist* previous, Fooyin::Playlist* current) {
                                qCDebug(VIM_LOG) << "playlistSelectionChanged: previous="
                                                 << (previous ? previous->name() : QStringLiteral("<null>"))
@@ -1210,7 +1210,7 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
     if(auto* playlist = selectedPlaylist())
         return playlist;
 
-    if(m_playlistSelectionObserver && m_observedSelectedPlaylistId.isValid()) {
+    if(m_currentPlaylistController && m_observedSelectedPlaylistId.isValid()) {
         if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId)) {
             qCDebug(VIM_LOG) << "targetPlaylist: observed selected playlist =" << playlist->name();
             return playlist;
@@ -1255,12 +1255,12 @@ void VimHandler::changePlaylistByOffset(const int delta)
         return;
     }
 
-    if(!m_playlistHandler || !m_playlistSelectionObserver) {
+    if(!m_playlistHandler || !m_currentPlaylistController) {
         qCWarning(VIM_LOG) << "changePlaylistByOffset: missing playlist services";
         return;
     }
 
-    const Fooyin::UId currentId = m_playlistSelectionObserver->currentPlaylistId();
+    const Fooyin::UId currentId = m_currentPlaylistController->currentPlaylistId();
     if(!currentId.isValid()) {
         qCWarning(VIM_LOG) << "changePlaylistByOffset: no selected playlist";
         return;
@@ -1290,7 +1290,7 @@ void VimHandler::changePlaylistByOffset(const int delta)
             if(auto* targetPlaylist = organiserPlaylists[static_cast<size_t>(targetSequenceIndex)]) {
                 qCDebug(VIM_LOG) << "changePlaylistByOffset organiser:" << currentPlaylist->name() << "->"
                                  << targetPlaylist->name() << "delta=" << delta;
-                m_playlistSelectionObserver->changeCurrentPlaylist(targetPlaylist->id());
+                m_currentPlaylistController->changeCurrentPlaylist(targetPlaylist->id());
                 return;
             }
         }
@@ -1306,7 +1306,7 @@ void VimHandler::changePlaylistByOffset(const int delta)
     if(auto* targetPlaylist = m_playlistHandler->playlistByIndex(targetIndex)) {
         qCDebug(VIM_LOG) << "changePlaylistByOffset:" << currentPlaylist->name() << "->" << targetPlaylist->name()
                          << "delta=" << delta;
-        m_playlistSelectionObserver->changeCurrentPlaylist(targetPlaylist->id());
+        m_currentPlaylistController->changeCurrentPlaylist(targetPlaylist->id());
         return;
     }
 

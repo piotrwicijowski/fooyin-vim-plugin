@@ -13,7 +13,7 @@ struct CorePluginContext;
 struct GuiPluginContext;
 class ActionManager;
 class PlaylistHandler;
-class PlaylistSelectionObserver;
+class CurrentPlaylistController;
 class SearchController;
 class SettingsManager;
 class TrackSelectionController;
@@ -45,7 +45,7 @@ public:
 private:
     ActionManager* m_actionManager{nullptr};
     PlaylistHandler* m_playlistHandler{nullptr};
-    PlaylistSelectionObserver* m_playlistSelection{nullptr};
+    CurrentPlaylistController* m_playlistSelection{nullptr};
     SearchController* m_searchController{nullptr};
     TrackSelectionController* m_trackSelection{nullptr};
     SettingsManager* m_settingsManager{nullptr};

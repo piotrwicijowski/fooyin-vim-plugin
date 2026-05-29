@@ -29,7 +29,7 @@ class ActionManager;
 class FyWidget;
 class Playlist;
 class PlaylistHandler;
-class PlaylistSelectionObserver;
+class CurrentPlaylistController;
 class SettingsManager;
 class TrackSelectionController;
 } // namespace Fooyin
@@ -77,7 +77,7 @@ public:
     void setSettingsManager(Fooyin::SettingsManager* manager);
     void setSettingsBackend(VimMotionsBindingBackend* backend);
     void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
-    void setPlaylistSelectionObserver(Fooyin::PlaylistSelectionObserver* observer);
+    void setCurrentPlaylistController(Fooyin::CurrentPlaylistController* controller);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -270,7 +270,7 @@ private:
     std::unique_ptr<VimMotionsBindingBackend> m_ownedSettingsBackend;
     QMetaObject::Connection m_backendBindingsChangedConnection;
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
-    QPointer<Fooyin::PlaylistSelectionObserver> m_playlistSelectionObserver;
+    QPointer<Fooyin::CurrentPlaylistController> m_currentPlaylistController;
     QMetaObject::Connection m_playlistSelectionChangedConnection;
     Fooyin::UId m_observedSelectedPlaylistId;
     Fooyin::UId m_pendingPlaylistRestoreId;

@@ -7,7 +7,7 @@
 #include <core/playlist/playlisthandler.h>
 #include <core/track.h>
 #include <gui/fywidget.h>
-#include <gui/playlist/playlistselectionobserver.h>
+#include <gui/playlist/currentplaylistcontroller.h>
 #include <utils/database/dbconnectionhandler.h>
 #include <utils/database/dbconnectionpool.h>
 #include <utils/database/dbconnectionprovider.h>
@@ -277,13 +277,13 @@ private:
     QTreeView* m_view;
 };
 
-class FakePlaylistSelectionObserver : public Fooyin::PlaylistSelectionObserver
+class FakeCurrentPlaylistController : public Fooyin::CurrentPlaylistController
 {
     Q_OBJECT
 
 public:
-    explicit FakePlaylistSelectionObserver(QObject* parent = nullptr)
-        : Fooyin::PlaylistSelectionObserver(parent)
+    explicit FakeCurrentPlaylistController(QObject* parent = nullptr)
+        : Fooyin::CurrentPlaylistController(parent)
     { }
 
     [[nodiscard]] Fooyin::Playlist* currentPlaylist() const override
@@ -1221,8 +1221,8 @@ void TestVimHandlerViewContext::pasteTargetsObservedEmptySelectedPlaylist()
     VimHandler handler;
     handler.setPlaylistHandler(playlistHandler);
 
-    FakePlaylistSelectionObserver observer;
-    handler.setPlaylistSelectionObserver(&observer);
+    FakeCurrentPlaylistController observer;
+    handler.setCurrentPlaylistController(&observer);
 
     Fooyin::PlaylistView sourceView;
     QStandardItemModel sourceModel;
@@ -1270,9 +1270,9 @@ void TestVimHandlerViewContext::switchesToNextPlaylist()
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
 
-    FakePlaylistSelectionObserver observer;
+    FakeCurrentPlaylistController observer;
     observer.setPlaylistHandler(&harness.handler);
-    handler.setPlaylistSelectionObserver(&observer);
+    handler.setCurrentPlaylistController(&observer);
     observer.changeCurrentPlaylist(currentPlaylist);
 
     handler.nextPlaylist();
@@ -1304,9 +1304,9 @@ void TestVimHandlerViewContext::switchesToPreviousPlaylist()
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
 
-    FakePlaylistSelectionObserver observer;
+    FakeCurrentPlaylistController observer;
     observer.setPlaylistHandler(&harness.handler);
-    handler.setPlaylistSelectionObserver(&observer);
+    handler.setCurrentPlaylistController(&observer);
     observer.changeCurrentPlaylist(currentPlaylist);
 
     handler.previousPlaylist();
@@ -1338,9 +1338,9 @@ void TestVimHandlerViewContext::playlistSwitchingClampsAtEnds()
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
 
-    FakePlaylistSelectionObserver observer;
+    FakeCurrentPlaylistController observer;
     observer.setPlaylistHandler(&harness.handler);
-    handler.setPlaylistSelectionObserver(&observer);
+    handler.setCurrentPlaylistController(&observer);
 
     observer.changeCurrentPlaylist(firstPlaylist);
     handler.previousPlaylist();
@@ -1382,9 +1382,9 @@ void TestVimHandlerViewContext::playlistSwitchingUsesCount()
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
 
-    FakePlaylistSelectionObserver observer;
+    FakeCurrentPlaylistController observer;
     observer.setPlaylistHandler(&harness.handler);
-    handler.setPlaylistSelectionObserver(&observer);
+    handler.setCurrentPlaylistController(&observer);
 
     Fooyin::PlaylistView view;
     QStandardItemModel model;
@@ -1425,9 +1425,9 @@ void TestVimHandlerViewContext::playlistSwitchingFollowsOrganiserTreeOrder()
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
 
-    FakePlaylistSelectionObserver observer;
+    FakeCurrentPlaylistController observer;
     observer.setPlaylistHandler(&harness.handler);
-    handler.setPlaylistSelectionObserver(&observer);
+    handler.setCurrentPlaylistController(&observer);
 
     FakeOrganiserWidget organiser;
     QStandardItemModel model;
@@ -1510,8 +1510,8 @@ void TestVimHandlerViewContext::restoresSavedCursorWhenReturningToPlaylist()
 
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
-    FakePlaylistSelectionObserver observer;
-    handler.setPlaylistSelectionObserver(&observer);
+    FakeCurrentPlaylistController observer;
+    handler.setCurrentPlaylistController(&observer);
     qApp->installEventFilter(&handler);
 
     Fooyin::PlaylistView view;
@@ -1585,8 +1585,8 @@ void TestVimHandlerViewContext::clampsRestoredCursorWhenPlaylistShrinks()
 
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
-    FakePlaylistSelectionObserver observer;
-    handler.setPlaylistSelectionObserver(&observer);
+    FakeCurrentPlaylistController observer;
+    handler.setCurrentPlaylistController(&observer);
 
     Fooyin::PlaylistView view;
     QStandardItemModel model;
@@ -1660,8 +1660,8 @@ void TestVimHandlerViewContext::restoresVisualSelectionWhenReturningToPlaylist()
 
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
-    FakePlaylistSelectionObserver observer;
-    handler.setPlaylistSelectionObserver(&observer);
+    FakeCurrentPlaylistController observer;
+    handler.setCurrentPlaylistController(&observer);
 
     Fooyin::PlaylistView view;
     QStandardItemModel model;
@@ -1733,8 +1733,8 @@ void TestVimHandlerViewContext::restoresEmptyPlaylistToNormalMode()
 
     VimHandler handler;
     handler.setPlaylistHandler(&harness.handler);
-    FakePlaylistSelectionObserver observer;
-    handler.setPlaylistSelectionObserver(&observer);
+    FakeCurrentPlaylistController observer;
+    handler.setCurrentPlaylistController(&observer);
 
     Fooyin::PlaylistView view;
     QStandardItemModel model;
