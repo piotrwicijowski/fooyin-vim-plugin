@@ -98,14 +98,10 @@ void VimMotionsPlugin::initialise(const CorePluginContext& context)
 
 void VimMotionsPlugin::initialise(const GuiPluginContext& context)
 {
-    m_searchController  = context.searchController;
-    m_actionManager     = context.actionManager;
-    m_trackSelection    = context.trackSelection;
-    m_playlistSelection = context.playlistSelection;
-
     m_searchController      = context.searchController;
     m_actionManager         = context.actionManager;
     m_trackSelection        = context.trackSelection;
+    m_playlistSelection     = context.playlistSelection;
     m_playlistViewRefresher = context.playlistViewRefresher;
 
     qCInfo(VIM_LOG) << "VimMotionsPlugin: GUI initialising, installing event filter";
@@ -113,8 +109,6 @@ void VimMotionsPlugin::initialise(const GuiPluginContext& context)
     m_vimHandler->setPlaylistHandler(m_playlistHandler);
     m_vimHandler->setActionManager(m_actionManager);
     m_vimHandler->setTrackSelectionController(m_trackSelection);
-    m_vimHandler->setCurrentPlaylistController(m_playlistSelection);
-    m_vimHandler->setPlaylistViewRefresher(m_playlistViewRefresher);
     m_vimHandler->setCurrentPlaylistController(m_playlistSelection);
     m_vimHandler->setPlaylistViewRefresher(m_playlistViewRefresher);
     m_vimHandler->setSettingsBackend(m_settingsBackend.get());

@@ -94,6 +94,7 @@ public:
         return m_configBindings;
     }
     [[nodiscard]] QString localMarkForScriptContext(const Fooyin::ScriptContext& context) const;
+    [[nodiscard]] QString globalMarkForScriptContext(const Fooyin::ScriptContext& context) const;
 
     void moveCursor(int delta);
     void jumpToFirst();
