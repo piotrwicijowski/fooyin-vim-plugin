@@ -5,6 +5,7 @@
 #include <core/engine/audioloader.h>
 #include <core/library/musiclibrary.h>
 #include <core/playlist/playlisthandler.h>
+#include <core/scripting/scripttypes.h>
 #include <core/track.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
@@ -523,6 +524,52 @@ private:
     Fooyin::Playlist* m_currentPlaylist{nullptr};
 };
 
+class TestScriptPlaylistEnvironment : public Fooyin::ScriptPlaylistEnvironment
+{
+public:
+    int currentIndex{-1};
+    int trackCount{0};
+
+    [[nodiscard]] int currentPlaylistTrackIndex() const override
+    {
+        return currentIndex;
+    }
+
+    [[nodiscard]] int playlistTrackCount() const override
+    {
+        return trackCount;
+    }
+
+    [[nodiscard]] int trackDepth() const override
+    {
+        return 0;
+    }
+
+    [[nodiscard]] std::span<const int> currentQueueIndexes() const override
+    {
+        return m_queueIndexes;
+    }
+
+private:
+    std::array<int, 0> m_queueIndexes;
+};
+
+class TestScriptEnvironment : public Fooyin::ScriptEnvironment
+{
+public:
+    explicit TestScriptEnvironment(const Fooyin::ScriptPlaylistEnvironment* playlistEnvironment)
+        : m_playlistEnvironment{playlistEnvironment}
+    { }
+
+    [[nodiscard]] const Fooyin::ScriptPlaylistEnvironment* playlistEnvironment() const override
+    {
+        return m_playlistEnvironment;
+    }
+
+private:
+    const Fooyin::ScriptPlaylistEnvironment* m_playlistEnvironment{nullptr};
+};
+
 class RecordingTreeModel : public QStandardItemModel
 {
 public:
@@ -918,6 +965,7 @@ private Q_SLOTS:
     void playlistSwitchingFollowsOrganiserTreeOrder();
     void jumpsToGlobalMarkInAnotherPlaylist();
     void clearsStaleGlobalMarkWhenMarkedEntryIsDeleted();
+    void exposesMarksForScriptContext();
     void restoresSavedCursorWhenReturningToPlaylist();
     void clampsRestoredCursorWhenPlaylistShrinks();
     void restoresVisualSelectionWhenReturningToPlaylist();
@@ -2897,6 +2945,74 @@ void TestVimHandlerViewContext::clearsStaleGlobalMarkWhenMarkedEntryIsDeleted()
     handler.beginJumpToMark();
     QVERIFY(dispatchKey(handler, &view, u'B'));
     QCOMPARE(observer.currentPlaylist(), playlistB);
+}
+
+void TestVimHandlerViewContext::exposesMarksForScriptContext()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("mark_script_context.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList tracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(61);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(62);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlist = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), tracks);
+    QVERIFY(playlist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    view.setModel(&model);
+
+    syncPlaylistModel(model, playlist);
+    view.setCurrentIndex(model.index(1, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlist);
+
+    handler.beginSetMark();
+    QVERIFY(dispatchKey(handler, &view, u'c'));
+    handler.beginSetMark();
+    QVERIFY(dispatchKey(handler, &view, u'a'));
+    handler.beginSetMark();
+    QVERIFY(dispatchKey(handler, &view, u'D'));
+    handler.beginSetMark();
+    QVERIFY(dispatchKey(handler, &view, u'B'));
+
+    TestScriptPlaylistEnvironment playlistEnvironment;
+    playlistEnvironment.currentIndex = 1;
+    playlistEnvironment.trackCount   = playlist->trackCount();
+    TestScriptEnvironment environment{&playlistEnvironment};
+
+    const Fooyin::ScriptContext context{.environment = &environment, .playlist = playlist};
+    QCOMPARE(handler.localMarkForScriptContext(context), QStringLiteral("a"));
+    QCOMPARE(handler.globalMarkForScriptContext(context), QStringLiteral("B"));
+
+    playlistEnvironment.currentIndex = 0;
+    QCOMPARE(handler.localMarkForScriptContext(context), QString{});
+    QCOMPARE(handler.globalMarkForScriptContext(context), QString{});
 }
 
 void TestVimHandlerViewContext::restoresSavedCursorWhenReturningToPlaylist()

@@ -1477,6 +1477,34 @@ QString VimHandler::localMarkForScriptContext(const Fooyin::ScriptContext& conte
     return firstMark.isNull() ? QString{} : QString{firstMark};
 }
 
+QString VimHandler::globalMarkForScriptContext(const Fooyin::ScriptContext& context) const
+{
+    const auto* playlistEnvironment = context.environment ? context.environment->playlistEnvironment() : nullptr;
+    if(context.playlist == nullptr || playlistEnvironment == nullptr) {
+        return {};
+    }
+
+    const int row = playlistEnvironment->currentPlaylistTrackIndex();
+    if(row < 0) {
+        return {};
+    }
+
+    const auto playlistTrack = context.playlist->playlistTrack(row);
+    if(!playlistTrack) {
+        return {};
+    }
+
+    QChar firstMark;
+    for(auto it = m_globalMarks.cbegin(); it != m_globalMarks.cend(); ++it) {
+        if(it.value().playlistId == context.playlist->id() && it.value().entryId == playlistTrack->entryId
+           && (firstMark.isNull() || it.key() < firstMark)) {
+            firstMark = it.key();
+        }
+    }
+
+    return firstMark.isNull() ? QString{} : QString{firstMark};
+}
+
 void VimHandler::setLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
@@ -1512,7 +1540,14 @@ void VimHandler::setGlobalMark(QChar mark)
         return;
     }
 
+    const auto previousMark = m_globalMarks.value(mark);
     m_globalMarks.insert(mark, {.playlistId = playlist->id(), .entryId = entryId});
+
+    if(previousMark.playlistId.isValid()) {
+        refreshPlaylistEntries(previousMark.playlistId, std::array{previousMark.entryId});
+    }
+    refreshPlaylistEntries(playlist->id(), std::array{entryId});
+
     qCDebug(VIM_LOG) << "setGlobalMark:" << mark << "playlist=" << playlist->name() << "entryId=" << entryId;
 }
 
