@@ -29,7 +29,11 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 
 ### Script variable
 
-The plugin exposes `%mark%` for playlist script evaluation. It resolves to the local vim mark letter for the current playlist entry, or empty when the entry is unmarked. If multiple local marks point at the same entry, `%mark%` returns the lowest-letter mark.
+The plugin exposes `%mark%` and `%global_mark%` for playlist script evaluation.
+
+- `%mark%` resolves to the local vim mark letter for the current playlist entry, or empty when the entry is unmarked.
+- `%global_mark%` resolves to the global vim mark letter for the current playlist entry, or empty when the entry is unmarked.
+- If multiple marks of the same kind point at the same entry, the variable returns the lowest-letter mark.
 
 ### Normal mode bindings
 
