@@ -1164,7 +1164,6 @@ void VimHandler::setActionManager(Fooyin::ActionManager* manager)
     qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
     m_actionManager = manager;
 }
-
 void VimHandler::beginSetMark()
 {
     qCDebug(VIM_LOG) << "beginSetMark";
@@ -1235,7 +1234,6 @@ void VimHandler::focusNowPlaying()
             if(playingRow >= 0) {
                 PlaylistCursorState state;
                 state.row = playingRow;
-
                 if(auto* view = playlistViewForState()) {
                     const QModelIndex currentIndex = view->currentIndex();
                     state.col                      = currentIndex.isValid() ? currentIndex.column() : 0;
@@ -1280,7 +1278,6 @@ void VimHandler::triggerFooyinAction(const QStringView& actionId)
 
     triggerCurrentContextAction(Fooyin::Id(actionId.toString()));
 }
-
 Fooyin::Playlist* VimHandler::selectedPlaylist() const
 {
     if(!m_playlistHandler)
