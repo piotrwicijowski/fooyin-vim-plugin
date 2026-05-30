@@ -939,94 +939,82 @@ void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController*
                                m_observedSelectedPlaylistId = current ? current->id() : Fooyin::UId{};
                                restorePlaylistCursorState(current);
                            });
+}
 
-    void VimHandler::setPlaylistViewRefresher(Fooyin::PlaylistViewRefresher * refresher)
-    {
-        qCDebug(VIM_LOG) << "setPlaylistViewRefresher:" << (refresher ? "set" : "cleared");
-        m_playlistViewRefresher = refresher;
-    }
+void VimHandler::setPlaylistViewRefresher(Fooyin::PlaylistViewRefresher* refresher)
+{
+    qCDebug(VIM_LOG) << "setPlaylistViewRefresher:" << (refresher ? "set" : "cleared");
+    m_playlistViewRefresher = refresher;
+}
 
-    void VimHandler::setActionManager(Fooyin::ActionManager * manager)
-    {
-        qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
-        m_actionManager = manager;
-    }
+void VimHandler::setActionManager(Fooyin::ActionManager* manager)
+{
+    qCDebug(VIM_LOG) << "setActionManager:" << (manager ? "set" : "cleared");
+    m_actionManager = manager;
+}
 
-    void VimHandler::beginSetMark()
-    {
-        qCDebug(VIM_LOG) << "beginSetMark";
-        setPendingMarkOp(PendingMarkOp::Set);
-        m_count = 0;
-    }
+void VimHandler::beginSetMark()
+{
+    qCDebug(VIM_LOG) << "beginSetMark";
+    setPendingMarkOp(PendingMarkOp::Set);
+    m_count = 0;
+}
 
-    void VimHandler::beginJumpToMark()
-    {
-        qCDebug(VIM_LOG) << "beginJumpToMark";
-        setPendingMarkOp(PendingMarkOp::Jump);
-        m_count = 0;
-    }
+void VimHandler::beginJumpToMark()
+{
+    qCDebug(VIM_LOG) << "beginJumpToMark";
+    setPendingMarkOp(PendingMarkOp::Jump);
+    m_count = 0;
+}
 
-    bool VimHandler::handlePendingMarkOp(QKeyEvent * ev)
-    {
-        if(m_pendingMarkOp == PendingMarkOp::None)
-            return false;
+bool VimHandler::handlePendingMarkOp(QKeyEvent* ev)
+{
+    if(m_pendingMarkOp == PendingMarkOp::None)
+        return false;
 
-        if(ev->key() == Qt::Key_Escape && ev->modifiers() == Qt::NoModifier) {
-            qCDebug(VIM_LOG) << "handlePendingMarkOp: cancelled";
-            clearPendingInputState();
-            return true;
-        }
-
-        const QChar ch                             = ev->text().isEmpty() ? QChar{} : ev->text().front();
-        const Qt::KeyboardModifiers disallowedMods = ev->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
-        if(disallowedMods == Qt::NoModifier && !ch.isNull() && ch.isLetter()) {
-            const PendingMarkOp op = m_pendingMarkOp;
-            clearPendingInputState();
-            if(op == PendingMarkOp::Set) {
-                if(ch.isUpper())
-                    setGlobalMark(ch);
-                else
-                    setLocalMark(ch);
-            }
-            else {
-                if(ch.isUpper())
-                    jumpToGlobalMark(ch);
-                else
-                    jumpToLocalMark(ch);
-            }
-            return true;
-        }
-
-        qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-letter completion";
+    if(ev->key() == Qt::Key_Escape && ev->modifiers() == Qt::NoModifier) {
+        qCDebug(VIM_LOG) << "handlePendingMarkOp: cancelled";
         clearPendingInputState();
         return true;
     }
 
-    void VimHandler::focusNowPlaying()
-    {
-        qCDebug(VIM_LOG) << "focusNowPlaying";
-        if(!m_actionManager) {
-            qCWarning(VIM_LOG) << "focusNowPlaying: no ActionManager";
-            return;
+    const QChar ch                             = ev->text().isEmpty() ? QChar{} : ev->text().front();
+    const Qt::KeyboardModifiers disallowedMods = ev->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+    if(disallowedMods == Qt::NoModifier && !ch.isNull() && ch.isLetter()) {
+        const PendingMarkOp op = m_pendingMarkOp;
+        clearPendingInputState();
+        if(op == PendingMarkOp::Set) {
+            if(ch.isUpper())
+                setGlobalMark(ch);
+            else
+                setLocalMark(ch);
         }
-
-        Fooyin::Command* cmd = m_actionManager->command(Fooyin::Id(Constants::Actions::ShowNowPlaying));
-        if(!cmd || !cmd->action()) {
-            qCWarning(VIM_LOG) << "focusNowPlaying: ShowNowPlaying action not found";
-            return;
+        else {
+            if(ch.isUpper())
+                jumpToGlobalMark(ch);
+            else
+                jumpToLocalMark(ch);
         }
-
-        cmd->action()->trigger();
+        return true;
     }
 
-    void VimHandler::nextPlaylist()
-    {
-        changePlaylistByOffset((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1);
+    qCDebug(VIM_LOG) << "handlePendingMarkOp: ignored non-letter completion";
+    clearPendingInputState();
+    return true;
+}
+
+void VimHandler::focusNowPlaying()
+{
+    qCDebug(VIM_LOG) << "focusNowPlaying";
+    if(!m_actionManager) {
+        qCWarning(VIM_LOG) << "focusNowPlaying: no ActionManager";
+        return;
     }
 
-    void VimHandler::previousPlaylist()
-    {
-        changePlaylistByOffset(-((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1));
+    Fooyin::Command* cmd = m_actionManager->command(Fooyin::Id(Constants::Actions::ShowNowPlaying));
+    if(!cmd || !cmd->action()) {
+        qCWarning(VIM_LOG) << "focusNowPlaying: ShowNowPlaying action not found";
+        return;
     }
 
     if(m_playlistHandler) {
@@ -1080,7 +1068,6 @@ void VimHandler::triggerFooyinAction(const QStringView& actionId)
 
     triggerCurrentContextAction(Fooyin::Id(actionId.toString()));
 }
-
 Fooyin::Playlist* VimHandler::selectedPlaylist() const
 {
     if(!m_playlistHandler)
