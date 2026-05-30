@@ -18,10 +18,11 @@ public:
     [[nodiscard]] std::span<const ScriptVariableDescriptor> variables() const override;
 
 private:
-    static ScriptResult markVariable(const ScriptContext& context, const QString& name);
+    static ScriptResult localMarkVariable(const ScriptContext& context, const QString& name);
+    static ScriptResult globalMarkVariable(const ScriptContext& context, const QString& name);
 
     inline static VimHandler* s_handler{nullptr};
-    std::array<ScriptVariableDescriptor, 1> m_variables;
+    std::array<ScriptVariableDescriptor, 2> m_variables;
 };
 
 } // namespace Fooyin::VimMotions
