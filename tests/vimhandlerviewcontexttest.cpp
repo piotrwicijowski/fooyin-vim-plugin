@@ -786,6 +786,7 @@ private Q_SLOTS:
     void searchLibraryCtrlKMovesFocusToSearchField();
     void searchLibraryLineEditAutoEntersInsertAndRestoresNormal();
     void searchLibraryLineEditRestoresVisualModeOnBlur();
+    void searchLibraryDialogDoesNotRestoreOrOverwritePlaylistState();
     void copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks();
     void moveAfterCurrentPlayingIsNoOpForSearchLibrarySelection();
     void pasteTargetsObservedEmptySelectedPlaylist();
@@ -800,7 +801,9 @@ private Q_SLOTS:
     void restoresSavedCursorWhenReturningToPlaylist();
     void clampsRestoredCursorWhenPlaylistShrinks();
     void restoresVisualSelectionWhenReturningToPlaylist();
+    void preservesVisualSelectionWhenSwitchingViaOrganiser();
     void restoresEmptyPlaylistToNormalMode();
+    void restoresLatestCursorPositionAfterPlaylistRefocus();
     void focusNowPlayingRestoresPlayingRowInsteadOfSavedRow();
     void organiserSearchFindsVisibleChild();
     void organiserSearchSkipsCollapsedChildren();
@@ -1525,6 +1528,115 @@ void TestVimHandlerViewContext::searchLibraryLineEditRestoresVisualModeOnBlur()
     dialog.view()->setFocus();
     pumpEvents();
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerViewContext::searchLibraryDialogDoesNotRestoreOrOverwritePlaylistState()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("search_library_cursor_state.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(91);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(92);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(93);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList bTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b1.flac"), 0};
+            track.setId(94);
+            track.setTitle(QStringLiteral("B1"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"), bTracks);
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel playlistModel;
+    view.setModel(&playlistModel);
+
+    syncPlaylistModel(playlistModel, playlistA);
+    view.setCurrentIndex(playlistModel.index(1, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(playlistModel, playlistB);
+    pumpEvents();
+
+    observer.changeCurrentPlaylist(playlistA);
+    syncPlaylistModel(playlistModel, playlistA);
+    pumpEvents();
+    focusTree(&view);
+    QCOMPARE(view.currentIndex().row(), 1);
+
+    view.setCurrentIndex(playlistModel.index(2, 0));
+    QCOMPARE(view.currentIndex().row(), 2);
+
+    SearchDialog dialog;
+    QStandardItemModel dialogModel;
+    dialogModel.appendRow(new QStandardItem(QStringLiteral("Result 1")));
+    dialogModel.appendRow(new QStandardItem(QStringLiteral("Result 2")));
+    dialog.view()->setModel(&dialogModel);
+    dialog.show();
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(view.currentIndex().row(), 2);
+
+    focusTree(dialog.view());
+    dialog.view()->setCurrentIndex(dialogModel.index(0, 0));
+    pumpEvents();
+    QCOMPARE(view.currentIndex().row(), 2);
+
+    dialog.close();
+    pumpEvents();
+
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(playlistModel, playlistB);
+    pumpEvents();
+
+    observer.changeCurrentPlaylist(playlistA);
+    syncPlaylistModel(playlistModel, playlistA);
+    pumpEvents();
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+    QCOMPARE(view.currentIndex().row(), 2);
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("A3"));
 }
 
 void TestVimHandlerViewContext::copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks()
@@ -2380,6 +2492,96 @@ void TestVimHandlerViewContext::restoresVisualSelectionWhenReturningToPlaylist()
     QVERIFY(view.selectionModel()->isRowSelected(2, QModelIndex{}));
 }
 
+void TestVimHandlerViewContext::preservesVisualSelectionWhenSwitchingViaOrganiser()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("cursor_visual_organiser_restore.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(25);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(26);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(27);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList bTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b1.flac"), 0};
+            track.setId(28);
+            track.setTitle(QStringLiteral("B1"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"), bTracks);
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    view.setModel(&model);
+
+    FakeOrganiserWidget organiser;
+    QStandardItemModel organiserModel;
+    organiserModel.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist A"), playlistA));
+    organiserModel.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist B"), playlistB));
+    organiser.view()->setModel(&organiserModel);
+
+    syncPlaylistModel(model, playlistA);
+    view.setCurrentIndex(model.index(1, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.enterVisual();
+    handler.extendVisualCursor(+1);
+
+    focusTree(organiser.view());
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(model, playlistB);
+    pumpEvents();
+
+    observer.changeCurrentPlaylist(playlistA);
+    syncPlaylistModel(model, playlistA);
+    pumpEvents();
+
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(view.currentIndex().row(), 2);
+    QCOMPARE(view.selectionModel()->selectedRows().size(), 2);
+    QVERIFY(view.selectionModel()->isRowSelected(1, QModelIndex{}));
+    QVERIFY(view.selectionModel()->isRowSelected(2, QModelIndex{}));
+}
+
 void TestVimHandlerViewContext::restoresEmptyPlaylistToNormalMode()
 {
     QTemporaryDir tempDir;
@@ -2452,6 +2654,95 @@ void TestVimHandlerViewContext::restoresEmptyPlaylistToNormalMode()
     QCOMPARE(model.rowCount(), 0);
     QCOMPARE(view.selectionModel()->selectedRows().size(), 0);
     QVERIFY(!view.currentIndex().isValid());
+}
+
+void TestVimHandlerViewContext::restoresLatestCursorPositionAfterPlaylistRefocus()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("cursor_refocus_restore.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(81);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(82);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(83);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList bTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b1.flac"), 0};
+            track.setId(84);
+            track.setTitle(QStringLiteral("B1"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"), bTracks);
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel playlistModel;
+    view.setModel(&playlistModel);
+
+    FakeOrganiserWidget organiser;
+    QStandardItemModel organiserModel;
+    organiserModel.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist A"), playlistA));
+    organiserModel.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist B"), playlistB));
+    organiser.view()->setModel(&organiserModel);
+
+    syncPlaylistModel(playlistModel, playlistA);
+    view.setCurrentIndex(playlistModel.index(1, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(playlistModel, playlistB);
+    pumpEvents();
+
+    observer.changeCurrentPlaylist(playlistA);
+    syncPlaylistModel(playlistModel, playlistA);
+    pumpEvents();
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+    QCOMPARE(view.currentIndex().row(), 1);
+
+    view.setCurrentIndex(playlistModel.index(2, 0));
+    focusTree(organiser.view());
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+
+    QCOMPARE(view.currentIndex().row(), 2);
+    QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("A3"));
 }
 
 void TestVimHandlerViewContext::focusNowPlayingRestoresPlayingRowInsteadOfSavedRow()

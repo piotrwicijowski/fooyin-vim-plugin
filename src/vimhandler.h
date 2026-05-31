@@ -23,6 +23,7 @@
 
 class QAbstractItemView;
 class QDialog;
+class QItemSelectionModel;
 class QKeyEvent;
 class QLineEdit;
 class QTreeView;
@@ -248,7 +249,10 @@ private:
     void insertSelectionAfterCurrentPlaying(bool move);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
     [[nodiscard]] QAbstractItemView* playlistViewForState() const;
+    [[nodiscard]] bool isPersistentPlaylistView(QAbstractItemView* view) const;
     void updateLastPlaylistView(QAbstractItemView* view);
+    void refreshPlaylistStateTracking(QAbstractItemView* candidateView = nullptr);
+    void saveObservedPlaylistCursorState();
     void tryRestorePendingPlaylistState(QAbstractItemView* candidateView = nullptr);
     void savePlaylistCursorState(Fooyin::Playlist* playlist);
     void restorePlaylistCursorState(Fooyin::Playlist* playlist);
@@ -271,6 +275,8 @@ private:
     ViewLocator* m_viewLocator{nullptr};
     SpatialNavigator* m_spatialNavigator{nullptr};
     QPointer<QAbstractItemView> m_lastPlaylistView;
+    QPointer<QAbstractItemView> m_trackedPlaylistStateView;
+    QPointer<QItemSelectionModel> m_trackedPlaylistSelectionModel;
 
     struct UndoEntry
     {
@@ -295,6 +301,7 @@ private:
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
     QPointer<Fooyin::CurrentPlaylistController> m_currentPlaylistController;
     QMetaObject::Connection m_playlistSelectionChangedConnection;
+    QMetaObject::Connection m_playlistStateTrackingConnection;
     Fooyin::UId m_observedSelectedPlaylistId;
     Fooyin::UId m_pendingPlaylistRestoreId;
     Fooyin::UId m_preserveVisualStateOnNextPlaylistSaveId;
@@ -333,6 +340,7 @@ private:
     std::optional<BindingScope> m_pendingConfigScope;
     int m_pendingSequenceTimeoutMs{0};
     QTimer m_pendingTimeoutTimer;
+    bool m_applyingPlaylistCursorState{false};
 };
 
 } // namespace Fooyin::VimMotions
