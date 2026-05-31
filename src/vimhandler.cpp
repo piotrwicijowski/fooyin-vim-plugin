@@ -442,7 +442,15 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     if(m_suppressFilter)
         return false;
 
-    if(shouldSkipBindings(watched))
+    const auto isSearchLibraryEditableCapture = [this, watched]() {
+        QWidget* widget = QApplication::focusWidget();
+        if(!widget)
+            widget = qobject_cast<QWidget*>(watched);
+
+        return widget && isEditableInputObject(widget) && isSearchLibraryDialogWidget(widget);
+    };
+
+    if(shouldSkipBindings(watched) && !isSearchLibraryEditableCapture())
         return false;
 
     const auto type = event->type();
