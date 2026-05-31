@@ -44,6 +44,8 @@ namespace Fooyin::VimMotions {
 
 namespace {
 
+constexpr int PlaylistItemDataRole = Qt::UserRole + 19;
+
 using ScopedConfigBindings = VimHandler::ScopedConfigBindings;
 using ModeConfigBindings   = VimHandler::ModeConfigBindings;
 
@@ -1145,6 +1147,57 @@ std::optional<std::pair<int, int>> VimHandler::selectedTrackRowRange(Fooyin::Pla
     return std::pair{row, end};
 }
 
+Fooyin::TrackList VimHandler::selectedTracksFromActiveViewModel() const
+{
+    Fooyin::TrackList tracks;
+
+    auto* view = m_viewLocator->activeView();
+    if(!view || !view->model() || !view->selectionModel())
+        return tracks;
+
+    QModelIndexList selectedRows = view->selectionModel()->selectedRows();
+    if(selectedRows.isEmpty() && view->currentIndex().isValid())
+        selectedRows.push_back(view->currentIndex().siblingAtColumn(0));
+
+    std::ranges::sort(selectedRows, [](const QModelIndex& lhs, const QModelIndex& rhs) {
+        if(lhs.row() != rhs.row())
+            return lhs.row() < rhs.row();
+        return lhs.column() < rhs.column();
+    });
+
+    tracks.reserve(selectedRows.size());
+    for(const QModelIndex& index : selectedRows) {
+        const QVariant data = index.data(PlaylistItemDataRole);
+        if(!data.canConvert<Fooyin::PlaylistTrack>())
+            continue;
+
+        const Fooyin::PlaylistTrack playlistTrack = data.value<Fooyin::PlaylistTrack>();
+        if(playlistTrack.track.isValid())
+            tracks.push_back(playlistTrack.track);
+    }
+
+    return tracks;
+}
+
+void VimHandler::refreshPlaylistEntries(const Fooyin::UId& playlistId, std::span<const Fooyin::UId> entryIds) const
+{
+    if(m_playlistViewRefresher == nullptr || !playlistId.isValid() || entryIds.empty()) {
+        return;
+    }
+
+    std::vector<Fooyin::UId> refreshedEntryIds;
+    refreshedEntryIds.reserve(entryIds.size());
+
+    for(const Fooyin::UId& entryId : entryIds) {
+        if(entryId.isValid() && std::ranges::find(refreshedEntryIds, entryId) == refreshedEntryIds.cend()) {
+            refreshedEntryIds.push_back(entryId);
+        }
+    }
+
+    if(!refreshedEntryIds.empty()) {
+        m_playlistViewRefresher->refreshEntries(playlistId, refreshedEntryIds);
+    }
+}
 void VimHandler::setLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
@@ -1438,6 +1491,60 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
     if(activeViewContext() != ViewContext::PlaylistView) {
         qCDebug(VIM_LOG) << (move ? "moveAfterCurrentPlaying" : "copyAfterCurrentPlaying")
                          << ": ignored outside playlist view";
+        return;
+    }
+
+    if(activeBindingScope() == BindingScope::SearchLibraryDialog) {
+        if(move) {
+            qCWarning(VIM_LOG) << "moveAfterCurrentPlaying: unsupported for Search Library detached results";
+            return;
+        }
+
+        auto* destinationPlaylist = m_playlistHandler->activePlaylist();
+        if(!destinationPlaylist) {
+            qCWarning(VIM_LOG) << "copyAfterCurrentPlaying: playing playlist missing";
+            return;
+        }
+
+        const int playingIndex = destinationPlaylist->currentTrackIndex();
+        if(playingIndex < 0) {
+            qCWarning(VIM_LOG) << "copyAfterCurrentPlaying: no current playing track";
+            return;
+        }
+
+        Fooyin::TrackList selectedTracks;
+        if(m_trackSelectionController) {
+            if(const auto* selection = m_trackSelectionController->selectedSelection(); selection) {
+                selectedTracks = selection->tracks;
+            }
+        }
+        if(selectedTracks.empty())
+            selectedTracks = selectedTracksFromActiveViewModel();
+        if(selectedTracks.empty()) {
+            qCWarning(VIM_LOG) << "copyAfterCurrentPlaying: no valid Search Library selected tracks";
+            return;
+        }
+
+        const Fooyin::PlaylistTrackList destinationBefore = destinationPlaylist->playlistTracks();
+        Fooyin::PlaylistTrackList destinationAfter        = destinationBefore;
+        auto insertedEntries = Fooyin::PlaylistTrack::fromTracks(selectedTracks, destinationPlaylist->id());
+        const int insertPos  = std::clamp(playingIndex + 1, 0, static_cast<int>(destinationAfter.size()));
+        destinationAfter.insert(destinationAfter.begin() + insertPos, insertedEntries.begin(), insertedEntries.end());
+
+        qCDebug(VIM_LOG) << "copyAfterCurrentPlaying: Search Library detached results"
+                         << "destinationPlaylist=" << destinationPlaylist->name()
+                         << "trackCount=" << selectedTracks.size() << "insertPos=" << insertPos;
+
+        std::vector<PlaylistSnapshot> beforeSnapshots;
+        std::vector<PlaylistSnapshot> afterSnapshots;
+        beforeSnapshots.push_back({destinationPlaylist->id(), destinationBefore});
+        afterSnapshots.push_back({destinationPlaylist->id(), destinationAfter});
+        applyPlaylistSnapshots(afterSnapshots);
+        pushUndoEntry(std::move(beforeSnapshots), std::move(afterSnapshots), -1, -1, 0,
+                      static_cast<int>(destinationBefore.size()), static_cast<int>(destinationAfter.size()));
+
+        if(m_mode == Mode::Visual)
+            enterNormal();
         return;
     }
 
