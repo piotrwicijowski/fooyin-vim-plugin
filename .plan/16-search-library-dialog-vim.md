@@ -128,13 +128,13 @@ Add vim-aware behavior for the `Search Library` modal dialog so that:
 - [x] Implement field/results focus transfer
 - [x] Fix `copyAfterCurrentPlaying` for detached library results
 - [x] Implement unsupported `moveAfterCurrentPlaying` behavior for detached library results
-- [ ] Add parser/integration tests
-- [ ] Add view-context/action-routing tests
-- [ ] Update README
-- [ ] Run formatting
-- [ ] Build plugin
-- [ ] Build tests
-- [ ] Run test suite
+- [x] Add parser/integration tests
+- [x] Add view-context/action-routing tests
+- [x] Update README
+- [x] Run formatting
+- [x] Build plugin
+- [x] Build tests
+- [x] Run test suite
 
 ## Risks
 
