@@ -20,6 +20,7 @@
 #include <QAbstractItemModel>
 #include <QApplication>
 #include <QDataStream>
+#include <QDialog>
 #include <QFocusEvent>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -279,6 +280,39 @@ public:
 
 private:
     QTreeView* m_view;
+};
+
+class SearchDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit SearchDialog(QWidget* parent = nullptr)
+        : QDialog(parent)
+        , m_searchBar(new QLineEdit(this))
+        , m_view(new Fooyin::PlaylistView(this))
+    {
+        setWindowTitle(QStringLiteral("Search Library"));
+
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(m_searchBar);
+        layout->addWidget(m_view);
+    }
+
+    [[nodiscard]] QLineEdit* searchBar() const
+    {
+        return m_searchBar;
+    }
+
+    [[nodiscard]] Fooyin::PlaylistView* view() const
+    {
+        return m_view;
+    }
+
+private:
+    QLineEdit* m_searchBar;
+    Fooyin::PlaylistView* m_view;
 };
 
 class FakeCurrentPlaylistController : public Fooyin::CurrentPlaylistController
@@ -724,6 +758,8 @@ private Q_SLOTS:
     void classifiesNullView();
     void classifiesPlaylistView();
     void classifiesPlaylistOrganiserTree();
+    void detectsSearchLibraryDialogView();
+    void detectsSearchLibraryDialogLineEdit();
     void classifiesOtherView();
     void organiserMoveDownTargetsNextVisibleSibling();
     void organiserMoveDownTargetsExpandedGroupContents();
@@ -781,6 +817,23 @@ void TestVimHandlerViewContext::classifiesPlaylistOrganiserTree()
     VimHandler handler;
     FakeOrganiserWidget organiser;
     QCOMPARE(handler.viewContext(organiser.view()), VimHandler::ViewContext::PlaylistOrganiser);
+}
+
+void TestVimHandlerViewContext::detectsSearchLibraryDialogView()
+{
+    VimHandler handler;
+    SearchDialog dialog;
+
+    QVERIFY(handler.isSearchLibraryDialogWidget(dialog.view()));
+    QCOMPARE(handler.viewContext(dialog.view()), VimHandler::ViewContext::PlaylistView);
+}
+
+void TestVimHandlerViewContext::detectsSearchLibraryDialogLineEdit()
+{
+    VimHandler handler;
+    SearchDialog dialog;
+
+    QVERIFY(handler.isSearchLibraryDialogWidget(dialog.searchBar()));
 }
 
 void TestVimHandlerViewContext::classifiesOtherView()

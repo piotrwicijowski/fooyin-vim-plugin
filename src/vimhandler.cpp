@@ -26,6 +26,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDialog>
 #include <QItemSelection>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -2686,9 +2687,33 @@ VimHandler::ViewContext VimHandler::viewContext(QAbstractItemView* view) const
     return ViewContext::Other;
 }
 
+bool VimHandler::isSearchLibraryDialogWidget(QWidget* widget) const
+{
+    return findSearchLibraryDialog(widget) != nullptr;
+}
+
 VimHandler::ViewContext VimHandler::activeViewContext() const
 {
     return viewContext(m_viewLocator->activeView());
+}
+
+QDialog* VimHandler::findSearchLibraryDialog(QWidget* widget) const
+{
+    QWidget* current = widget;
+    while(current) {
+        if(auto* dialog = qobject_cast<QDialog*>(current)) {
+            if(dialog->windowTitle().startsWith(QCoreApplication::translate("SearchDialog", "Search Library"))) {
+                if(auto* view = dialog->findChild<QAbstractItemView*>()) {
+                    const auto viewClassName = QLatin1String(view->metaObject()->className());
+                    if(viewClassName == QLatin1String("Fooyin::PlaylistView"))
+                        return dialog;
+                }
+            }
+        }
+        current = current->parentWidget();
+    }
+
+    return nullptr;
 }
 
 bool VimHandler::triggerCurrentContextAction(const Fooyin::Id& id) const
