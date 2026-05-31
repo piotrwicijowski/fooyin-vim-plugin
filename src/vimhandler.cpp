@@ -3344,6 +3344,28 @@ void VimHandler::refreshPendingTimeout()
 
 void VimHandler::moveSpatialFocus(Direction dir)
 {
+    if(auto* focusWidget = QApplication::focusWidget(); focusWidget && isSearchLibraryDialogWidget(focusWidget)) {
+        if(auto* dialog = findSearchLibraryDialog(focusWidget)) {
+            auto* searchBar   = dialog->findChild<QLineEdit*>();
+            auto* resultsView = dialog->findChild<QAbstractItemView*>();
+
+            if(searchBar && resultsView) {
+                if((dir == Direction::Down) && (focusWidget == searchBar || searchBar->isAncestorOf(focusWidget))) {
+                    resultsView->setFocus(Qt::OtherFocusReason);
+                    return;
+                }
+
+                if((dir == Direction::Up)
+                   && (focusWidget == resultsView || resultsView->isAncestorOf(focusWidget)
+                       || focusWidget == resultsView->viewport()
+                       || resultsView->viewport()->isAncestorOf(focusWidget))) {
+                    searchBar->setFocus(Qt::OtherFocusReason);
+                    return;
+                }
+            }
+        }
+    }
+
     auto* startView = m_viewLocator->activeView();
     if(!startView) {
         qCWarning(VIM_LOG) << "moveSpatialFocus: no active view";
