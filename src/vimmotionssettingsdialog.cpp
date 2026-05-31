@@ -68,6 +68,8 @@ QString scopeText(BindingScope scope)
             return QApplication::translate("VimMotionsSettingsDialog", "Playlist View");
         case BindingScope::PlaylistOrganiser:
             return QApplication::translate("VimMotionsSettingsDialog", "Playlist Organiser");
+        case BindingScope::SearchLibraryDialog:
+            return QApplication::translate("VimMotionsSettingsDialog", "Search Library Dialog");
     }
 
     return QApplication::translate("VimMotionsSettingsDialog", "Global");
@@ -233,6 +235,8 @@ public:
         m_scope->addItem(scopeText(BindingScope::Global), static_cast<int>(BindingScope::Global));
         m_scope->addItem(scopeText(BindingScope::PlaylistView), static_cast<int>(BindingScope::PlaylistView));
         m_scope->addItem(scopeText(BindingScope::PlaylistOrganiser), static_cast<int>(BindingScope::PlaylistOrganiser));
+        m_scope->addItem(scopeText(BindingScope::SearchLibraryDialog),
+                         static_cast<int>(BindingScope::SearchLibraryDialog));
 
         m_mode->setObjectName(u"bindingMode"_s);
         m_mode->addItem(modeText(BindingMode::Normal), static_cast<int>(BindingMode::Normal));

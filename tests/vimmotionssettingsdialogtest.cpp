@@ -27,6 +27,7 @@ class TestVimMotionsSettingsDialog : public QObject
 private Q_SLOTS:
     void testWidgetScaffold();
     void testBindingEditorShowsHelp();
+    void testBindingEditorIncludesSearchLibraryDialogScope();
 };
 
 void TestVimMotionsSettingsDialog::testWidgetScaffold()
@@ -150,6 +151,49 @@ void TestVimMotionsSettingsDialog::testBindingEditorShowsHelp()
             actionHelpButton->click();
 
             QVERIFY(buttons);
+            auto* cancelButton = buttons->button(QDialogButtonBox::Cancel);
+            QVERIFY(cancelButton);
+            cancelButton->click();
+        });
+
+        addButton->click();
+    });
+
+    dialog.show();
+    QTest::qWait(50);
+}
+
+void TestVimMotionsSettingsDialog::testBindingEditorIncludesSearchLibraryDialogScope()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("vim_settings_dialog_scope.ini"))};
+    VimMotionsSettings vimSettings{&settings};
+    Q_UNUSED(vimSettings);
+    VimMotionsBindingBackend backend{&settings};
+    VimMotionsSettingsDialog dialog{&settings, &backend};
+
+    QTimer::singleShot(0, [&dialog]() {
+        auto* addButton = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
+        QVERIFY(addButton);
+
+        QTimer::singleShot(0, []() {
+            auto* editor = qobject_cast<QDialog*>(qApp->activeModalWidget());
+            QVERIFY(editor);
+
+            auto* scopeBox = editor->findChild<QComboBox*>(QStringLiteral("bindingScope"));
+            auto* buttons  = editor->findChild<QDialogButtonBox*>(QStringLiteral("bindingEditButtons"));
+            QVERIFY(scopeBox);
+            QVERIFY(buttons);
+
+            QCOMPARE(scopeBox->count(), 4);
+            QCOMPARE(scopeBox->itemText(0), QStringLiteral("Global"));
+            QCOMPARE(scopeBox->itemText(1), QStringLiteral("Playlist View"));
+            QCOMPARE(scopeBox->itemText(2), QStringLiteral("Playlist Organiser"));
+            QCOMPARE(scopeBox->itemText(3), QStringLiteral("Search Library Dialog"));
+            QCOMPARE(scopeBox->itemData(3).toInt(), static_cast<int>(BindingScope::SearchLibraryDialog));
+
             auto* cancelButton = buttons->button(QDialogButtonBox::Cancel);
             QVERIFY(cancelButton);
             cancelButton->click();

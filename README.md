@@ -305,6 +305,8 @@ Bindings\Global\Insert\<Esc>=leaveInsertMode
 
 The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionName[:args]`.
 
+Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchLibraryDialog`.
+
 **Key combo syntax:**
 - Single character: `j`, `k`, `G`, `;`, `'`, `` ` ``
 - Special keys: `<Esc>`, `<CR>`, `<Tab>`, `<BS>`, `<Space>`, `<Home>`, `<End>`, `<PageUp>`, `<PageDown>`, `<Left>`, `<Right>`, `<Up>`, `<Down>`
@@ -527,7 +529,7 @@ When adding new default configurable bindings to the plugin code, the entries ab
 
 - Default bindings are scoped where actions are view-specific. For example, mark, yank, paste, and playlist undo/redo defaults are playlist-view-only, while organiser creation and sibling-move defaults are organiser-only.
 - Yank/delete/paste (`dd`, `yy`, `p`, `P`) are not all scoped identically: `yy`, `p`, and `P` are playlist-view-only, while `dd` remains active in both playlist view and playlist organiser because it deletes playlist rows in the former and routes to organiser remove in the latter.
-- Bindings are stored under explicit scopes: `Bindings\<Scope>\<Mode>\<Keys>`. `Global` applies everywhere unless a narrower scope, such as `PlaylistView` or `PlaylistOrganiser`, defines the same key sequence for that mode.
+- Bindings are stored under explicit scopes: `Bindings\<Scope>\<Mode>\<Keys>`. `Global` applies everywhere unless a narrower scope, such as `PlaylistView`, `PlaylistOrganiser`, or `SearchLibraryDialog`, defines the same key sequence for that mode.
 - `gg`, `dd`, and `yy` are two-keystroke sequences handled internally by the key parser; they do not appear as individual entries in Settings → Shortcuts.
 - Spatial focus (`Ctrl+j/k/h/l`) follows fooyin's `QSplitter` layout tree and remembers the last-focused pane per splitter, so returning to a split lands on the same widget you left.
 - From Visual mode, spatial focus exits to Normal on the newly focused pane but preserves the original selection in the old pane.

@@ -29,6 +29,8 @@ std::optional<BindingScope> scopeFromString(const QString& scope)
         return BindingScope::PlaylistView;
     if(scope == QStringLiteral("PlaylistOrganiser"))
         return BindingScope::PlaylistOrganiser;
+    if(scope == QStringLiteral("SearchLibraryDialog"))
+        return BindingScope::SearchLibraryDialog;
 
     return std::nullopt;
 }
@@ -54,6 +56,8 @@ QString scopeText(BindingScope scope)
             return QStringLiteral("PlaylistView");
         case BindingScope::PlaylistOrganiser:
             return QStringLiteral("PlaylistOrganiser");
+        case BindingScope::SearchLibraryDialog:
+            return QStringLiteral("SearchLibraryDialog");
     }
 
     return QStringLiteral("Global");
@@ -82,6 +86,8 @@ int scopeOrder(BindingScope scope)
             return 1;
         case BindingScope::PlaylistOrganiser:
             return 2;
+        case BindingScope::SearchLibraryDialog:
+            return 3;
     }
 
     return 0;

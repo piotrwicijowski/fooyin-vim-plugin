@@ -346,6 +346,27 @@ private Q_SLOTS:
         QVERIFY(!hasBinding(reloadedBindings, QChar(u'j'), QStringLiteral("moveCursor")));
     }
 
+    void testBindingBackendLoadsSearchLibraryDialogScope()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_search_library_scope.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+J"),
+                         QStringLiteral("spatialMoveFocus:down"));
+
+        VimMotionsBindingBackend backend{&settings};
+        const auto bindings
+            = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
+
+        QCOMPARE(bindings.size(), 1);
+        QCOMPARE(bindings.front().actionName, QStringLiteral("spatialMoveFocus"));
+        QCOMPARE(bindings.front().args, QStringLiteral("down"));
+        QCOMPARE(bindings.front().keys.size(), 1);
+        QCOMPARE(bindings.front().keys.front().modifiers, Qt::ControlModifier);
+        QCOMPARE(bindings.front().keys.front().ch, QChar(u'J'));
+    }
+
     void testSettingsDialogLoadsAppliesAndResets()
     {
         Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_dialog.ini"))};
@@ -366,6 +387,15 @@ private Q_SLOTS:
         QVERIFY(treeModel);
         QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("z"),
                            QStringLiteral("focusNowPlaying")));
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+J"),
+                         QStringLiteral("spatialMoveFocus:down"));
+
+        backend.reloadBindings();
+        const auto searchLibraryBindings
+            = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
+        QCOMPARE(searchLibraryBindings.size(), 1);
+        QCOMPARE(searchLibraryBindings.front().actionName, QStringLiteral("spatialMoveFocus"));
+        QCOMPARE(searchLibraryBindings.front().args, QStringLiteral("down"));
         int jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
         QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Default"));
@@ -603,11 +633,16 @@ private Q_SLOTS:
         tree->doubleClicked(tree->currentIndex());
         QVERIFY(hasTreeRow(treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("qq"),
                            QStringLiteral("moveCursor:+1")));
+        acceptBindingEditor(BindingScope::SearchLibraryDialog, BindingMode::Normal, QStringLiteral("Ctrl+K"),
+                            QStringLiteral("spatialMoveFocus"), QStringLiteral("up"));
+        addButton->click();
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Search Library Dialog"), QStringLiteral("Normal"),
+                           QStringLiteral("Ctrl+K"), QStringLiteral("spatialMoveFocus:up")));
 
         tree->sortByColumn(0, Qt::AscendingOrder);
         QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Global"));
         tree->sortByColumn(0, Qt::DescendingOrder);
-        QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Playlist Organiser"));
+        QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Search Library Dialog"));
 
         selectTreeRow(tree, treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("qq"));
         removeButton->click();
@@ -637,6 +672,11 @@ private Q_SLOTS:
         QVERIFY(hasBinding(
             scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::PlaylistOrganiser),
             QChar(u'q'), QStringLiteral("focusNowPlaying")));
+        const auto appliedSearchLibraryBindings
+            = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
+        QCOMPARE(appliedSearchLibraryBindings.size(), 1);
+        QCOMPARE(appliedSearchLibraryBindings.front().actionName, QStringLiteral("spatialMoveFocus"));
+        QCOMPARE(appliedSearchLibraryBindings.front().args, QStringLiteral("up"));
         QVERIFY(!hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                             QChar(u'j'), QStringLiteral("moveCursor")));
 
@@ -644,6 +684,8 @@ private Q_SLOTS:
                                QSettings::IniFormat);
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/PlaylistOrganiser/Normal/q")).toString(),
                  QStringLiteral("focusNowPlaying"));
+        QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+K")).toString(),
+                 QStringLiteral("spatialMoveFocus:up"));
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Global/Normal/j")).toString(), QString{});
     }
 };
