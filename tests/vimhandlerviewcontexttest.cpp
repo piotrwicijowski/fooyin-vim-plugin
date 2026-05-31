@@ -733,6 +733,8 @@ private Q_SLOTS:
     void searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal();
     void searchLibrarySearchFieldDispatchesScopedBindingAndFallsBackToTyping();
     void searchLibrarySearchFieldFallsBackToGlobalBinding();
+    void searchLibraryCtrlJMovesFocusToResults();
+    void searchLibraryCtrlKMovesFocusToSearchField();
     void pasteTargetsObservedEmptySelectedPlaylist();
     void switchesToNextPlaylist();
     void switchesToPreviousPlaylist();
@@ -1350,6 +1352,67 @@ void TestVimHandlerViewContext::searchLibrarySearchFieldFallsBackToGlobalBinding
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
     QCOMPARE(dialog.searchBar()->text(), QString());
 
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibraryCtrlJMovesFocusToResults()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_focus_down.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+J"),
+                     QStringLiteral("spatialMoveFocus:down"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+
+    qApp->installEventFilter(&handler);
+    QTest::keyClick(dialog.searchBar(), Qt::Key_J, Qt::ControlModifier);
+    pumpEvents();
+
+    QVERIFY(dialog.view()->hasFocus());
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibraryCtrlKMovesFocusToSearchField()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_focus_up.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+K"),
+                     QStringLiteral("spatialMoveFocus:up"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+    focusTree(dialog.view());
+
+    qApp->installEventFilter(&handler);
+    QTest::keyClick(dialog.view(), Qt::Key_K, Qt::ControlModifier);
+    pumpEvents();
+
+    QVERIFY(dialog.searchBar()->hasFocus());
     qApp->removeEventFilter(&handler);
 }
 
