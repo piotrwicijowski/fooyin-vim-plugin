@@ -401,6 +401,8 @@ VimHandler::VimHandler(QObject* parent)
             const QPointer<QLineEdit> previousAutoInsertEdit = m_autoInsertSearchLibraryEdit;
             auto* previousView                               = enclosingView(old);
             auto* nextView                                   = enclosingView(now);
+            const bool oldInSearchLibraryDialog              = isSearchLibraryDialogWidget(old);
+            const bool nowInSearchLibraryDialog              = isSearchLibraryDialogWidget(now);
 
             qCDebug(VIM_LOG) << "focusChanged: old="
                              << (old ? QString::fromLatin1(old->metaObject()->className()) : QStringLiteral("<null>"))
@@ -425,12 +427,26 @@ VimHandler::VimHandler(QObject* parent)
 
             if(auto* nextLineEdit = findSearchLibraryLineEdit(now)) {
                 m_autoInsertSearchLibraryEdit = nextLineEdit;
-                if(m_mode == Mode::Normal || m_mode == Mode::Visual)
-                    m_autoInsertRestoreMode = m_mode;
+                if(m_mode == Mode::Normal || m_mode == Mode::Visual) {
+                    // Treat Search Library dialog visual mode as dialog-local.
+                    // Entering its search field from the main playlist should not
+                    // import playlist visual mode into detached results.
+                    m_autoInsertRestoreMode = oldInSearchLibraryDialog ? m_mode : Mode::Normal;
+                }
 
                 if(m_mode != Mode::Insert)
                     enterInsert();
                 return;
+            }
+
+            if(oldInSearchLibraryDialog && !nowInSearchLibraryDialog && m_mode == Mode::Visual) {
+                qCInfo(VIM_LOG) << "Mode → Normal (leaving Search Library dialog visual mode)";
+                m_mode = Mode::Normal;
+                clearPendingInputState();
+                m_count        = 0;
+                m_visualAnchor = -1;
+                m_visualCursor = -1;
+                emit modeChanged(m_mode);
             }
 
             if(previousAutoInsertEdit && findSearchLibraryLineEdit(old) == previousAutoInsertEdit)
