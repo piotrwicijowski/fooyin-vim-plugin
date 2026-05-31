@@ -778,6 +778,8 @@ private Q_SLOTS:
     void searchBarTypingKeepsFocus();
     void scopedBindingsPreferActiveViewOverGlobalFallback();
     void searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal();
+    void searchLibrarySearchFieldDispatchesScopedBindingAndFallsBackToTyping();
+    void searchLibrarySearchFieldFallsBackToGlobalBinding();
     void pasteTargetsObservedEmptySelectedPlaylist();
     void switchesToNextPlaylist();
     void switchesToPreviousPlaylist();
@@ -1332,6 +1334,71 @@ void TestVimHandlerViewContext::searchLibraryScopedBindingsOverridePlaylistViewA
     QVERIFY(dispatchKey(handler, dialog.view(), u'k'));
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
     QCOMPARE(dialog.view()->currentIndex().row(), 0);
+}
+
+void TestVimHandlerViewContext::searchLibrarySearchFieldDispatchesScopedBindingAndFallsBackToTyping()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_field_scope.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/j"), QStringLiteral("enterVisual"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    dialog.show();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+
+    qApp->installEventFilter(&handler);
+
+    QTest::keyClick(dialog.searchBar(), Qt::Key_J);
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(dialog.searchBar()->text(), QString());
+
+    handler.enterNormal();
+    dialog.searchBar()->clear();
+    QTest::keyClick(dialog.searchBar(), Qt::Key_X);
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(dialog.searchBar()->text(), QStringLiteral("x"));
+
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibrarySearchFieldFallsBackToGlobalBinding()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_field_global.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/k"), QStringLiteral("enterVisual"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    dialog.show();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+
+    qApp->installEventFilter(&handler);
+
+    QTest::keyClick(dialog.searchBar(), Qt::Key_K);
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(dialog.searchBar()->text(), QString());
+
+    qApp->removeEventFilter(&handler);
 }
 
 void TestVimHandlerViewContext::pasteTargetsObservedEmptySelectedPlaylist()

@@ -124,7 +124,7 @@ Add vim-aware behavior for the `Search Library` modal dialog so that:
 - [x] Add `SearchLibraryDialog` to binding scope model
 - [x] Detect Search Library dialog in `VimHandler`
 - [x] Route active binding scope to `SearchLibraryDialog`
-- [ ] Allow dialog-scoped bindings from the search field
+- [x] Allow dialog-scoped bindings from the search field
 - [ ] Implement field/results focus transfer
 - [ ] Fix `copyAfterCurrentPlaying` for detached library results
 - [ ] Implement unsupported `moveAfterCurrentPlaying` behavior for detached library results
