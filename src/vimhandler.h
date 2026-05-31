@@ -20,6 +20,7 @@
 #include <vector>
 
 class QAbstractItemView;
+class QDialog;
 class QKeyEvent;
 class QTreeView;
 class QWidget;
@@ -84,6 +85,7 @@ public:
     // Testing support
     void rebuildBindings();
     [[nodiscard]] ViewContext viewContext(QAbstractItemView* view) const;
+    [[nodiscard]] bool isSearchLibraryDialogWidget(QWidget* widget) const;
     [[nodiscard]] const ModeConfigBindings& configBindings() const
     {
         return m_configBindings;
@@ -224,6 +226,7 @@ private:
     [[nodiscard]] std::vector<VimClipboard::MarkTransfer> takeCutMarks(Fooyin::Playlist* playlist, int startRow,
                                                                        int endRow);
     [[nodiscard]] ViewContext activeViewContext() const;
+    [[nodiscard]] QDialog* findSearchLibraryDialog(QWidget* widget) const;
     [[nodiscard]] BindingScope bindingScopeForView(QAbstractItemView* view) const;
     [[nodiscard]] BindingScope activeBindingScope() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
