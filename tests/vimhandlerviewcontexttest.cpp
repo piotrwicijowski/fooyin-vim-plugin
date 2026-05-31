@@ -730,6 +730,7 @@ private Q_SLOTS:
     void organiserInlineEditorSuspendsVimCapture();
     void searchBarTypingKeepsFocus();
     void scopedBindingsPreferActiveViewOverGlobalFallback();
+    void searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal();
     void pasteTargetsObservedEmptySelectedPlaylist();
     void switchesToNextPlaylist();
     void switchesToPreviousPlaylist();
@@ -1247,6 +1248,42 @@ void TestVimHandlerViewContext::scopedBindingsPreferActiveViewOverGlobalFallback
 
     QVERIFY(dispatchKey(handler, otherWidget.view(), u'j'));
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerViewContext::searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_scope.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/j"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistView/Normal/j"), QStringLiteral("moveCursor:+1"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/j"),
+                     QStringLiteral("clearPending"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/k"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistView/Normal/k"), QStringLiteral("moveCursor:-1"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    model.appendRow(new QStandardItem(QStringLiteral("Two")));
+    dialog.view()->setModel(&model);
+    dialog.view()->setCurrentIndex(model.index(0, 0));
+    focusTree(dialog.view());
+
+    QVERIFY(dispatchKey(handler, dialog.view(), u'j'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(dialog.view()->currentIndex().row(), 0);
+
+    QVERIFY(dispatchKey(handler, dialog.view(), u'k'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(dialog.view()->currentIndex().row(), 0);
 }
 
 void TestVimHandlerViewContext::pasteTargetsObservedEmptySelectedPlaylist()
