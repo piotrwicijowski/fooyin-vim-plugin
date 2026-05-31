@@ -1010,6 +1010,25 @@ void VimHandler::focusNowPlaying()
         return;
     }
 
+    if(m_playlistHandler) {
+        if(auto* playingPlaylist = m_playlistHandler->activePlaylist()) {
+            const int playingRow = playingPlaylist->currentTrackIndex();
+            if(playingRow >= 0) {
+                PlaylistCursorState state;
+                state.row = playingRow;
+
+                if(auto* view = playlistViewForState()) {
+                    const QModelIndex currentIndex = view->currentIndex();
+                    state.col                      = currentIndex.isValid() ? currentIndex.column() : 0;
+                }
+
+                m_playlistCursorStates.insert(playingPlaylist->id(), state);
+                qCDebug(VIM_LOG) << "focusNowPlaying: primed cursor state for" << playingPlaylist->name()
+                                 << "row=" << playingRow;
+            }
+        }
+    }
+
     cmd->action()->trigger();
 }
 

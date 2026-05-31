@@ -15,3 +15,4 @@
 - Search and delete changes offsets/indexes - fixed
 - yc not working when the yy is not unmapped - fixed
 - text input in search bar - fixed
+- focusNowPlaying does not work due to playlist save position logic - fixed
