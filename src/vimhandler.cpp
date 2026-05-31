@@ -3891,7 +3891,14 @@ BindingScope VimHandler::bindingScopeForView(QAbstractItemView* view) const
 
 BindingScope VimHandler::activeBindingScope() const
 {
-    return bindingScopeForView(m_viewLocator->activeView());
+    if(isSearchLibraryDialogWidget(QApplication::focusWidget()))
+        return BindingScope::SearchLibraryDialog;
+
+    auto* activeView = m_viewLocator->activeView();
+    if(isSearchLibraryDialogWidget(activeView))
+        return BindingScope::SearchLibraryDialog;
+
+    return bindingScopeForView(activeView);
 }
 
 bool VimHandler::pendingConfigPrefixMatches(const BindingEntry& entry) const
