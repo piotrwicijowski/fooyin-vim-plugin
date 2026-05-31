@@ -77,6 +77,8 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
 
         // -- Insert mode --
         {"VimMotions/Bindings/Global/Insert/<Esc>", "leaveInsertMode"},
+        {"VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J", "spatialMoveFocus:down"},
+        {"VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+K", "spatialMoveFocus:up"},
     };
     return bindings;
 }

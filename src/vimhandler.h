@@ -22,6 +22,7 @@
 class QAbstractItemView;
 class QDialog;
 class QKeyEvent;
+class QLineEdit;
 class QTreeView;
 class QWidget;
 
@@ -86,6 +87,7 @@ public:
     void rebuildBindings();
     [[nodiscard]] ViewContext viewContext(QAbstractItemView* view) const;
     [[nodiscard]] bool isSearchLibraryDialogWidget(QWidget* widget) const;
+    [[nodiscard]] QLineEdit* findSearchLibraryLineEdit(QWidget* widget) const;
     [[nodiscard]] const ModeConfigBindings& configBindings() const
     {
         return m_configBindings;
@@ -250,6 +252,7 @@ private:
     void scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId, const Fooyin::UId& entryId,
                               int fallbackRow, int col, int expectedRowCount);
     void changePlaylistByOffset(int delta);
+    void restoreAutoInsertedMode();
 
     Mode m_mode{Mode::Normal};
     int m_count{0};
@@ -300,6 +303,8 @@ private:
     QPointer<VimSearchBar> m_filterBar;
     QPointer<Fooyin::FyWidget> m_filterTarget;
     QString m_lastFilter;
+    QPointer<QLineEdit> m_autoInsertSearchLibraryEdit;
+    std::optional<Mode> m_autoInsertRestoreMode;
 
     QPointer<VimSearchBar> m_searchBar;
     QPointer<QAbstractItemView> m_searchView;
