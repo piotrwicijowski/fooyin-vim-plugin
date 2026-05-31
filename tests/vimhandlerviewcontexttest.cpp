@@ -784,6 +784,8 @@ private Q_SLOTS:
     void searchLibrarySearchFieldFallsBackToGlobalBinding();
     void searchLibraryCtrlJMovesFocusToResults();
     void searchLibraryCtrlKMovesFocusToSearchField();
+    void searchLibraryLineEditAutoEntersInsertAndRestoresNormal();
+    void searchLibraryLineEditRestoresVisualModeOnBlur();
     void copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks();
     void moveAfterCurrentPlayingIsNoOpForSearchLibrarySelection();
     void pasteTargetsObservedEmptySelectedPlaylist();
@@ -1351,28 +1353,36 @@ void TestVimHandlerViewContext::searchLibrarySearchFieldDispatchesScopedBindingA
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
-    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/j"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J"),
+                     QStringLiteral("spatialMoveFocus:down"));
 
     VimHandler handler;
     handler.setSettingsManager(&settings);
 
     SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
     dialog.show();
     dialog.searchBar()->setFocus();
     pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
 
     qApp->installEventFilter(&handler);
 
-    QTest::keyClick(dialog.searchBar(), Qt::Key_J);
+    QTest::keyClick(dialog.searchBar(), Qt::Key_J, Qt::ControlModifier);
     pumpEvents();
-    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QVERIFY(dialog.view()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     QCOMPARE(dialog.searchBar()->text(), QString());
 
-    handler.enterNormal();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
     dialog.searchBar()->clear();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
     QTest::keyClick(dialog.searchBar(), Qt::Key_X);
     pumpEvents();
-    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
     QCOMPARE(dialog.searchBar()->text(), QStringLiteral("x"));
 
     qApp->removeEventFilter(&handler);
@@ -1387,7 +1397,7 @@ void TestVimHandlerViewContext::searchLibrarySearchFieldFallsBackToGlobalBinding
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
-    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/k"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Insert/<Esc>"), QStringLiteral("leaveInsertMode"));
 
     VimHandler handler;
     handler.setSettingsManager(&settings);
@@ -1396,12 +1406,13 @@ void TestVimHandlerViewContext::searchLibrarySearchFieldFallsBackToGlobalBinding
     dialog.show();
     dialog.searchBar()->setFocus();
     pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
 
     qApp->installEventFilter(&handler);
 
-    QTest::keyClick(dialog.searchBar(), Qt::Key_K);
+    QTest::keyClick(dialog.searchBar(), Qt::Key_Escape);
     pumpEvents();
-    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     QCOMPARE(dialog.searchBar()->text(), QString());
 
     qApp->removeEventFilter(&handler);
@@ -1416,7 +1427,7 @@ void TestVimHandlerViewContext::searchLibraryCtrlJMovesFocusToResults()
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
-    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+J"),
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J"),
                      QStringLiteral("spatialMoveFocus:down"));
 
     VimHandler handler;
@@ -1435,6 +1446,7 @@ void TestVimHandlerViewContext::searchLibraryCtrlJMovesFocusToResults()
     pumpEvents();
 
     QVERIFY(dialog.view()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     qApp->removeEventFilter(&handler);
 }
 
@@ -1465,7 +1477,54 @@ void TestVimHandlerViewContext::searchLibraryCtrlKMovesFocusToSearchField()
     pumpEvents();
 
     QVERIFY(dialog.searchBar()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
     qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibraryLineEditAutoEntersInsertAndRestoresNormal()
+{
+    VimHandler handler;
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+
+    focusTree(dialog.view());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    dialog.view()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerViewContext::searchLibraryLineEditRestoresVisualModeOnBlur()
+{
+    VimHandler handler;
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    model.appendRow(new QStandardItem(QStringLiteral("Two")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+
+    focusTree(dialog.view());
+    handler.enterVisual();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    dialog.view()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
 }
 
 void TestVimHandlerViewContext::copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks()

@@ -315,7 +315,7 @@ The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionNam
 
 Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchLibraryDialog`.
 
-`SearchLibraryDialog` applies only inside fooyin's `Search Library` dialog. It lets dialog-specific bindings override ordinary playlist-view bindings without leaking into normal playlist tabs.
+`SearchLibraryDialog` applies only inside fooyin's `Search Library` dialog. It lets dialog-specific bindings override ordinary playlist-view bindings without leaking into normal playlist tabs. When the Search Library line edit gains focus, the plugin temporarily switches to Insert mode and restores the previous Normal or Visual mode when focus leaves that line edit.
 
 **Key combo syntax:**
 - Single character: `j`, `k`, `G`, `;`, `'`, `` ` ``
@@ -531,6 +531,10 @@ Bindings\PlaylistView\Visual\Alt+K=moveVisualSelection:-1
 
 ; -- Global / Insert mode --
 Bindings\Global\Insert\<Esc>=leaveInsertMode
+
+; -- Search Library Dialog / Insert mode --
+Bindings\SearchLibraryDialog\Insert\Ctrl+J=spatialMoveFocus:down
+Bindings\SearchLibraryDialog\Insert\Ctrl+K=spatialMoveFocus:up
 ```
 
 When adding new default configurable bindings to the plugin code, the entries above must also be added to this section to keep documentation in sync.
@@ -540,7 +544,7 @@ When adding new default configurable bindings to the plugin code, the entries ab
 - Default bindings are scoped where actions are view-specific. For example, mark, yank, paste, and playlist undo/redo defaults are playlist-view-only, while organiser creation and sibling-move defaults are organiser-only.
 - Yank/delete/paste (`dd`, `yy`, `p`, `P`) are not all scoped identically: `yy`, `p`, and `P` are playlist-view-only, while `dd` remains active in both playlist view and playlist organiser because it deletes playlist rows in the former and routes to organiser remove in the latter.
 - Bindings are stored under explicit scopes: `Bindings\<Scope>\<Mode>\<Keys>`. `Global` applies everywhere unless a narrower scope, such as `PlaylistView`, `PlaylistOrganiser`, or `SearchLibraryDialog`, defines the same key sequence for that mode.
-- In `Search Library`, `Ctrl+j` can move focus from the search field to results and `Ctrl+k` can move focus back to the search field when those bindings resolve to `spatialMoveFocus:down` / `spatialMoveFocus:up`.
+- In `Search Library`, the search field temporarily puts vim into Insert mode while it has focus. `Ctrl+j` can move focus from the search field to results and `Ctrl+k` can move focus back to the search field when those bindings resolve to `spatialMoveFocus:down` / `spatialMoveFocus:up`.
 - In `Search Library`, `copyAfterCurrentPlaying` copies the detached result selection into the currently playing playlist. `moveAfterCurrentPlaying` is unsupported there and intentionally does nothing except log a warning.
 - `gg`, `dd`, and `yy` are two-keystroke sequences handled internally by the key parser; they do not appear as individual entries in Settings → Shortcuts.
 - Spatial focus (`Ctrl+j/k/h/l`) follows fooyin's `QSplitter` layout tree and remembers the last-focused pane per splitter, so returning to a split lands on the same widget you left.

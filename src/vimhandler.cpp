@@ -398,10 +398,25 @@ VimHandler::VimHandler(QObject* parent)
     });
 
     if(qApp) {
-        QObject::connect(qApp, &QApplication::focusChanged, this, [this](QWidget* /*old*/, QWidget* now) {
+        QObject::connect(qApp, &QApplication::focusChanged, this, [this](QWidget* old, QWidget* now) {
+            const QPointer<QLineEdit> previousAutoInsertEdit = m_autoInsertSearchLibraryEdit;
+
             auto* view = enclosingView(now);
             updateLastPlaylistView(view);
             tryRestorePendingPlaylistState(view);
+
+            if(auto* nextLineEdit = findSearchLibraryLineEdit(now)) {
+                m_autoInsertSearchLibraryEdit = nextLineEdit;
+                if(m_mode == Mode::Normal || m_mode == Mode::Visual)
+                    m_autoInsertRestoreMode = m_mode;
+
+                if(m_mode != Mode::Insert)
+                    enterInsert();
+                return;
+            }
+
+            if(previousAutoInsertEdit && findSearchLibraryLineEdit(old) == previousAutoInsertEdit)
+                restoreAutoInsertedMode();
         });
     }
 
@@ -450,7 +465,7 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
         if(!widget)
             widget = qobject_cast<QWidget*>(watched);
 
-        return widget && isEditableInputObject(widget) && isSearchLibraryDialogWidget(widget);
+        return widget && m_mode == Mode::Insert && findSearchLibraryLineEdit(widget) != nullptr;
     };
 
     if(shouldSkipBindings(watched) && !isSearchLibraryEditableCapture())
@@ -543,6 +558,9 @@ bool VimHandler::hasPendingInput() const
 void VimHandler::enterNormal()
 {
     qCInfo(VIM_LOG) << "Mode → Normal (from" << static_cast<int>(m_mode) << ")";
+    if(m_autoInsertSearchLibraryEdit)
+        m_autoInsertRestoreMode = Mode::Normal;
+
     if(m_mode == Mode::Visual) {
         // Collapse the visual selection to the cursor row so the paste target
         // remains highlighted after leaving Visual mode.
@@ -571,6 +589,31 @@ void VimHandler::enterInsert()
     clearPendingInputState();
     m_count = 0;
     emit modeChanged(m_mode);
+}
+
+void VimHandler::restoreAutoInsertedMode()
+{
+    const auto restoreMode        = m_autoInsertRestoreMode;
+    m_autoInsertSearchLibraryEdit = nullptr;
+    m_autoInsertRestoreMode.reset();
+
+    if(!restoreMode.has_value())
+        return;
+
+    if(*restoreMode == Mode::Normal) {
+        enterNormal();
+        return;
+    }
+
+    if(*restoreMode == Mode::Visual) {
+        qCInfo(VIM_LOG) << "Mode → Visual (restored from Search Library line edit)";
+        m_mode = Mode::Visual;
+        clearPendingInputState();
+        m_count = 0;
+        emit modeChanged(m_mode);
+        if(m_visualAnchor >= 0 && m_visualCursor >= 0)
+            updateVisualSelection();
+    }
 }
 
 void VimHandler::enterVisual()
@@ -2786,6 +2829,20 @@ VimHandler::ViewContext VimHandler::viewContext(QAbstractItemView* view) const
 bool VimHandler::isSearchLibraryDialogWidget(QWidget* widget) const
 {
     return findSearchLibraryDialog(widget) != nullptr;
+}
+
+QLineEdit* VimHandler::findSearchLibraryLineEdit(QWidget* widget) const
+{
+    QWidget* current = widget;
+    while(current) {
+        if(auto* lineEdit = qobject_cast<QLineEdit*>(current)) {
+            if(findSearchLibraryDialog(lineEdit))
+                return lineEdit;
+        }
+        current = current->parentWidget();
+    }
+
+    return nullptr;
 }
 
 VimHandler::ViewContext VimHandler::activeViewContext() const
