@@ -240,6 +240,7 @@ private:
     [[nodiscard]] BindingScope bindingScopeForView(QAbstractItemView* view) const;
     [[nodiscard]] BindingScope activeBindingScope() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
+    [[nodiscard]] Fooyin::Playlist* playlistForPersistentState() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
     [[nodiscard]] std::optional<std::pair<int, int>> selectedTrackRowRange(Fooyin::Playlist* playlist);
@@ -320,6 +321,7 @@ private:
     QString m_lastFilter;
     QPointer<QLineEdit> m_autoInsertSearchLibraryEdit;
     std::optional<Mode> m_autoInsertRestoreMode;
+    std::optional<Mode> m_searchLibraryDialogExitRestoreMode;
 
     QPointer<VimSearchBar> m_searchBar;
     QPointer<QAbstractItemView> m_searchView;
