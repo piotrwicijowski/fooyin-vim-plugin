@@ -404,15 +404,6 @@ VimHandler::VimHandler(QObject* parent)
             const bool oldInSearchLibraryDialog              = isSearchLibraryDialogWidget(old);
             const bool nowInSearchLibraryDialog              = isSearchLibraryDialogWidget(now);
 
-            qCDebug(VIM_LOG) << "focusChanged: old="
-                             << (old ? QString::fromLatin1(old->metaObject()->className()) : QStringLiteral("<null>"))
-                             << "now="
-                             << (now ? QString::fromLatin1(now->metaObject()->className()) : QStringLiteral("<null>"))
-                             << "previousViewContext=" << static_cast<int>(viewContext(previousView))
-                             << "nextViewContext=" << static_cast<int>(viewContext(nextView))
-                             << "mode=" << static_cast<int>(m_mode) << "pendingRestore=" << m_pendingPlaylistRestoreId
-                             << "preserveVisualNextSave=" << m_preserveVisualStateOnNextPlaylistSaveId;
-
             if(isPersistentPlaylistView(previousView) && previousView != nextView) {
                 if(m_mode == Mode::Visual && m_observedSelectedPlaylistId.isValid())
                     m_preserveVisualStateOnNextPlaylistSaveId = m_observedSelectedPlaylistId;
@@ -428,6 +419,9 @@ VimHandler::VimHandler(QObject* parent)
             if(auto* nextLineEdit = findSearchLibraryLineEdit(now)) {
                 m_autoInsertSearchLibraryEdit = nextLineEdit;
                 if(m_mode == Mode::Normal || m_mode == Mode::Visual) {
+                    if(!oldInSearchLibraryDialog)
+                        m_searchLibraryDialogExitRestoreMode = m_mode;
+
                     // Treat Search Library dialog visual mode as dialog-local.
                     // Entering its search field from the main playlist should not
                     // import playlist visual mode into detached results.
@@ -439,18 +433,104 @@ VimHandler::VimHandler(QObject* parent)
                 return;
             }
 
-            if(oldInSearchLibraryDialog && !nowInSearchLibraryDialog && m_mode == Mode::Visual) {
-                qCInfo(VIM_LOG) << "Mode → Normal (leaving Search Library dialog visual mode)";
-                m_mode = Mode::Normal;
-                clearPendingInputState();
-                m_count        = 0;
-                m_visualAnchor = -1;
-                m_visualCursor = -1;
-                emit modeChanged(m_mode);
+            if(oldInSearchLibraryDialog && !nowInSearchLibraryDialog) {
+                const auto exitRestoreMode    = m_searchLibraryDialogExitRestoreMode;
+                m_autoInsertSearchLibraryEdit = nullptr;
+                m_autoInsertRestoreMode.reset();
+                m_searchLibraryDialogExitRestoreMode.reset();
+
+                qCDebug(VIM_LOG) << "searchLibraryDialogExit: mode="
+                                 << (exitRestoreMode.has_value() ? static_cast<int>(*exitRestoreMode) : -1)
+                                 << "observedPlaylist=" << m_observedSelectedPlaylistId
+                                 << "lastPlaylistView=" << static_cast<void*>(m_lastPlaylistView.data())
+                                 << "focusWidget="
+                                 << (QApplication::focusWidget()
+                                         ? QString::fromLatin1(QApplication::focusWidget()->metaObject()->className())
+                                         : QStringLiteral("<null>"));
+
+                if(exitRestoreMode.has_value()) {
+                    if(*exitRestoreMode == Mode::Visual) {
+                        bool restored = false;
+                        if(m_playlistHandler) {
+                            if(auto* playlist = playlistForPersistentState()) {
+                                PlaylistCursorState state;
+                                bool haveState = false;
+
+                                if(const auto stateIt = m_playlistCursorStates.constFind(playlist->id());
+                                   stateIt != m_playlistCursorStates.cend()) {
+                                    state     = stateIt.value();
+                                    haveState = true;
+                                    qCDebug(VIM_LOG)
+                                        << "searchLibraryDialogExit: using saved state row=" << state.row
+                                        << "col=" << state.col << "mode=" << static_cast<int>(state.mode)
+                                        << "anchor=" << state.visualAnchor << "cursor=" << state.visualCursor;
+                                }
+                                else if(m_visualAnchor >= 0 && m_visualCursor >= 0) {
+                                    state.mode         = Mode::Visual;
+                                    state.visualAnchor = m_visualAnchor;
+                                    state.visualCursor = m_visualCursor;
+
+                                    if(auto* playlistView = playlistViewForState()) {
+                                        const QModelIndex currentIndex = playlistView->currentIndex();
+                                        state.row = currentIndex.isValid() ? currentIndex.row() : m_visualCursor;
+                                        state.col = currentIndex.isValid() ? currentIndex.column() : 0;
+                                    }
+                                    else {
+                                        state.row = m_visualCursor;
+                                    }
+
+                                    m_playlistCursorStates.insert(playlist->id(), state);
+                                    haveState = true;
+                                    qCDebug(VIM_LOG)
+                                        << "searchLibraryDialogExit: synthesised live visual state row=" << state.row
+                                        << "col=" << state.col << "anchor=" << state.visualAnchor
+                                        << "cursor=" << state.visualCursor;
+                                }
+                                else {
+                                    qCDebug(VIM_LOG) << "searchLibraryDialogExit: no saved or live visual state";
+                                }
+
+                                if(haveState) {
+                                    if(auto* playlistView = playlistViewForState()) {
+                                        qCDebug(VIM_LOG)
+                                            << "searchLibraryDialogExit: restoring immediately via playlist view"
+                                            << static_cast<void*>(playlistView);
+                                        applyPlaylistCursorState(playlistView, playlist, state);
+                                        restored = true;
+                                    }
+                                    else {
+                                        qCDebug(VIM_LOG)
+                                            << "searchLibraryDialogExit: deferring restore, no playlist view";
+                                        m_pendingPlaylistRestoreId = playlist->id();
+                                    }
+                                }
+                            }
+                        }
+
+                        if(!restored) {
+                            tryRestorePendingPlaylistState(nextView);
+
+                            if(m_pendingPlaylistRestoreId.isValid()) {
+                                qCDebug(VIM_LOG)
+                                    << "searchLibraryDialogExit: pending restore still active, entering Normal";
+                                enterNormal();
+                            }
+                        }
+                    }
+                    else if(*exitRestoreMode == Mode::Normal) {
+                        enterNormal();
+                    }
+                    else if(*exitRestoreMode == Mode::Insert) {
+                        enterInsert();
+                    }
+                }
+                return;
             }
 
-            if(previousAutoInsertEdit && findSearchLibraryLineEdit(old) == previousAutoInsertEdit)
+            if(previousAutoInsertEdit && findSearchLibraryLineEdit(old) == previousAutoInsertEdit
+               && nowInSearchLibraryDialog) {
                 restoreAutoInsertedMode();
+            }
         });
     }
 
@@ -487,14 +567,6 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     updateLastPlaylistView(focusView);
     refreshPlaylistStateTracking(focusView);
     tryRestorePendingPlaylistState(focusView);
-
-    if(event->type() == QEvent::FocusIn) {
-        qCDebug(VIM_LOG) << "eventFilter: FocusIn watched=" << watched->metaObject()->className()
-                         << "focusViewContext=" << static_cast<int>(viewContext(focusView))
-                         << "currentIndexValid=" << (focusView ? focusView->currentIndex().isValid() : false)
-                         << "pendingRestore=" << m_pendingPlaylistRestoreId
-                         << "observedPlaylist=" << m_observedSelectedPlaylistId << "mode=" << static_cast<int>(m_mode);
-    }
 
     if(event->type() == QEvent::FocusIn && isPersistentPlaylistView(focusView) && m_playlistHandler
        && m_observedSelectedPlaylistId.isValid() && !focusView->currentIndex().isValid()) {
@@ -1499,6 +1571,36 @@ Fooyin::Playlist* VimHandler::targetPlaylist() const
 
     qCWarning(VIM_LOG) << "targetPlaylist: no playlist found";
     return nullptr;
+}
+
+Fooyin::Playlist* VimHandler::playlistForPersistentState() const
+{
+    if(!m_playlistHandler)
+        return nullptr;
+
+    if(m_observedSelectedPlaylistId.isValid()) {
+        if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId))
+            return playlist;
+    }
+
+    if(auto* playlist = targetPlaylist())
+        return playlist;
+
+    if(auto* view = playlistViewForState(); view && view->model()) {
+        const int viewRows = view->model()->rowCount();
+        if(viewRows > 0) {
+            for(auto* playlist : m_playlistHandler->playlists()) {
+                if(playlist && playlist->trackCount() == viewRows)
+                    return playlist;
+            }
+        }
+    }
+
+    if(auto* playlist = m_playlistHandler->activePlaylist())
+        return playlist;
+
+    const auto all = m_playlistHandler->playlists();
+    return all.empty() ? nullptr : all.front();
 }
 
 void VimHandler::changePlaylistByOffset(const int delta)
@@ -3096,11 +3198,6 @@ void VimHandler::refreshPlaylistStateTracking(QAbstractItemView* candidateView)
     if(view == m_trackedPlaylistStateView && selectionModel == m_trackedPlaylistSelectionModel)
         return;
 
-    qCDebug(VIM_LOG) << "refreshPlaylistStateTracking: candidateContext="
-                     << static_cast<int>(viewContext(candidateView))
-                     << "trackedViewContext=" << static_cast<int>(viewContext(view))
-                     << "selectionModel=" << selectionModel;
-
     if(m_playlistStateTrackingConnection)
         QObject::disconnect(m_playlistStateTrackingConnection);
 
@@ -3113,12 +3210,8 @@ void VimHandler::refreshPlaylistStateTracking(QAbstractItemView* candidateView)
     m_playlistStateTrackingConnection
         = QObject::connect(m_trackedPlaylistSelectionModel, &QItemSelectionModel::currentChanged, this,
                            [this](const QModelIndex& current, const QModelIndex& previous) {
+                               Q_UNUSED(current)
                                Q_UNUSED(previous)
-
-                               qCDebug(VIM_LOG) << "playlistStateTracking: currentChanged row=" << current.row()
-                                                << "col=" << current.column() << "mode=" << static_cast<int>(m_mode)
-                                                << "applyingRestore=" << m_applyingPlaylistCursorState
-                                                << "observedPlaylist=" << m_observedSelectedPlaylistId;
 
                                if(m_applyingPlaylistCursorState)
                                    return;
@@ -3143,9 +3236,6 @@ void VimHandler::tryRestorePendingPlaylistState(QAbstractItemView* candidateView
 
     auto* activeView = candidateView ? candidateView : enclosingView(QApplication::focusWidget());
     if(!isPersistentPlaylistView(activeView) || !activeView->model() || !activeView->selectionModel()) {
-        qCDebug(VIM_LOG) << "tryRestorePendingPlaylistState: skipped candidateContext="
-                         << static_cast<int>(viewContext(activeView)) << "candidateValid=" << (activeView != nullptr)
-                         << "pendingRestore=" << m_pendingPlaylistRestoreId;
         return;
     }
 

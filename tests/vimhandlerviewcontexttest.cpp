@@ -741,6 +741,8 @@ private Q_SLOTS:
     void searchLibraryLineEditRestoresVisualModeOnBlur();
     void searchLibraryResultsDoNotInheritPlaylistVisualMode();
     void searchLibraryVisualModeDoesNotLeakBackToPlaylist();
+    void searchLibraryCloseRestoresPlaylistVisualModeFromSearchBox();
+    void searchLibraryCloseRestoresPlaylistVisualModeAfterResults();
     void searchLibraryDialogDoesNotRestoreOrOverwritePlaylistState();
     void copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks();
     void moveAfterCurrentPlayingIsNoOpForSearchLibrarySelection();
@@ -1665,6 +1667,160 @@ void TestVimHandlerViewContext::searchLibraryVisualModeDoesNotLeakBackToPlaylist
     QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     QCOMPARE(view.selectionModel()->selectedRows().size(), 1);
     QCOMPARE(view.currentIndex().row(), 0);
+}
+
+void TestVimHandlerViewContext::searchLibraryCloseRestoresPlaylistVisualModeFromSearchBox()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("search_library_close_restore_visual_box.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(131);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(132);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(133);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    QVERIFY(playlistA);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel playlistModel;
+    view.setModel(&playlistModel);
+
+    syncPlaylistModel(playlistModel, playlistA);
+    view.setCurrentIndex(playlistModel.index(0, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.enterVisual();
+    handler.extendVisualCursor(+1);
+
+    SearchDialog dialog;
+    QStandardItemModel dialogModel;
+    dialogModel.appendRow(new QStandardItem(QStringLiteral("Result 1")));
+    dialog.view()->setModel(&dialogModel);
+    dialog.show();
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    dialog.close();
+    pumpEvents();
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(view.currentIndex().row(), 1);
+    QCOMPARE(view.selectionModel()->selectedRows().size(), 2);
+}
+
+void TestVimHandlerViewContext::searchLibraryCloseRestoresPlaylistVisualModeAfterResults()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{
+        tempDir.filePath(QStringLiteral("search_library_close_restore_visual_results.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(141);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(142);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(143);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    QVERIFY(playlistA);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel playlistModel;
+    view.setModel(&playlistModel);
+
+    syncPlaylistModel(playlistModel, playlistA);
+    view.setCurrentIndex(playlistModel.index(0, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.enterVisual();
+    handler.extendVisualCursor(+1);
+
+    SearchDialog dialog;
+    QStandardItemModel dialogModel;
+    dialogModel.appendRow(new QStandardItem(QStringLiteral("Result 1")));
+    dialogModel.appendRow(new QStandardItem(QStringLiteral("Result 2")));
+    dialog.view()->setModel(&dialogModel);
+    dialog.show();
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    focusTree(dialog.view());
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    dialog.close();
+    pumpEvents();
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(view.currentIndex().row(), 1);
+    QCOMPARE(view.selectionModel()->selectedRows().size(), 2);
 }
 
 void TestVimHandlerViewContext::searchLibraryDialogDoesNotRestoreOrOverwritePlaylistState()
