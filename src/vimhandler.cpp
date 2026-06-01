@@ -448,6 +448,16 @@ VimHandler::VimHandler(QObject* parent)
                                          ? QString::fromLatin1(QApplication::focusWidget()->metaObject()->className())
                                          : QStringLiteral("<null>"));
 
+                if(m_mode == Mode::Visual) {
+                    qCInfo(VIM_LOG) << "Mode → Normal (leaving Search Library dialog visual mode)";
+                    m_mode = Mode::Normal;
+                    clearPendingInputState();
+                    m_count        = 0;
+                    m_visualAnchor = -1;
+                    m_visualCursor = -1;
+                    emit modeChanged(m_mode);
+                }
+
                 if(exitRestoreMode.has_value()) {
                     if(*exitRestoreMode == Mode::Visual) {
                         bool restored = false;
@@ -518,7 +528,7 @@ VimHandler::VimHandler(QObject* parent)
                         }
                     }
                     else if(*exitRestoreMode == Mode::Normal) {
-                        enterNormal();
+                        // Already normalised above when leaving dialog-local Visual.
                     }
                     else if(*exitRestoreMode == Mode::Insert) {
                         enterInsert();
@@ -1106,19 +1116,38 @@ void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController*
     if(!m_currentPlaylistController)
         return;
 
-    m_observedSelectedPlaylistId = m_currentPlaylistController->currentPlaylistId();
-    m_playlistSelectionChangedConnection
-        = QObject::connect(m_currentPlaylistController, &Fooyin::CurrentPlaylistController::currentPlaylistChanged,
-                           this, [this](Fooyin::Playlist* previous, Fooyin::Playlist* current) {
-                               qCDebug(VIM_LOG) << "playlistSelectionChanged: previous="
-                                                << (previous ? previous->name() : QStringLiteral("<null>"))
-                                                << "current=" << (current ? current->name() : QStringLiteral("<null>"))
-                                                << "activeViewContext=" << static_cast<int>(activeViewContext());
-                               savePlaylistCursorState(previous);
-                               m_observedSelectedPlaylistId = current ? current->id() : Fooyin::UId{};
-                               refreshPlaylistStateTracking();
-                               restorePlaylistCursorState(current);
-                           });
+    m_observedSelectedPlaylistId         = m_currentPlaylistController->currentPlaylistId();
+    m_playlistSelectionChangedConnection = QObject::connect(
+        m_currentPlaylistController, &Fooyin::CurrentPlaylistController::currentPlaylistChanged, this,
+        [this](Fooyin::Playlist* previous, Fooyin::Playlist* current) {
+            qCDebug(VIM_LOG) << "playlistSelectionChanged: previous="
+                             << (previous ? previous->name() : QStringLiteral("<null>"))
+                             << "current=" << (current ? current->name() : QStringLiteral("<null>"))
+                             << "activeViewContext=" << static_cast<int>(activeViewContext());
+            savePlaylistCursorState(previous);
+            m_observedSelectedPlaylistId = current ? current->id() : Fooyin::UId{};
+            refreshPlaylistStateTracking();
+
+            if(previous && current
+               && m_playlistCursorStates.constFind(current->id()) == m_playlistCursorStates.cend()) {
+                const Mode prevMode = m_mode;
+                m_mode              = Mode::Normal;
+                clearPendingInputState();
+                m_count        = 0;
+                m_visualAnchor = -1;
+                m_visualCursor = -1;
+
+                if(auto* playlistView = playlistViewForState(); playlistView && playlistView->selectionModel()) {
+                    playlistView->selectionModel()->clearSelection();
+                    playlistView->selectionModel()->setCurrentIndex({}, QItemSelectionModel::NoUpdate);
+                }
+
+                if(prevMode != m_mode)
+                    emit modeChanged(m_mode);
+            }
+
+            restorePlaylistCursorState(current);
+        });
 }
 
 void VimHandler::setActionManager(Fooyin::ActionManager* manager)
@@ -3223,6 +3252,10 @@ void VimHandler::refreshPlaylistStateTracking(QAbstractItemView* candidateView)
 void VimHandler::saveObservedPlaylistCursorState()
 {
     if(!m_playlistHandler || !m_observedSelectedPlaylistId.isValid())
+        return;
+
+    if(m_mode == Mode::Normal
+       && m_playlistCursorStates.constFind(m_observedSelectedPlaylistId) == m_playlistCursorStates.cend())
         return;
 
     if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId))
