@@ -580,12 +580,13 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     tryRestorePendingPlaylistState(focusView);
 
     if(event->type() == QEvent::FocusIn && isPersistentPlaylistView(focusView) && m_playlistHandler
-       && m_observedSelectedPlaylistId.isValid() && !focusView->currentIndex().isValid()) {
+       && m_observedSelectedPlaylistId.isValid()) {
         if(const auto stateIt = m_playlistCursorStates.constFind(m_observedSelectedPlaylistId);
-           stateIt != m_playlistCursorStates.cend()) {
+           stateIt != m_playlistCursorStates.cend()
+           && (stateIt->mode == Mode::Visual || !focusView->currentIndex().isValid())) {
             if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId)) {
-                qCDebug(VIM_LOG) << "eventFilter: FocusIn restoring invalid selected playlist state for"
-                                 << playlist->name();
+                m_preserveVisualStateOnNextPlaylistSaveId = {};
+                qCDebug(VIM_LOG) << "eventFilter: FocusIn restoring selected playlist state for" << playlist->name();
                 applyPlaylistCursorState(focusView, playlist, stateIt.value());
             }
         }
