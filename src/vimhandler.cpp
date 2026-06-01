@@ -406,8 +406,10 @@ VimHandler::VimHandler(QObject* parent)
             const bool nowInSearchLibraryDialog              = isSearchLibraryDialogWidget(now);
 
             if(isPersistentPlaylistView(previousView) && previousView != nextView) {
-                if(m_mode == Mode::Visual && m_observedSelectedPlaylistId.isValid())
-                    m_preserveVisualStateOnNextPlaylistSaveId = m_observedSelectedPlaylistId;
+                if(m_mode == Mode::Visual) {
+                    if(auto* playlist = playlistForPersistentState())
+                        m_preserveVisualStateOnNextPlaylistSaveId = playlist->id();
+                }
 
                 saveObservedPlaylistCursorState();
             }
@@ -579,12 +581,11 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     refreshPlaylistStateTracking(focusView);
     tryRestorePendingPlaylistState(focusView);
 
-    if(event->type() == QEvent::FocusIn && isPersistentPlaylistView(focusView) && m_playlistHandler
-       && m_observedSelectedPlaylistId.isValid()) {
-        if(const auto stateIt = m_playlistCursorStates.constFind(m_observedSelectedPlaylistId);
-           stateIt != m_playlistCursorStates.cend()
-           && (stateIt->mode == Mode::Visual || !focusView->currentIndex().isValid())) {
-            if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId)) {
+    if(event->type() == QEvent::FocusIn && isPersistentPlaylistView(focusView) && m_playlistHandler) {
+        if(auto* playlist = playlistForPersistentState()) {
+            if(const auto stateIt = m_playlistCursorStates.constFind(playlist->id());
+               stateIt != m_playlistCursorStates.cend()
+               && (stateIt->mode == Mode::Visual || !focusView->currentIndex().isValid())) {
                 m_preserveVisualStateOnNextPlaylistSaveId = {};
                 qCDebug(VIM_LOG) << "eventFilter: FocusIn restoring selected playlist state for" << playlist->name();
                 applyPlaylistCursorState(focusView, playlist, stateIt.value());
@@ -3371,15 +3372,17 @@ void VimHandler::refreshPlaylistStateTracking(QAbstractItemView* candidateView)
 
 void VimHandler::saveObservedPlaylistCursorState()
 {
-    if(!m_playlistHandler || !m_observedSelectedPlaylistId.isValid())
+    if(!m_playlistHandler)
         return;
 
-    if(m_mode == Mode::Normal
-       && m_playlistCursorStates.constFind(m_observedSelectedPlaylistId) == m_playlistCursorStates.cend())
+    auto* playlist = playlistForPersistentState();
+    if(!playlist)
         return;
 
-    if(auto* playlist = m_playlistHandler->playlistById(m_observedSelectedPlaylistId))
-        savePlaylistCursorState(playlist);
+    if(m_mode == Mode::Normal && m_playlistCursorStates.constFind(playlist->id()) == m_playlistCursorStates.cend())
+        return;
+
+    savePlaylistCursorState(playlist);
 }
 
 void VimHandler::tryRestorePendingPlaylistState(QAbstractItemView* candidateView)
