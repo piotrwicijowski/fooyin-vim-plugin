@@ -796,6 +796,7 @@ private Q_SLOTS:
     void pasteTargetsObservedEmptySelectedPlaylist();
     void switchesToNextPlaylist();
     void switchesToPreviousPlaylist();
+    void unseenPlaylistDefaultsToNormalWithoutSelection();
     void playlistSwitchingClampsAtEnds();
     void playlistSwitchingUsesCount();
     void playlistSwitchingFollowsOrganiserTreeOrder();
@@ -2237,6 +2238,105 @@ void TestVimHandlerViewContext::switchesToPreviousPlaylist()
 
     QCOMPARE(observer.currentPlaylist(), expectedPlaylist);
     QCOMPARE(observer.currentPlaylistId(), expectedPlaylist->id());
+}
+
+void TestVimHandlerViewContext::unseenPlaylistDefaultsToNormalWithoutSelection()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("unseen_playlist_defaults.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(151);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList bTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b1.flac"), 0};
+            track.setId(152);
+            track.setTitle(QStringLiteral("B1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b2.flac"), 0};
+            track.setId(153);
+            track.setTitle(QStringLiteral("B2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/b3.flac"), 0};
+            track.setId(154);
+            track.setTitle(QStringLiteral("B3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+    const Fooyin::TrackList cTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/c1.flac"), 0};
+            track.setId(155);
+            track.setTitle(QStringLiteral("C1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/c2.flac"), 0};
+            track.setId(156);
+            track.setTitle(QStringLiteral("C2"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    auto* playlistB = harness.handler.createNewPlaylist(QStringLiteral("Playlist B"), bTracks);
+    auto* playlistC = harness.handler.createNewPlaylist(QStringLiteral("Playlist C"), cTracks);
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+    QVERIFY(playlistC);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    view.setModel(&model);
+
+    syncPlaylistModel(model, playlistA);
+    view.setCurrentIndex(model.index(0, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    observer.changeCurrentPlaylist(playlistB);
+    syncPlaylistModel(model, playlistB);
+    pumpEvents();
+
+    view.setCurrentIndex(model.index(0, 0));
+    handler.enterVisual();
+    handler.extendVisualCursor(+2);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+
+    observer.changeCurrentPlaylist(playlistC);
+    syncPlaylistModel(model, playlistC);
+    pumpEvents();
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(view.selectionModel()->selectedRows().size(), 0);
+    QVERIFY(!view.currentIndex().isValid());
 }
 
 void TestVimHandlerViewContext::playlistSwitchingClampsAtEnds()
