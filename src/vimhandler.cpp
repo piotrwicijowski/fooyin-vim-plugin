@@ -1222,25 +1222,6 @@ Fooyin::TrackList VimHandler::selectedTracksFromActiveViewModel() const
     return tracks;
 }
 
-void VimHandler::refreshPlaylistEntries(const Fooyin::UId& playlistId, std::span<const Fooyin::UId> entryIds) const
-{
-    if(m_playlistViewRefresher == nullptr || !playlistId.isValid() || entryIds.empty()) {
-        return;
-    }
-
-    std::vector<Fooyin::UId> refreshedEntryIds;
-    refreshedEntryIds.reserve(entryIds.size());
-
-    for(const Fooyin::UId& entryId : entryIds) {
-        if(entryId.isValid() && std::ranges::find(refreshedEntryIds, entryId) == refreshedEntryIds.cend()) {
-            refreshedEntryIds.push_back(entryId);
-        }
-    }
-
-    if(!refreshedEntryIds.empty()) {
-        m_playlistViewRefresher->refreshEntries(playlistId, refreshedEntryIds);
-    }
-}
 void VimHandler::setLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
