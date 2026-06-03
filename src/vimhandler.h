@@ -21,6 +21,7 @@
 
 class QAbstractItemView;
 class QDialog;
+class QItemSelectionModel;
 class QKeyEvent;
 class QLineEdit;
 class QTreeView;
@@ -232,6 +233,7 @@ private:
     [[nodiscard]] BindingScope bindingScopeForView(QAbstractItemView* view) const;
     [[nodiscard]] BindingScope activeBindingScope() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
+    [[nodiscard]] Fooyin::Playlist* playlistForPersistentState() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
     [[nodiscard]] std::optional<std::pair<int, int>> selectedTrackRowRange(Fooyin::Playlist* playlist);
@@ -240,7 +242,13 @@ private:
     void insertSelectionAfterCurrentPlaying(bool move);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
     [[nodiscard]] QAbstractItemView* playlistViewForState() const;
+    [[nodiscard]] bool isPersistentPlaylistView(QAbstractItemView* view) const;
+    [[nodiscard]] PlaylistCursorState currentPlaylistCursorState(QAbstractItemView* view) const;
+    void storePlaylistCursorState(Fooyin::Playlist* playlist, const PlaylistCursorState& state);
+    void syncPersistentPlaylistCursorState(QAbstractItemView* preferredView = nullptr);
     void updateLastPlaylistView(QAbstractItemView* view);
+    void refreshPlaylistStateTracking(QAbstractItemView* candidateView = nullptr);
+    void saveObservedPlaylistCursorState();
     void tryRestorePendingPlaylistState(QAbstractItemView* candidateView = nullptr);
     void savePlaylistCursorState(Fooyin::Playlist* playlist);
     void restorePlaylistCursorState(Fooyin::Playlist* playlist);
@@ -263,6 +271,8 @@ private:
     ViewLocator* m_viewLocator{nullptr};
     SpatialNavigator* m_spatialNavigator{nullptr};
     QPointer<QAbstractItemView> m_lastPlaylistView;
+    QPointer<QAbstractItemView> m_trackedPlaylistStateView;
+    QPointer<QItemSelectionModel> m_trackedPlaylistSelectionModel;
 
     struct UndoEntry
     {
@@ -287,9 +297,9 @@ private:
     Fooyin::TrackSelectionController* m_trackSelectionController{nullptr};
     QPointer<Fooyin::CurrentPlaylistController> m_currentPlaylistController;
     QMetaObject::Connection m_playlistSelectionChangedConnection;
+    QMetaObject::Connection m_playlistStateTrackingConnection;
     Fooyin::UId m_observedSelectedPlaylistId;
     Fooyin::UId m_pendingPlaylistRestoreId;
-    Fooyin::UId m_preserveVisualStateOnNextPlaylistSaveId;
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
@@ -304,6 +314,7 @@ private:
     QString m_lastFilter;
     QPointer<QLineEdit> m_autoInsertSearchLibraryEdit;
     std::optional<Mode> m_autoInsertRestoreMode;
+    std::optional<Mode> m_searchLibraryDialogExitRestoreMode;
 
     QPointer<VimSearchBar> m_searchBar;
     QPointer<QAbstractItemView> m_searchView;
@@ -324,6 +335,7 @@ private:
     std::optional<BindingScope> m_pendingConfigScope;
     int m_pendingSequenceTimeoutMs{0};
     QTimer m_pendingTimeoutTimer;
+    bool m_applyingPlaylistCursorState{false};
 };
 
 } // namespace Fooyin::VimMotions
