@@ -198,6 +198,10 @@ cmake --install build --prefix /usr
 
 After copying, restart fooyin. The plugin will appear in **Settings → Plugins** and load automatically on next startup.
 
+## License
+
+This repository is licensed under the GNU General Public License v3.0. See `LICENSE` for the full text.
+
 ## Debug logging
 
 The plugin uses Qt's categorized logging under the `fy.vim` category, matching fooyin's own logging convention. Three levels are emitted:
