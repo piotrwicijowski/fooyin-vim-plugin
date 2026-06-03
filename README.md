@@ -7,7 +7,7 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 ### Modes
 
 | Mode | How to enter | What it does |
-|---|---|---|---|
+|---|---|---|
 | Normal | Start-up default / `Esc` from Insert, Search, Filter | All vim keys active; fooyin shortcuts suppressed |
 | Visual | `v` | Linewise range selection |
 | Insert | `i` | Vim off; all keys pass through to fooyin normally |
@@ -29,71 +29,73 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 
 ### Normal mode bindings
 
-| Key | Action |
-|---|---|
-| `j` / `k` | Move cursor down / up |
-| `[count]j` / `[count]k` | Move cursor N rows |
-| `gg` | Jump to first row |
-| `G` / `[count]G` | Jump to last row / row N (1-indexed) |
-| `o` | Focus currently playing item |
-| `g;` | Focus currently playing item |
-| `m` + `a-z` | Set a local mark on the current playlist item |
-| `m` + `A-Z` | Set a global mark on the current playlist item |
-| `'` + `a-z` | Jump to a local mark in the current playlist |
-| `'` + `A-Z` | Jump to a global mark, switching playlists if needed |
-| `` ` `` + `a-z` | Jump to a local mark in the current playlist |
-| `` ` `` + `A-Z` | Jump to a global mark, switching playlists if needed |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
-| `v` | Enter Visual mode |
-| `dd` / `[count]dd` | Delete row(s) from playlist |
-| `yy` / `[count]yy` | Yank row(s) into vim clipboard |
-| `p` / `P` | Paste yanked rows after / before cursor |
-| `a` | Create a new playlist in the playlist organiser |
-| `A` | Create a new group in the playlist organiser |
-| `u` | Undo last playlist change (dd, p, P, Alt+j/k) |
-| `Ctrl+r` | Redo last undone change |
-| `i` | Enter Insert mode |
-| `/` | Enter Search mode |
-| `n` / `N` | Next / previous search match (+/-1 row if filter active) |
-| `Ctrl+i` | Enter Filter mode |
-| `h` | Collapse node / ascend to parent (tree views) |
-| `l` | Expand node / descend to first child (tree views) |
-| `Ctrl+Shift+J` | Next sibling at same level (tree views) |
-| `Ctrl+Shift+K` | Previous sibling at same level (tree views) |
-| `Ctrl+j/k/h/l` | Move focus to the view below / above / left / right |
-| `Alt+j` / `Alt+k` | Move current row down / up in the playlist |
-| `[count]Alt+j` / `[count]Alt+k` | Move current row N positions down / up |
+Default bindings are installed per scope. `Global` bindings apply everywhere unless a narrower scope overrides them.
+
+| Key | Scope | Action |
+|---|---|---|
+| `j` / `k` | Global | Move cursor down / up |
+| `[count]j` / `[count]k` | Global | Move cursor N rows |
+| `gg` | Global | Jump to first row |
+| `G` / `[count]G` | Global | Jump to last row / row N (1-indexed) |
+| `o` | Global | Focus currently playing item |
+| `g;` | Global | Focus currently playing item |
+| `m` + `a-z` | Playlist view | Set a local mark on the current playlist item |
+| `m` + `A-Z` | Playlist view | Set a global mark on the current playlist item |
+| `'` + `a-z` | Playlist view | Jump to a local mark in the current playlist |
+| `'` + `A-Z` | Playlist view | Jump to a global mark, switching playlists if needed |
+| `` ` `` + `a-z` | Playlist view | Jump to a local mark in the current playlist |
+| `` ` `` + `A-Z` | Playlist view | Jump to a global mark, switching playlists if needed |
+| `Ctrl+d` | Global | Half page down |
+| `Ctrl+u` | Global | Half page up |
+| `v` | Global | Enter Visual mode |
+| `dd` / `[count]dd` | Global | Delete row(s), or remove the current item in the playlist organiser |
+| `yy` / `[count]yy` | Playlist view | Yank row(s) into vim clipboard |
+| `p` / `P` | Playlist view | Paste yanked rows after / before cursor |
+| `a` | Playlist organiser | Create a new playlist |
+| `A` | Playlist organiser | Create a new group |
+| `u` | Playlist view | Undo last playlist change (`dd`, `p`, `P`, `Alt+j/k`) |
+| `Ctrl+r` | Playlist view | Redo last undone change |
+| `i` | Global | Enter Insert mode |
+| `/` | Global | Enter Search mode |
+| `n` / `N` | Global | Next / previous search match (+/-1 row if filter active) |
+| `Ctrl+i` | Global | Enter Filter mode |
+| `h` | Global | Collapse node / ascend to parent (tree views) |
+| `l` | Global | Expand node / descend to first child (tree views) |
+| `Ctrl+Shift+J` | Playlist organiser | Next sibling at same level (tree views) |
+| `Ctrl+Shift+K` | Playlist organiser | Previous sibling at same level (tree views) |
+| `Ctrl+j/k/h/l` | Global | Move focus to the view below / above / left / right |
+| `Alt+j` / `Alt+k` | Global | Move current row down / up in the playlist |
+| `[count]Alt+j` / `[count]Alt+k` | Global | Move current row N positions down / up |
 
 ### Visual mode bindings
 
-| Key | Action |
-|---|---|
-| `j` / `k` | Extend selection down / up |
-| `[count]j` / `[count]k` | Extend selection N rows |
-| `gg` | Extend selection to first row |
-| `G` / `[count]G` | Extend selection to last row / row N (1-indexed) |
-| `Ctrl+d` | Extend selection half page down |
-| `Ctrl+u` | Extend selection half page up |
-| `o` | Toggle anchor — swap cursor between start and end |
-| `v` | Exit Visual mode |
-| `h` / `l` | Collapse/expand node (tree views) |
-| `d` | Delete selected range, return to Normal |
-| `y` | Yank selected range, return to Normal |
-| `n` / `N` | Next / previous search match (return to Normal) |
-| `/` | Enter Search mode (return to Normal) |
-| `m` + `a-z` | Set a local mark on the current playlist item |
-| `m` + `A-Z` | Set a global mark on the current playlist item |
-| `'` + `a-z` | Jump to a local mark, extending the selection |
-| `'` + `A-Z` | Jump to a global mark, switching playlists if needed |
-| `` ` `` + `a-z` | Jump to a local mark, extending the selection |
-| `` ` `` + `A-Z` | Jump to a global mark, switching playlists if needed |
-| `g;` | Focus currently playing item (return to Normal) |
-| `Alt+j` / `Alt+k` | Move entire selection down / up in the playlist |
-| `[count]Alt+j` / `[count]Alt+k` | Move entire selection N positions down / up |
-| `Esc` | Cancel selection, return to Normal |
+| Key | Scope | Action |
+|---|---|---|
+| `j` / `k` | Global | Extend selection down / up |
+| `[count]j` / `[count]k` | Global | Extend selection N rows |
+| `gg` | Global | Extend selection to first row |
+| `G` / `[count]G` | Global | Extend selection to last row / row N (1-indexed) |
+| `Ctrl+d` | Global | Extend selection half page down |
+| `Ctrl+u` | Global | Extend selection half page up |
+| `o` | Global | Toggle anchor; swap cursor between start and end |
+| `v` | Global | Exit Visual mode |
+| `h` / `l` | Global | Collapse / expand node (tree views) |
+| `d` | Playlist view | Delete selected range, return to Normal |
+| `y` | Playlist view | Yank selected range, return to Normal |
+| `n` / `N` | Global | Next / previous search match, then return to Normal |
+| `/` | Global | Enter Search mode, then return to Normal |
+| `m` + `a-z` | Playlist view | Set a local mark on the current playlist item |
+| `m` + `A-Z` | Playlist view | Set a global mark on the current playlist item |
+| `'` + `a-z` | Playlist view | Jump to a local mark, extending the selection |
+| `'` + `A-Z` | Playlist view | Jump to a global mark, switching playlists if needed |
+| `` ` `` + `a-z` | Playlist view | Jump to a local mark, extending the selection |
+| `` ` `` + `A-Z` | Playlist view | Jump to a global mark, switching playlists if needed |
+| `g;` | Global | Focus currently playing item, then return to Normal |
+| `Alt+j` / `Alt+k` | Playlist view | Move entire selection down / up in the playlist |
+| `[count]Alt+j` / `[count]Alt+k` | Playlist view | Move entire selection N positions down / up |
+| `Esc` | Global | Cancel selection, return to Normal |
 
-All actions are registered in **Settings → Shortcuts** under the "Vim Motions" category and can be rebound there.
+Plugin-specific bindings are configured through **Settings → Plugins → Vim Motions → Configure** or `fooyin.conf`.
 
 `selectAll` is available for custom config bindings, but it is not part of the default bindings because there is no close standard Vim equivalent.
 
@@ -315,9 +317,9 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 
 **Key combo syntax:**
 - Single character: `j`, `k`, `G`, `;`, `'`, `` ` ``
-- Special keys: `<Esc>`, `<CR>`, `<Tab>`, `<BS>`, `<Space>`, `<Home>`, `<End>`, `<PageUp>`, `<PageDown>`, `<Left>`, `<Right>`, `<Up>`, `<Down>`
+- Special keys: `<Esc>`, `<CR>`, `<Enter>`, `<Tab>`, `<BS>`, `<Space>`, `<Del>`, `<Insert>`, `<Home>`, `<End>`, `<PageUp>`, `<PageDown>`, `<Left>`, `<Right>`, `<Up>`, `<Down>`
 - Special punctuation keys that need explicit names in config paths: `<Slash>`, `<Bslash>`, `<Bar>`, `<Lt>`
-- Modifier combos: `Ctrl+J`, `Alt+J`, `Ctrl+Shift+K`
+- Modifier combos: `Ctrl+J`, `Alt+J`, `Meta+J`, `Ctrl+Shift+K`
 - Multi-key sequences: `gg`, `dd`, `yy`, `g;`, `g<Space>`, `<Space><Space>`
 - Operator-pending prefixes: `m`, `'`, `` ` `` can be bound to mark actions that consume the next letter; lowercase uses local marks and uppercase uses global marks
 
@@ -345,7 +347,8 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `enterInsert` | — | Normal | Switch to Insert mode |
 | `enterVisual` | — | Normal | Switch to Visual mode |
 | `selectAll` | — | Normal, Visual | Enter Visual mode and select the full row range, leaving the cursor on the last row |
-| `enterNormal` | — | Visual, Insert | Return to Normal mode |
+| `leaveInsertMode` | — | Insert | Return to Normal mode |
+| `leaveVisualMode` | — | Visual | Return to Normal mode |
 | `enterFilter` | — | Normal | Open incremental filter bar |
 | `enterSearch` | — | Normal | Open `/` search bar |
 | `nextMatch` | — | Normal | Jump to next search match |
@@ -359,11 +362,12 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `undo` | — | Normal | Undo last playlist change |
 | `redo` | — | Normal | Redo last undone change |
 | `focusNowPlaying` | — | Normal | Focus currently playing track |
+| `focusNowPlayingAndExit` | — | Visual | Return to Normal, then focus the currently playing track |
 | `nextPlaylist` | — | Normal, Visual | Switch the selected playlist forward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `previousPlaylist` | — | Normal, Visual | Switch the selected playlist backward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
-| `beginSetMark` | — | Normal | Begin setting a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
-| `beginJumpToMark` | — | Normal | Begin jumping to a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
+| `beginSetMark` | — | Normal, Visual | Begin setting a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
+| `beginJumpToMark` | — | Normal, Visual | Begin jumping to a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
 | `moveRows` | `+1` / `-1` | Normal | Move current row in playlist |
 | `extendCursor` | `+1` / `-1` | Visual | Extend visual selection by N rows |
 | `extendToFirst` | — | Visual | Extend selection to first row |
@@ -532,8 +536,6 @@ Bindings\Global\Insert\<Esc>=leaveInsertMode
 Bindings\SearchLibraryDialog\Insert\Ctrl+J=spatialMoveFocus:down
 Bindings\SearchLibraryDialog\Insert\Ctrl+K=spatialMoveFocus:up
 ```
-
-When adding new default configurable bindings to the plugin code, the entries above must also be added to this section to keep documentation in sync.
 
 ## Notes
 
