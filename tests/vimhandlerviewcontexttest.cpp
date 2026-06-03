@@ -24,6 +24,7 @@
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QMimeData>
+#include <QSplitter>
 #include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QTest>
@@ -759,6 +760,8 @@ private Q_SLOTS:
     void clampsRestoredCursorWhenPlaylistShrinks();
     void restoresVisualSelectionWhenReturningToPlaylist();
     void restoresVisualSelectionWhenRefocusingSamePlaylistViaOrganiser();
+    void restoresNormalCursorWhenRefocusingAfterLeavingVisualViaOrganiser();
+    void restoresVisualSelectionWhenRefocusingAfterSpatialFocusMoveViaOrganiser();
     void preservesVisualSelectionWhenSwitchingViaOrganiser();
     void restoresEmptyPlaylistToNormalMode();
     void restoresLatestCursorPositionAfterPlaylistRefocus();
@@ -2886,6 +2889,157 @@ void TestVimHandlerViewContext::restoresVisualSelectionWhenRefocusingSamePlaylis
     QCOMPARE(view.selectionModel()->selectedRows().size(), 2);
     QVERIFY(view.selectionModel()->isRowSelected(1, QModelIndex{}));
     QVERIFY(view.selectionModel()->isRowSelected(2, QModelIndex{}));
+}
+
+void TestVimHandlerViewContext::restoresNormalCursorWhenRefocusingAfterLeavingVisualViaOrganiser()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("cursor_normal_refocus_organiser.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(221);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(222);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(223);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    QVERIFY(playlistA);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+    view.setModel(&model);
+
+    FakeOrganiserWidget organiser;
+    QStandardItemModel organiserModel;
+    organiserModel.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist A"), playlistA));
+    organiser.view()->setModel(&organiserModel);
+
+    syncPlaylistModel(model, playlistA);
+    view.setCurrentIndex(model.index(0, 0));
+    focusTree(&view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.enterVisual();
+    handler.extendVisualCursor(+2);
+    handler.enterNormal();
+
+    focusTree(organiser.view());
+    focusTree(&view);
+    dispatchFocusIn(handler, &view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(view.currentIndex().row(), 2);
+    QCOMPARE(view.selectionModel()->selectedRows().size(), 1);
+    QVERIFY(view.selectionModel()->isRowSelected(2, QModelIndex{}));
+}
+
+void TestVimHandlerViewContext::restoresVisualSelectionWhenRefocusingAfterSpatialFocusMoveViaOrganiser()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("cursor_visual_spatial_refocus_organiser.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    const Fooyin::TrackList aTracks{
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
+            track.setId(231);
+            track.setTitle(QStringLiteral("A1"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
+            track.setId(232);
+            track.setTitle(QStringLiteral("A2"));
+            track.generateHash();
+            return track;
+        }(),
+        [] {
+            Fooyin::Track track{QStringLiteral("/tmp/a3.flac"), 0};
+            track.setId(233);
+            track.setTitle(QStringLiteral("A3"));
+            track.generateHash();
+            return track;
+        }(),
+    };
+
+    auto* playlistA = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), aTracks);
+    QVERIFY(playlistA);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    QSplitter splitter(Qt::Horizontal);
+
+    auto* organiser = new FakeOrganiserWidget();
+    QStandardItemModel organiserModel;
+    organiserModel.appendRow(makeOrganiserPlaylistItem(QStringLiteral("Playlist A"), playlistA));
+    organiser->view()->setModel(&organiserModel);
+    organiser->view()->setCurrentIndex(organiserModel.index(0, 0));
+
+    auto* view = new Fooyin::PlaylistView();
+    QStandardItemModel model;
+    view->setModel(&model);
+
+    splitter.addWidget(organiser);
+    splitter.addWidget(view);
+
+    syncPlaylistModel(model, playlistA);
+    view->setCurrentIndex(model.index(1, 0));
+    focusTree(view);
+    observer.changeCurrentPlaylist(playlistA);
+
+    handler.enterVisual();
+    handler.extendVisualCursor(+1);
+
+    handler.moveSpatialFocus(Direction::Left);
+    pumpEvents();
+    QVERIFY(organiser->view()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    handler.moveSpatialFocus(Direction::Right);
+    pumpEvents();
+    dispatchFocusIn(handler, view);
+
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(view->currentIndex().row(), 2);
+    QCOMPARE(view->selectionModel()->selectedRows().size(), 2);
+    QVERIFY(view->selectionModel()->isRowSelected(1, QModelIndex{}));
+    QVERIFY(view->selectionModel()->isRowSelected(2, QModelIndex{}));
 }
 
 void TestVimHandlerViewContext::preservesVisualSelectionWhenSwitchingViaOrganiser()

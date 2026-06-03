@@ -243,6 +243,9 @@ private:
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
     [[nodiscard]] QAbstractItemView* playlistViewForState() const;
     [[nodiscard]] bool isPersistentPlaylistView(QAbstractItemView* view) const;
+    [[nodiscard]] PlaylistCursorState currentPlaylistCursorState(QAbstractItemView* view) const;
+    void storePlaylistCursorState(Fooyin::Playlist* playlist, const PlaylistCursorState& state);
+    void syncPersistentPlaylistCursorState(QAbstractItemView* preferredView = nullptr);
     void updateLastPlaylistView(QAbstractItemView* view);
     void refreshPlaylistStateTracking(QAbstractItemView* candidateView = nullptr);
     void saveObservedPlaylistCursorState();
@@ -297,7 +300,6 @@ private:
     QMetaObject::Connection m_playlistStateTrackingConnection;
     Fooyin::UId m_observedSelectedPlaylistId;
     Fooyin::UId m_pendingPlaylistRestoreId;
-    Fooyin::UId m_preserveVisualStateOnNextPlaylistSaveId;
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
