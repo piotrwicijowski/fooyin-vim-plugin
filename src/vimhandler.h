@@ -237,6 +237,7 @@ private:
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
     [[nodiscard]] std::optional<std::pair<int, int>> selectedTrackRowRange(Fooyin::Playlist* playlist);
+    [[nodiscard]] Fooyin::TrackList selectedTracksFromActiveViewRows(int startRow, int endRow) const;
     [[nodiscard]] Fooyin::TrackList selectedTracksFromActiveViewModel() const;
     void scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row);
     void insertSelectionAfterCurrentPlaying(bool move);

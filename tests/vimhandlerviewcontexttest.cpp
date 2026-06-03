@@ -746,6 +746,8 @@ private Q_SLOTS:
     void searchLibraryCloseRestoresPlaylistVisualModeAfterResults();
     void searchLibraryDialogDoesNotRestoreOrOverwritePlaylistState();
     void copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks();
+    void yankRowsUsesSearchLibrarySelectionTracks();
+    void yankVisualSelectionUsesSearchLibrarySelectionTracks();
     void moveAfterCurrentPlayingIsNoOpForSearchLibrarySelection();
     void pasteTargetsObservedEmptySelectedPlaylist();
     void switchesToNextPlaylist();
@@ -2001,6 +2003,161 @@ void TestVimHandlerViewContext::copyAfterCurrentPlayingUsesSearchLibrarySelectio
     QCOMPARE(resultTracks.at(1).title(), QStringLiteral("Detached Result"));
     QCOMPARE(resultTracks.at(2).title(), QStringLiteral("Tail"));
     QCOMPARE(sourcePlaylist->tracks().size(), 1);
+    QCOMPARE(sourcePlaylist->tracks().front().title(), QStringLiteral("Background Source"));
+}
+
+void TestVimHandlerViewContext::yankRowsUsesSearchLibrarySelectionTracks()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("search_library_yank_rows.ini"))};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    Fooyin::Track sourceTrack{QStringLiteral("/tmp/source_yank_rows.flac"), 0};
+    sourceTrack.setId(121);
+    sourceTrack.setTitle(QStringLiteral("Background Source"));
+    sourceTrack.generateHash();
+
+    Fooyin::Track destinationTrack{QStringLiteral("/tmp/destination_yank_rows.flac"), 0};
+    destinationTrack.setId(122);
+    destinationTrack.setTitle(QStringLiteral("Destination"));
+    destinationTrack.generateHash();
+
+    Fooyin::Track detachedTrack{QStringLiteral("/tmp/detached_yank_rows.flac"), 0};
+    detachedTrack.setId(123);
+    detachedTrack.setTitle(QStringLiteral("Detached Result"));
+    detachedTrack.generateHash();
+
+    auto* sourcePlaylist = harness.handler.createNewPlaylist(QStringLiteral("Source Playlist"), {sourceTrack});
+    auto* destinationPlaylist
+        = harness.handler.createNewPlaylist(QStringLiteral("Destination Playlist"), {destinationTrack});
+    QVERIFY(sourcePlaylist);
+    QVERIFY(destinationPlaylist);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    observer.changeCurrentPlaylist(sourcePlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel searchModel;
+    auto* searchItem = new QStandardItem(detachedTrack.title());
+    searchItem->setData(QVariant::fromValue(Fooyin::PlaylistTrack{.track = detachedTrack}), PlaylistItemDataRole);
+    searchModel.appendRow(searchItem);
+    dialog.view()->setModel(&searchModel);
+    dialog.view()->setCurrentIndex(searchModel.index(0, 0));
+    dialog.show();
+    focusTree(dialog.view());
+
+    QVERIFY(dispatchKey(handler, dialog.view(), u'y'));
+    QVERIFY(dispatchKey(handler, dialog.view(), u'y'));
+
+    Fooyin::PlaylistView destinationView;
+    QStandardItemModel destinationModel;
+    destinationModel.appendRow(new QStandardItem(destinationTrack.title()));
+    destinationView.setModel(&destinationModel);
+    destinationView.setCurrentIndex(destinationModel.index(0, 0));
+
+    focusTree(&destinationView);
+    observer.changeCurrentPlaylist(destinationPlaylist);
+    handler.pasteAfter();
+
+    const auto resultTracks = destinationPlaylist->tracks();
+    QCOMPARE(resultTracks.size(), 2);
+    QCOMPARE(resultTracks.at(0).title(), QStringLiteral("Destination"));
+    QCOMPARE(resultTracks.at(1).title(), QStringLiteral("Detached Result"));
+    QCOMPARE(sourcePlaylist->trackCount(), 1);
+    QCOMPARE(sourcePlaylist->tracks().front().title(), QStringLiteral("Background Source"));
+}
+
+void TestVimHandlerViewContext::yankVisualSelectionUsesSearchLibrarySelectionTracks()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("search_library_yank_visual.ini"))};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    Fooyin::Track sourceTrack{QStringLiteral("/tmp/source_yank_visual.flac"), 0};
+    sourceTrack.setId(131);
+    sourceTrack.setTitle(QStringLiteral("Background Source"));
+    sourceTrack.generateHash();
+
+    Fooyin::Track destinationTrack{QStringLiteral("/tmp/destination_yank_visual.flac"), 0};
+    destinationTrack.setId(132);
+    destinationTrack.setTitle(QStringLiteral("Destination"));
+    destinationTrack.generateHash();
+
+    Fooyin::Track detachedTrackA{QStringLiteral("/tmp/detached_yank_visual_a.flac"), 0};
+    detachedTrackA.setId(133);
+    detachedTrackA.setTitle(QStringLiteral("Detached Result A"));
+    detachedTrackA.generateHash();
+
+    Fooyin::Track detachedTrackB{QStringLiteral("/tmp/detached_yank_visual_b.flac"), 0};
+    detachedTrackB.setId(134);
+    detachedTrackB.setTitle(QStringLiteral("Detached Result B"));
+    detachedTrackB.generateHash();
+
+    auto* sourcePlaylist = harness.handler.createNewPlaylist(QStringLiteral("Source Playlist"), {sourceTrack});
+    auto* destinationPlaylist
+        = harness.handler.createNewPlaylist(QStringLiteral("Destination Playlist"), {destinationTrack});
+    QVERIFY(sourcePlaylist);
+    QVERIFY(destinationPlaylist);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    observer.changeCurrentPlaylist(sourcePlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel searchModel;
+    auto* itemA = new QStandardItem(detachedTrackA.title());
+    itemA->setData(QVariant::fromValue(Fooyin::PlaylistTrack{.track = detachedTrackA}), PlaylistItemDataRole);
+    auto* itemB = new QStandardItem(detachedTrackB.title());
+    itemB->setData(QVariant::fromValue(Fooyin::PlaylistTrack{.track = detachedTrackB}), PlaylistItemDataRole);
+    searchModel.appendRow(itemA);
+    searchModel.appendRow(itemB);
+    dialog.view()->setModel(&searchModel);
+    dialog.view()->setCurrentIndex(searchModel.index(0, 0));
+    dialog.show();
+    focusTree(dialog.view());
+
+    QVERIFY(dispatchKey(handler, dialog.view(), u'v'));
+    QVERIFY(dispatchKey(handler, dialog.view(), u'j'));
+    QVERIFY(dispatchKey(handler, dialog.view(), u'y'));
+    handler.enterNormal();
+
+    Fooyin::PlaylistView destinationView;
+    QStandardItemModel destinationModel;
+    destinationModel.appendRow(new QStandardItem(destinationTrack.title()));
+    destinationView.setModel(&destinationModel);
+    destinationView.setCurrentIndex(destinationModel.index(0, 0));
+
+    focusTree(&destinationView);
+    observer.changeCurrentPlaylist(destinationPlaylist);
+    handler.pasteAfter();
+
+    const auto resultTracks = destinationPlaylist->tracks();
+    QCOMPARE(resultTracks.size(), 3);
+    QCOMPARE(resultTracks.at(0).title(), QStringLiteral("Destination"));
+    QCOMPARE(resultTracks.at(1).title(), QStringLiteral("Detached Result A"));
+    QCOMPARE(resultTracks.at(2).title(), QStringLiteral("Detached Result B"));
+    QCOMPARE(sourcePlaylist->trackCount(), 1);
     QCOMPARE(sourcePlaylist->tracks().front().title(), QStringLiteral("Background Source"));
 }
 

@@ -1380,6 +1380,47 @@ Fooyin::TrackList VimHandler::selectedTracksFromActiveViewModel() const
     return tracks;
 }
 
+Fooyin::TrackList VimHandler::selectedTracksFromActiveViewRows(const int startRow, const int endRow) const
+{
+    Fooyin::TrackList tracks;
+
+    auto* view = m_viewLocator->activeView();
+    if(!view || !view->model())
+        return tracks;
+
+    const int rowCount = view->model()->rowCount();
+    if(rowCount <= 0)
+        return tracks;
+
+    const int firstRow = std::clamp(startRow, 0, rowCount);
+    const int lastRow  = std::clamp(endRow, firstRow, rowCount);
+    const int colCount = view->model()->columnCount();
+    const int col      = (colCount > 0 && view->currentIndex().isValid())
+                           ? std::clamp(view->currentIndex().column(), 0, colCount - 1)
+                           : 0;
+
+    tracks.reserve(lastRow - firstRow);
+
+    for(int row = firstRow; row < lastRow; ++row) {
+        QModelIndex index = view->model()->index(row, col);
+        if((!index.isValid() || !index.data(PlaylistItemDataRole).canConvert<Fooyin::PlaylistTrack>()) && col != 0)
+            index = view->model()->index(row, 0);
+
+        if(!index.isValid())
+            continue;
+
+        const QVariant data = index.data(PlaylistItemDataRole);
+        if(!data.canConvert<Fooyin::PlaylistTrack>())
+            continue;
+
+        const Fooyin::PlaylistTrack playlistTrack = data.value<Fooyin::PlaylistTrack>();
+        if(playlistTrack.track.isValid())
+            tracks.push_back(playlistTrack.track);
+    }
+
+    return tracks;
+}
+
 void VimHandler::setLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
@@ -2168,12 +2209,32 @@ void VimHandler::yankRows(int count)
         qCWarning(VIM_LOG) << "yankRows: no active view or no PlaylistHandler";
         return;
     }
+
+    const int row = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
+    if(activeBindingScope() == BindingScope::SearchLibraryDialog) {
+        if(!view->model()) {
+            qCWarning(VIM_LOG) << "yankRows: Search Library results have no model";
+            return;
+        }
+
+        const int end         = std::clamp(row + count, 0, view->model()->rowCount());
+        const auto tracks     = selectedTracksFromActiveViewRows(row, end);
+        const int actualCount = static_cast<int>(tracks.size());
+        qCDebug(VIM_LOG) << "yankRows: Search Library detached results"
+                         << "startRow=" << row << "requestedCount=" << count << "actualCount=" << actualCount;
+        m_clipboard.yank(tracks);
+
+        if(view->selectionModel() && view->currentIndex().isValid())
+            view->selectionModel()->setCurrentIndex(view->currentIndex(),
+                                                    QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        return;
+    }
+
     auto* playlist = targetPlaylist();
     if(!playlist) {
         qCWarning(VIM_LOG) << "yankRows: no playlist found";
         return;
     }
-    const int row         = view->currentIndex().isValid() ? view->currentIndex().row() : 0;
     const auto& all       = playlist->tracks();
     const int end         = std::clamp(row + count, 0, static_cast<int>(all.size()));
     const int actualCount = end - row;
@@ -2240,6 +2301,30 @@ void VimHandler::yankVisualSelection()
         return;
     }
 
+    const int top = qMin(m_visualAnchor, m_visualCursor);
+    const int bot = qMax(m_visualAnchor, m_visualCursor);
+    if(activeBindingScope() == BindingScope::SearchLibraryDialog) {
+        auto* view = m_viewLocator->activeView();
+        if(!view || !view->model()) {
+            qCWarning(VIM_LOG) << "yankVisualSelection: Search Library results have no model";
+            return;
+        }
+
+        const int rowCount = view->model()->rowCount();
+        const int end      = std::min(bot + 1, rowCount);
+        if(top >= rowCount) {
+            qCWarning(VIM_LOG) << "yankVisualSelection: Search Library selection out of range"
+                               << "(top=" << top << "size=" << rowCount << ")";
+            return;
+        }
+
+        const auto tracks = selectedTracksFromActiveViewRows(top, end);
+        qCDebug(VIM_LOG) << "yankVisualSelection: Search Library detached results rows [" << top << "," << (end - 1)
+                         << "] trackCount=" << tracks.size();
+        m_clipboard.yank(tracks);
+        return;
+    }
+
     if(!m_playlistHandler) {
         qCWarning(VIM_LOG) << "yankVisualSelection: no PlaylistHandler";
         return;
@@ -2249,8 +2334,6 @@ void VimHandler::yankVisualSelection()
         qCWarning(VIM_LOG) << "yankVisualSelection: no playlist found";
         return;
     }
-    const int top   = qMin(m_visualAnchor, m_visualCursor);
-    const int bot   = qMax(m_visualAnchor, m_visualCursor);
     const auto& all = playlist->tracks();
     const int end   = std::min(bot + 1, static_cast<int>(all.size()));
     if(top >= static_cast<int>(all.size())) {

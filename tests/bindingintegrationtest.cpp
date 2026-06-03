@@ -74,17 +74,22 @@ private:
         return timeout;
     }
 
-    static bool hasBinding(const QList<BindingEntry>& bindings, QChar key, const QString& action)
+    static const BindingEntry* findBinding(const QList<BindingEntry>& bindings, QChar key, const QString& action)
     {
         for(const auto& binding : bindings) {
             if(binding.actionName != action || binding.keys.size() != 1)
                 continue;
 
             if(binding.keys.front().ch == key)
-                return true;
+                return &binding;
         }
 
-        return false;
+        return nullptr;
+    }
+
+    static bool hasBinding(const QList<BindingEntry>& bindings, QChar key, const QString& action)
+    {
+        return findBinding(bindings, key, action) != nullptr;
     }
 
     static QList<BindingEntry> scopedBindings(const EffectiveBindings& bindings, BindingMode mode, BindingScope scope)
@@ -359,12 +364,13 @@ private Q_SLOTS:
         const auto bindings
             = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
 
-        QCOMPARE(bindings.size(), 1);
-        QCOMPARE(bindings.front().actionName, QStringLiteral("spatialMoveFocus"));
-        QCOMPARE(bindings.front().args, QStringLiteral("down"));
-        QCOMPARE(bindings.front().keys.size(), 1);
-        QCOMPARE(bindings.front().keys.front().modifiers, Qt::ControlModifier);
-        QCOMPARE(bindings.front().keys.front().ch, QChar(u'J'));
+        QCOMPARE(bindings.size(), 2);
+        const auto* binding = findBinding(bindings, QChar(u'J'), QStringLiteral("spatialMoveFocus"));
+        QVERIFY(binding);
+        QCOMPARE(binding->args, QStringLiteral("down"));
+        QCOMPARE(binding->keys.size(), 1);
+        QCOMPARE(binding->keys.front().modifiers, Qt::ControlModifier);
+        QCOMPARE(binding->keys.front().ch, QChar(u'J'));
     }
 
     void testSettingsDialogLoadsAppliesAndResets()
@@ -394,8 +400,10 @@ private Q_SLOTS:
         const auto searchLibraryBindings
             = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
         QCOMPARE(searchLibraryBindings.size(), 1);
-        QCOMPARE(searchLibraryBindings.front().actionName, QStringLiteral("spatialMoveFocus"));
-        QCOMPARE(searchLibraryBindings.front().args, QStringLiteral("down"));
+        const auto* searchLibraryBinding
+            = findBinding(searchLibraryBindings, QChar(u'J'), QStringLiteral("spatialMoveFocus"));
+        QVERIFY(searchLibraryBinding);
+        QCOMPARE(searchLibraryBinding->args, QStringLiteral("down"));
         int jRow = findTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("j"));
         QVERIFY(jRow >= 0);
         QCOMPARE(treeCell(treeModel, jRow, 4), QStringLiteral("Default"));
@@ -674,9 +682,11 @@ private Q_SLOTS:
             QChar(u'q'), QStringLiteral("focusNowPlaying")));
         const auto appliedSearchLibraryBindings
             = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
-        QCOMPARE(appliedSearchLibraryBindings.size(), 1);
-        QCOMPARE(appliedSearchLibraryBindings.front().actionName, QStringLiteral("spatialMoveFocus"));
-        QCOMPARE(appliedSearchLibraryBindings.front().args, QStringLiteral("up"));
+        QCOMPARE(appliedSearchLibraryBindings.size(), 2);
+        const auto* appliedSearchLibraryBinding
+            = findBinding(appliedSearchLibraryBindings, QChar(u'K'), QStringLiteral("spatialMoveFocus"));
+        QVERIFY(appliedSearchLibraryBinding);
+        QCOMPARE(appliedSearchLibraryBinding->args, QStringLiteral("up"));
         QVERIFY(!hasBinding(scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
                             QChar(u'j'), QStringLiteral("moveCursor")));
 
