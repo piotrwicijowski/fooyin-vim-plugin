@@ -24,6 +24,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDialog>
 #include <QItemSelection>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -42,6 +43,8 @@ Q_LOGGING_CATEGORY(VIM_LOG, "fy.vim")
 namespace Fooyin::VimMotions {
 
 namespace {
+
+constexpr int PlaylistItemDataRole = Qt::UserRole + 19;
 
 using ScopedConfigBindings = VimHandler::ScopedConfigBindings;
 using ModeConfigBindings   = VimHandler::ModeConfigBindings;
@@ -394,10 +397,25 @@ VimHandler::VimHandler(QObject* parent)
     });
 
     if(qApp) {
-        QObject::connect(qApp, &QApplication::focusChanged, this, [this](QWidget* /*old*/, QWidget* now) {
+        QObject::connect(qApp, &QApplication::focusChanged, this, [this](QWidget* old, QWidget* now) {
+            const QPointer<QLineEdit> previousAutoInsertEdit = m_autoInsertSearchLibraryEdit;
+
             auto* view = enclosingView(now);
             updateLastPlaylistView(view);
             tryRestorePendingPlaylistState(view);
+
+            if(auto* nextLineEdit = findSearchLibraryLineEdit(now)) {
+                m_autoInsertSearchLibraryEdit = nextLineEdit;
+                if(m_mode == Mode::Normal || m_mode == Mode::Visual)
+                    m_autoInsertRestoreMode = m_mode;
+
+                if(m_mode != Mode::Insert)
+                    enterInsert();
+                return;
+            }
+
+            if(previousAutoInsertEdit && findSearchLibraryLineEdit(old) == previousAutoInsertEdit)
+                restoreAutoInsertedMode();
         });
     }
 
@@ -441,7 +459,15 @@ bool VimHandler::eventFilter(QObject* watched, QEvent* event)
     if(m_suppressFilter)
         return false;
 
-    if(shouldSkipBindings(watched))
+    const auto isSearchLibraryEditableCapture = [this, watched]() {
+        QWidget* widget = QApplication::focusWidget();
+        if(!widget)
+            widget = qobject_cast<QWidget*>(watched);
+
+        return widget && m_mode == Mode::Insert && findSearchLibraryLineEdit(widget) != nullptr;
+    };
+
+    if(shouldSkipBindings(watched) && !isSearchLibraryEditableCapture())
         return false;
 
     const auto type = event->type();
@@ -531,6 +557,9 @@ bool VimHandler::hasPendingInput() const
 void VimHandler::enterNormal()
 {
     qCInfo(VIM_LOG) << "Mode → Normal (from" << static_cast<int>(m_mode) << ")";
+    if(m_autoInsertSearchLibraryEdit)
+        m_autoInsertRestoreMode = Mode::Normal;
+
     if(m_mode == Mode::Visual) {
         // Collapse the visual selection to the cursor row so the paste target
         // remains highlighted after leaving Visual mode.
@@ -559,6 +588,31 @@ void VimHandler::enterInsert()
     clearPendingInputState();
     m_count = 0;
     emit modeChanged(m_mode);
+}
+
+void VimHandler::restoreAutoInsertedMode()
+{
+    const auto restoreMode        = m_autoInsertRestoreMode;
+    m_autoInsertSearchLibraryEdit = nullptr;
+    m_autoInsertRestoreMode.reset();
+
+    if(!restoreMode.has_value())
+        return;
+
+    if(*restoreMode == Mode::Normal) {
+        enterNormal();
+        return;
+    }
+
+    if(*restoreMode == Mode::Visual) {
+        qCInfo(VIM_LOG) << "Mode → Visual (restored from Search Library line edit)";
+        m_mode = Mode::Visual;
+        clearPendingInputState();
+        m_count = 0;
+        emit modeChanged(m_mode);
+        if(m_visualAnchor >= 0 && m_visualCursor >= 0)
+            updateVisualSelection();
+    }
 }
 
 void VimHandler::enterVisual()
@@ -1136,6 +1190,38 @@ std::optional<std::pair<int, int>> VimHandler::selectedTrackRowRange(Fooyin::Pla
     return std::pair{row, end};
 }
 
+Fooyin::TrackList VimHandler::selectedTracksFromActiveViewModel() const
+{
+    Fooyin::TrackList tracks;
+
+    auto* view = m_viewLocator->activeView();
+    if(!view || !view->model() || !view->selectionModel())
+        return tracks;
+
+    QModelIndexList selectedRows = view->selectionModel()->selectedRows();
+    if(selectedRows.isEmpty() && view->currentIndex().isValid())
+        selectedRows.push_back(view->currentIndex().siblingAtColumn(0));
+
+    std::ranges::sort(selectedRows, [](const QModelIndex& lhs, const QModelIndex& rhs) {
+        if(lhs.row() != rhs.row())
+            return lhs.row() < rhs.row();
+        return lhs.column() < rhs.column();
+    });
+
+    tracks.reserve(selectedRows.size());
+    for(const QModelIndex& index : selectedRows) {
+        const QVariant data = index.data(PlaylistItemDataRole);
+        if(!data.canConvert<Fooyin::PlaylistTrack>())
+            continue;
+
+        const Fooyin::PlaylistTrack playlistTrack = data.value<Fooyin::PlaylistTrack>();
+        if(playlistTrack.track.isValid())
+            tracks.push_back(playlistTrack.track);
+    }
+
+    return tracks;
+}
+
 void VimHandler::setLocalMark(QChar mark)
 {
     auto* playlist = targetPlaylist();
@@ -1429,6 +1515,60 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
     if(activeViewContext() != ViewContext::PlaylistView) {
         qCDebug(VIM_LOG) << (move ? "moveAfterCurrentPlaying" : "copyAfterCurrentPlaying")
                          << ": ignored outside playlist view";
+        return;
+    }
+
+    if(activeBindingScope() == BindingScope::SearchLibraryDialog) {
+        if(move) {
+            qCWarning(VIM_LOG) << "moveAfterCurrentPlaying: unsupported for Search Library detached results";
+            return;
+        }
+
+        auto* destinationPlaylist = m_playlistHandler->activePlaylist();
+        if(!destinationPlaylist) {
+            qCWarning(VIM_LOG) << "copyAfterCurrentPlaying: playing playlist missing";
+            return;
+        }
+
+        const int playingIndex = destinationPlaylist->currentTrackIndex();
+        if(playingIndex < 0) {
+            qCWarning(VIM_LOG) << "copyAfterCurrentPlaying: no current playing track";
+            return;
+        }
+
+        Fooyin::TrackList selectedTracks;
+        if(m_trackSelectionController) {
+            if(const auto* selection = m_trackSelectionController->selectedSelection(); selection) {
+                selectedTracks = selection->tracks;
+            }
+        }
+        if(selectedTracks.empty())
+            selectedTracks = selectedTracksFromActiveViewModel();
+        if(selectedTracks.empty()) {
+            qCWarning(VIM_LOG) << "copyAfterCurrentPlaying: no valid Search Library selected tracks";
+            return;
+        }
+
+        const Fooyin::PlaylistTrackList destinationBefore = destinationPlaylist->playlistTracks();
+        Fooyin::PlaylistTrackList destinationAfter        = destinationBefore;
+        auto insertedEntries = Fooyin::PlaylistTrack::fromTracks(selectedTracks, destinationPlaylist->id());
+        const int insertPos  = std::clamp(playingIndex + 1, 0, static_cast<int>(destinationAfter.size()));
+        destinationAfter.insert(destinationAfter.begin() + insertPos, insertedEntries.begin(), insertedEntries.end());
+
+        qCDebug(VIM_LOG) << "copyAfterCurrentPlaying: Search Library detached results"
+                         << "destinationPlaylist=" << destinationPlaylist->name()
+                         << "trackCount=" << selectedTracks.size() << "insertPos=" << insertPos;
+
+        std::vector<PlaylistSnapshot> beforeSnapshots;
+        std::vector<PlaylistSnapshot> afterSnapshots;
+        beforeSnapshots.push_back({destinationPlaylist->id(), destinationBefore});
+        afterSnapshots.push_back({destinationPlaylist->id(), destinationAfter});
+        applyPlaylistSnapshots(afterSnapshots);
+        pushUndoEntry(std::move(beforeSnapshots), std::move(afterSnapshots), -1, -1, 0,
+                      static_cast<int>(destinationBefore.size()), static_cast<int>(destinationAfter.size()));
+
+        if(m_mode == Mode::Visual)
+            enterNormal();
         return;
     }
 
@@ -2567,9 +2707,47 @@ VimHandler::ViewContext VimHandler::viewContext(QAbstractItemView* view) const
     return ViewContext::Other;
 }
 
+bool VimHandler::isSearchLibraryDialogWidget(QWidget* widget) const
+{
+    return findSearchLibraryDialog(widget) != nullptr;
+}
+
+QLineEdit* VimHandler::findSearchLibraryLineEdit(QWidget* widget) const
+{
+    QWidget* current = widget;
+    while(current) {
+        if(auto* lineEdit = qobject_cast<QLineEdit*>(current)) {
+            if(findSearchLibraryDialog(lineEdit))
+                return lineEdit;
+        }
+        current = current->parentWidget();
+    }
+
+    return nullptr;
+}
+
 VimHandler::ViewContext VimHandler::activeViewContext() const
 {
     return viewContext(m_viewLocator->activeView());
+}
+
+QDialog* VimHandler::findSearchLibraryDialog(QWidget* widget) const
+{
+    QWidget* current = widget;
+    while(current) {
+        if(auto* dialog = qobject_cast<QDialog*>(current)) {
+            if(dialog->windowTitle().startsWith(QCoreApplication::translate("SearchDialog", "Search Library"))) {
+                if(auto* view = dialog->findChild<QAbstractItemView*>()) {
+                    const auto viewClassName = QLatin1String(view->metaObject()->className());
+                    if(viewClassName == QLatin1String("Fooyin::PlaylistView"))
+                        return dialog;
+                }
+            }
+        }
+        current = current->parentWidget();
+    }
+
+    return nullptr;
 }
 
 bool VimHandler::triggerCurrentContextAction(const Fooyin::Id& id) const
@@ -3192,6 +3370,28 @@ void VimHandler::refreshPendingTimeout()
 
 void VimHandler::moveSpatialFocus(Direction dir)
 {
+    if(auto* focusWidget = QApplication::focusWidget(); focusWidget && isSearchLibraryDialogWidget(focusWidget)) {
+        if(auto* dialog = findSearchLibraryDialog(focusWidget)) {
+            auto* searchBar   = dialog->findChild<QLineEdit*>();
+            auto* resultsView = dialog->findChild<QAbstractItemView*>();
+
+            if(searchBar && resultsView) {
+                if((dir == Direction::Down) && (focusWidget == searchBar || searchBar->isAncestorOf(focusWidget))) {
+                    resultsView->setFocus(Qt::OtherFocusReason);
+                    return;
+                }
+
+                if((dir == Direction::Up)
+                   && (focusWidget == resultsView || resultsView->isAncestorOf(focusWidget)
+                       || focusWidget == resultsView->viewport()
+                       || resultsView->viewport()->isAncestorOf(focusWidget))) {
+                    searchBar->setFocus(Qt::OtherFocusReason);
+                    return;
+                }
+            }
+        }
+    }
+
     auto* startView = m_viewLocator->activeView();
     if(!startView) {
         qCWarning(VIM_LOG) << "moveSpatialFocus: no active view";
@@ -3747,7 +3947,14 @@ BindingScope VimHandler::bindingScopeForView(QAbstractItemView* view) const
 
 BindingScope VimHandler::activeBindingScope() const
 {
-    return bindingScopeForView(m_viewLocator->activeView());
+    if(isSearchLibraryDialogWidget(QApplication::focusWidget()))
+        return BindingScope::SearchLibraryDialog;
+
+    auto* activeView = m_viewLocator->activeView();
+    if(isSearchLibraryDialogWidget(activeView))
+        return BindingScope::SearchLibraryDialog;
+
+    return bindingScopeForView(activeView);
 }
 
 bool VimHandler::pendingConfigPrefixMatches(const BindingEntry& entry) const

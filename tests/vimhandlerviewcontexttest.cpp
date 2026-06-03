@@ -19,6 +19,7 @@
 #include <QAbstractItemModel>
 #include <QApplication>
 #include <QDataStream>
+#include <QDialog>
 #include <QFocusEvent>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -54,6 +55,8 @@ public:
 namespace {
 
 using namespace Qt::StringLiterals;
+
+constexpr int PlaylistItemDataRole = Qt::UserRole + 19;
 
 bool createPlaylistTables(const Fooyin::DbConnectionPoolPtr& dbPool)
 {
@@ -278,6 +281,39 @@ public:
 
 private:
     QTreeView* m_view;
+};
+
+class SearchDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit SearchDialog(QWidget* parent = nullptr)
+        : QDialog(parent)
+        , m_searchBar(new QLineEdit(this))
+        , m_view(new Fooyin::PlaylistView(this))
+    {
+        setWindowTitle(QStringLiteral("Search Library"));
+
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(m_searchBar);
+        layout->addWidget(m_view);
+    }
+
+    [[nodiscard]] QLineEdit* searchBar() const
+    {
+        return m_searchBar;
+    }
+
+    [[nodiscard]] Fooyin::PlaylistView* view() const
+    {
+        return m_view;
+    }
+
+private:
+    QLineEdit* m_searchBar;
+    Fooyin::PlaylistView* m_view;
 };
 
 class FakeCurrentPlaylistController : public Fooyin::CurrentPlaylistController
@@ -677,6 +713,8 @@ private Q_SLOTS:
     void classifiesNullView();
     void classifiesPlaylistView();
     void classifiesPlaylistOrganiserTree();
+    void detectsSearchLibraryDialogView();
+    void detectsSearchLibraryDialogLineEdit();
     void classifiesOtherView();
     void organiserMoveDownTargetsNextVisibleSibling();
     void organiserMoveDownTargetsExpandedGroupContents();
@@ -694,6 +732,15 @@ private Q_SLOTS:
     void organiserInlineEditorSuspendsVimCapture();
     void searchBarTypingKeepsFocus();
     void scopedBindingsPreferActiveViewOverGlobalFallback();
+    void searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal();
+    void searchLibrarySearchFieldDispatchesScopedBindingAndFallsBackToTyping();
+    void searchLibrarySearchFieldFallsBackToGlobalBinding();
+    void searchLibraryCtrlJMovesFocusToResults();
+    void searchLibraryCtrlKMovesFocusToSearchField();
+    void searchLibraryLineEditAutoEntersInsertAndRestoresNormal();
+    void searchLibraryLineEditRestoresVisualModeOnBlur();
+    void copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks();
+    void moveAfterCurrentPlayingIsNoOpForSearchLibrarySelection();
     void pasteTargetsObservedEmptySelectedPlaylist();
     void switchesToNextPlaylist();
     void switchesToPreviousPlaylist();
@@ -733,6 +780,23 @@ void TestVimHandlerViewContext::classifiesPlaylistOrganiserTree()
     VimHandler handler;
     FakeOrganiserWidget organiser;
     QCOMPARE(handler.viewContext(organiser.view()), VimHandler::ViewContext::PlaylistOrganiser);
+}
+
+void TestVimHandlerViewContext::detectsSearchLibraryDialogView()
+{
+    VimHandler handler;
+    SearchDialog dialog;
+
+    QVERIFY(handler.isSearchLibraryDialogWidget(dialog.view()));
+    QCOMPARE(handler.viewContext(dialog.view()), VimHandler::ViewContext::PlaylistView);
+}
+
+void TestVimHandlerViewContext::detectsSearchLibraryDialogLineEdit()
+{
+    VimHandler handler;
+    SearchDialog dialog;
+
+    QVERIFY(handler.isSearchLibraryDialogWidget(dialog.searchBar()));
 }
 
 void TestVimHandlerViewContext::classifiesOtherView()
@@ -1194,6 +1258,358 @@ void TestVimHandlerViewContext::scopedBindingsPreferActiveViewOverGlobalFallback
 
     QVERIFY(dispatchKey(handler, otherWidget.view(), u'j'));
     QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerViewContext::searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_scope.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/j"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistView/Normal/j"), QStringLiteral("moveCursor:+1"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/j"),
+                     QStringLiteral("clearPending"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/k"), QStringLiteral("enterVisual"));
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistView/Normal/k"), QStringLiteral("moveCursor:-1"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    model.appendRow(new QStandardItem(QStringLiteral("Two")));
+    dialog.view()->setModel(&model);
+    dialog.view()->setCurrentIndex(model.index(0, 0));
+    focusTree(dialog.view());
+
+    QVERIFY(dispatchKey(handler, dialog.view(), u'j'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(dialog.view()->currentIndex().row(), 0);
+
+    QVERIFY(dispatchKey(handler, dialog.view(), u'k'));
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(dialog.view()->currentIndex().row(), 0);
+}
+
+void TestVimHandlerViewContext::searchLibrarySearchFieldDispatchesScopedBindingAndFallsBackToTyping()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_field_scope.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J"),
+                     QStringLiteral("spatialMoveFocus:down"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    qApp->installEventFilter(&handler);
+
+    QTest::keyClick(dialog.searchBar(), Qt::Key_J, Qt::ControlModifier);
+    pumpEvents();
+    QVERIFY(dialog.view()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(dialog.searchBar()->text(), QString());
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    dialog.searchBar()->clear();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+    QTest::keyClick(dialog.searchBar(), Qt::Key_X);
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+    QCOMPARE(dialog.searchBar()->text(), QStringLiteral("x"));
+
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibrarySearchFieldFallsBackToGlobalBinding()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_field_global.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Insert/<Esc>"), QStringLiteral("leaveInsertMode"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    dialog.show();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    qApp->installEventFilter(&handler);
+
+    QTest::keyClick(dialog.searchBar(), Qt::Key_Escape);
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(dialog.searchBar()->text(), QString());
+
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibraryCtrlJMovesFocusToResults()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_focus_down.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J"),
+                     QStringLiteral("spatialMoveFocus:down"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+
+    qApp->installEventFilter(&handler);
+    QTest::keyClick(dialog.searchBar(), Qt::Key_J, Qt::ControlModifier);
+    pumpEvents();
+
+    QVERIFY(dialog.view()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibraryCtrlKMovesFocusToSearchField()
+{
+    const QString settingsPath = QDir::tempPath() + QStringLiteral("/fooyin_vim_search_library_focus_up.ini");
+    QFile::remove(settingsPath);
+
+    Fooyin::SettingsManager settings{settingsPath};
+    VimMotionsSettings vimSettings(&settings);
+    Q_UNUSED(vimSettings)
+    settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
+    settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+K"),
+                     QStringLiteral("spatialMoveFocus:up"));
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+    focusTree(dialog.view());
+
+    qApp->installEventFilter(&handler);
+    QTest::keyClick(dialog.view(), Qt::Key_K, Qt::ControlModifier);
+    pumpEvents();
+
+    QVERIFY(dialog.searchBar()->hasFocus());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchLibraryLineEditAutoEntersInsertAndRestoresNormal()
+{
+    VimHandler handler;
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+
+    focusTree(dialog.view());
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    dialog.view()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerViewContext::searchLibraryLineEditRestoresVisualModeOnBlur()
+{
+    VimHandler handler;
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("One")));
+    model.appendRow(new QStandardItem(QStringLiteral("Two")));
+    dialog.view()->setModel(&model);
+    dialog.show();
+
+    focusTree(dialog.view());
+    handler.enterVisual();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+
+    dialog.searchBar()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Insert);
+
+    dialog.view()->setFocus();
+    pumpEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Visual);
+}
+
+void TestVimHandlerViewContext::copyAfterCurrentPlayingUsesSearchLibrarySelectionTracks()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("search_library_copy_after_playing.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    Fooyin::Track sourceTrack{QStringLiteral("/tmp/source.flac"), 0};
+    sourceTrack.setId(101);
+    sourceTrack.setTitle(QStringLiteral("Background Source"));
+    sourceTrack.generateHash();
+
+    Fooyin::Track playingTrack{QStringLiteral("/tmp/playing.flac"), 0};
+    playingTrack.setId(102);
+    playingTrack.setTitle(QStringLiteral("Playing"));
+    playingTrack.generateHash();
+
+    Fooyin::Track tailTrack{QStringLiteral("/tmp/tail.flac"), 0};
+    tailTrack.setId(103);
+    tailTrack.setTitle(QStringLiteral("Tail"));
+    tailTrack.generateHash();
+
+    Fooyin::Track detachedTrack{QStringLiteral("/tmp/detached.flac"), 0};
+    detachedTrack.setId(104);
+    detachedTrack.setTitle(QStringLiteral("Detached Result"));
+    detachedTrack.generateHash();
+
+    auto* sourcePlaylist = harness.handler.createNewPlaylist(QStringLiteral("Source Playlist"), {sourceTrack});
+    auto* playingPlaylist
+        = harness.handler.createNewPlaylist(QStringLiteral("Playing Playlist"), {playingTrack, tailTrack});
+    QVERIFY(sourcePlaylist);
+    QVERIFY(playingPlaylist);
+
+    playingPlaylist->changeCurrentIndex(0);
+    harness.handler.changeActivePlaylist(playingPlaylist);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    observer.changeCurrentPlaylist(sourcePlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    auto* item = new QStandardItem(detachedTrack.title());
+    item->setData(QVariant::fromValue(Fooyin::PlaylistTrack{.track = detachedTrack}), PlaylistItemDataRole);
+    model.appendRow(item);
+    dialog.view()->setModel(&model);
+    dialog.view()->setCurrentIndex(model.index(0, 0));
+    dialog.show();
+    focusTree(dialog.view());
+
+    handler.copyAfterCurrentPlaying();
+
+    const auto resultTracks = playingPlaylist->tracks();
+    QCOMPARE(resultTracks.size(), 3);
+    QCOMPARE(resultTracks.at(0).title(), QStringLiteral("Playing"));
+    QCOMPARE(resultTracks.at(1).title(), QStringLiteral("Detached Result"));
+    QCOMPARE(resultTracks.at(2).title(), QStringLiteral("Tail"));
+    QCOMPARE(sourcePlaylist->tracks().size(), 1);
+    QCOMPARE(sourcePlaylist->tracks().front().title(), QStringLiteral("Background Source"));
+}
+
+void TestVimHandlerViewContext::moveAfterCurrentPlayingIsNoOpForSearchLibrarySelection()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("search_library_move_after_playing.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    Fooyin::Track sourceTrack{QStringLiteral("/tmp/source_move.flac"), 0};
+    sourceTrack.setId(111);
+    sourceTrack.setTitle(QStringLiteral("Background Source"));
+    sourceTrack.generateHash();
+
+    Fooyin::Track playingTrack{QStringLiteral("/tmp/playing_move.flac"), 0};
+    playingTrack.setId(112);
+    playingTrack.setTitle(QStringLiteral("Playing"));
+    playingTrack.generateHash();
+
+    Fooyin::Track tailTrack{QStringLiteral("/tmp/tail_move.flac"), 0};
+    tailTrack.setId(113);
+    tailTrack.setTitle(QStringLiteral("Tail"));
+    tailTrack.generateHash();
+
+    Fooyin::Track detachedTrack{QStringLiteral("/tmp/detached_move.flac"), 0};
+    detachedTrack.setId(114);
+    detachedTrack.setTitle(QStringLiteral("Detached Result"));
+    detachedTrack.generateHash();
+
+    auto* sourcePlaylist = harness.handler.createNewPlaylist(QStringLiteral("Source Playlist"), {sourceTrack});
+    auto* playingPlaylist
+        = harness.handler.createNewPlaylist(QStringLiteral("Playing Playlist"), {playingTrack, tailTrack});
+    QVERIFY(sourcePlaylist);
+    QVERIFY(playingPlaylist);
+
+    playingPlaylist->changeCurrentIndex(0);
+    harness.handler.changeActivePlaylist(playingPlaylist);
+
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    observer.changeCurrentPlaylist(sourcePlaylist);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    SearchDialog dialog;
+    QStandardItemModel model;
+    auto* item = new QStandardItem(detachedTrack.title());
+    item->setData(QVariant::fromValue(Fooyin::PlaylistTrack{.track = detachedTrack}), PlaylistItemDataRole);
+    model.appendRow(item);
+    dialog.view()->setModel(&model);
+    dialog.view()->setCurrentIndex(model.index(0, 0));
+    dialog.show();
+    focusTree(dialog.view());
+
+    handler.moveAfterCurrentPlaying();
+
+    const auto resultTracks = playingPlaylist->tracks();
+    QCOMPARE(resultTracks.size(), 2);
+    QCOMPARE(resultTracks.at(0).title(), QStringLiteral("Playing"));
+    QCOMPARE(resultTracks.at(1).title(), QStringLiteral("Tail"));
+    QCOMPARE(sourcePlaylist->tracks().size(), 1);
+    QCOMPARE(sourcePlaylist->tracks().front().title(), QStringLiteral("Background Source"));
 }
 
 void TestVimHandlerViewContext::pasteTargetsObservedEmptySelectedPlaylist()

@@ -20,7 +20,9 @@
 #include <vector>
 
 class QAbstractItemView;
+class QDialog;
 class QKeyEvent;
+class QLineEdit;
 class QTreeView;
 class QWidget;
 
@@ -84,6 +86,8 @@ public:
     // Testing support
     void rebuildBindings();
     [[nodiscard]] ViewContext viewContext(QAbstractItemView* view) const;
+    [[nodiscard]] bool isSearchLibraryDialogWidget(QWidget* widget) const;
+    [[nodiscard]] QLineEdit* findSearchLibraryLineEdit(QWidget* widget) const;
     [[nodiscard]] const ModeConfigBindings& configBindings() const
     {
         return m_configBindings;
@@ -224,12 +228,14 @@ private:
     [[nodiscard]] std::vector<VimClipboard::MarkTransfer> takeCutMarks(Fooyin::Playlist* playlist, int startRow,
                                                                        int endRow);
     [[nodiscard]] ViewContext activeViewContext() const;
+    [[nodiscard]] QDialog* findSearchLibraryDialog(QWidget* widget) const;
     [[nodiscard]] BindingScope bindingScopeForView(QAbstractItemView* view) const;
     [[nodiscard]] BindingScope activeBindingScope() const;
     [[nodiscard]] Fooyin::Playlist* targetPlaylist() const;
     [[nodiscard]] Fooyin::FyWidget* findEnclosingFyWidget(QAbstractItemView* view) const;
     [[nodiscard]] bool organiserEditorActive(QObject* watched = nullptr) const;
     [[nodiscard]] std::optional<std::pair<int, int>> selectedTrackRowRange(Fooyin::Playlist* playlist);
+    [[nodiscard]] Fooyin::TrackList selectedTracksFromActiveViewModel() const;
     void scheduleOrganiserInsertedSelection(QTreeView* tree, const QModelIndex& parent, int row);
     void insertSelectionAfterCurrentPlaying(bool move);
     bool triggerCurrentContextAction(const Fooyin::Id& id) const;
@@ -245,6 +251,7 @@ private:
     void scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId, const Fooyin::UId& entryId,
                               int fallbackRow, int col, int expectedRowCount);
     void changePlaylistByOffset(int delta);
+    void restoreAutoInsertedMode();
 
     Mode m_mode{Mode::Normal};
     int m_count{0};
@@ -295,6 +302,8 @@ private:
     QPointer<VimSearchBar> m_filterBar;
     QPointer<Fooyin::FyWidget> m_filterTarget;
     QString m_lastFilter;
+    QPointer<QLineEdit> m_autoInsertSearchLibraryEdit;
+    std::optional<Mode> m_autoInsertRestoreMode;
 
     QPointer<VimSearchBar> m_searchBar;
     QPointer<QAbstractItemView> m_searchView;
