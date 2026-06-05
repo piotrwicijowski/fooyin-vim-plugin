@@ -29,6 +29,7 @@ class QWidget;
 
 namespace Fooyin {
 class ActionManager;
+class DspNumericControlService;
 class FyWidget;
 class Playlist;
 class PlaylistHandler;
@@ -81,6 +82,7 @@ public:
     void setSettingsBackend(VimMotionsBindingBackend* backend);
     void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
     void setCurrentPlaylistController(Fooyin::CurrentPlaylistController* controller);
+    void setDspNumericControl(Fooyin::DspNumericControlService* service);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -126,6 +128,8 @@ public:
     void nextPlaylist();
     void previousPlaylist();
     void triggerFooyinAction(const QStringView& actionId);
+    void adjustDspValue(const QStringView& args);
+    void setDspValue(const QStringView& args);
     void beginSetMark();
     void beginJumpToMark();
 
@@ -261,6 +265,7 @@ private:
                               int fallbackRow, int col, int expectedRowCount);
     void changePlaylistByOffset(int delta);
     void restoreAutoInsertedMode();
+    void updateDspValue(const QStringView& args, bool relative);
 
     Mode m_mode{Mode::Normal};
     int m_count{0};
@@ -301,6 +306,7 @@ private:
     QMetaObject::Connection m_playlistStateTrackingConnection;
     Fooyin::UId m_observedSelectedPlaylistId;
     Fooyin::UId m_pendingPlaylistRestoreId;
+    Fooyin::DspNumericControlService* m_dspNumericControl{nullptr};
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;

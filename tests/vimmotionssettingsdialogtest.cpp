@@ -140,6 +140,8 @@ void TestVimMotionsSettingsDialog::testBindingEditorShowsHelp()
                 QVERIFY(text);
                 QVERIFY(text->text().contains(QStringLiteral("moveCursor(+/-N)")));
                 QVERIFY(text->text().contains(QStringLiteral("fooyinAction(Action.Id)")));
+                QVERIFY(text->text().contains(QStringLiteral("adjustDspValue(DspId,Delta)")));
+                QVERIFY(text->text().contains(QStringLiteral("setDspValue(DspId,Value)")));
 
                 auto* closeButtons
                     = helpDialog->findChild<QDialogButtonBox*>(QStringLiteral("bindingActionHelpDialogButtons"));

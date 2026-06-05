@@ -93,6 +93,8 @@ void VimActions::registerAll()
     registerAction(u"nextPlaylist"_s, [](VimHandler& h, const QStringView&) { h.nextPlaylist(); });
     registerAction(u"previousPlaylist"_s, [](VimHandler& h, const QStringView&) { h.previousPlaylist(); });
     registerAction(u"fooyinAction"_s, [](VimHandler& h, const QStringView& a) { h.triggerFooyinAction(a); });
+    registerAction(u"adjustDspValue"_s, [](VimHandler& h, const QStringView& a) { h.adjustDspValue(a); });
+    registerAction(u"setDspValue"_s, [](VimHandler& h, const QStringView& a) { h.setDspValue(a); });
     registerAction(u"focusNowPlayingAndExit"_s, [](VimHandler& h, const QStringView&) {
         h.enterNormal();
         h.focusNowPlaying();

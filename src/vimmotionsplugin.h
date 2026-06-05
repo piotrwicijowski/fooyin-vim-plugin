@@ -14,6 +14,7 @@ struct GuiPluginContext;
 class ActionManager;
 class PlaylistHandler;
 class CurrentPlaylistController;
+class DspNumericControlService;
 class SearchController;
 class SettingsManager;
 class TrackSelectionController;

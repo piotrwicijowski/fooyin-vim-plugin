@@ -373,6 +373,29 @@ private Q_SLOTS:
         QCOMPARE(binding->keys.front().ch, QChar(u'J'));
     }
 
+    void testBindingBackendLoadsDspValueActions()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_dsp_actions.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/x"),
+                         QStringLiteral("adjustDspValue:fooyin.dsp.soundtouch.tempo,+0.01"));
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/s"),
+                         QStringLiteral("setDspValue:fooyin.dsp.soundtouch.tempo,1.25"));
+
+        VimMotionsBindingBackend backend{&settings};
+        const auto bindings = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+
+        const auto* adjustBinding = findBinding(bindings, QChar(u'x'), QStringLiteral("adjustDspValue"));
+        QVERIFY(adjustBinding);
+        QCOMPARE(adjustBinding->args, QStringLiteral("fooyin.dsp.soundtouch.tempo,+0.01"));
+
+        const auto* setBinding = findBinding(bindings, QChar(u's'), QStringLiteral("setDspValue"));
+        QVERIFY(setBinding);
+        QCOMPARE(setBinding->args, QStringLiteral("fooyin.dsp.soundtouch.tempo,1.25"));
+    }
+
     void testSettingsDialogLoadsAppliesAndResets()
     {
         Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_dialog.ini"))};
@@ -697,6 +720,40 @@ private Q_SLOTS:
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+K")).toString(),
                  QStringLiteral("spatialMoveFocus:up"));
         QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Global/Normal/j")).toString(), QString{});
+    }
+
+    void testSettingsDialogAppliesDspValueBindingEdit()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings_dialog_dsp.ini"))};
+        VimMotionsSettings vimSettings{&settings};
+        Q_UNUSED(vimSettings);
+
+        VimMotionsBindingBackend backend{&settings};
+        VimMotionsSettingsDialog dialog{&settings, &backend};
+        auto* tree      = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
+        auto* addButton = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
+        auto* buttons   = dialog.findChild<QDialogButtonBox*>();
+        QVERIFY(tree);
+        QVERIFY(addButton);
+        QVERIFY(buttons);
+
+        const auto* treeModel = tree->model();
+        QVERIFY(treeModel);
+
+        acceptBindingEditor(BindingScope::Global, BindingMode::Normal, QStringLiteral("x"),
+                            QStringLiteral("adjustDspValue"), QStringLiteral("fooyin.dsp.soundtouch.tempo,+0.01"));
+        addButton->click();
+
+        QVERIFY(hasTreeRow(treeModel, QStringLiteral("Global"), QStringLiteral("Normal"), QStringLiteral("x"),
+                           QStringLiteral("adjustDspValue:fooyin.dsp.soundtouch.tempo,+0.01")));
+
+        auto* applyButton = buttons->button(QDialogButtonBox::Apply);
+        QVERIFY(applyButton);
+        applyButton->click();
+
+        QSettings fileSettings(m_tempDir.filePath(QStringLiteral("vim_settings_dialog_dsp.ini")), QSettings::IniFormat);
+        QCOMPARE(fileSettings.value(QStringLiteral("VimMotions/Bindings/Global/Normal/x")).toString(),
+                 QStringLiteral("adjustDspValue:fooyin.dsp.soundtouch.tempo,+0.01"));
     }
 };
 

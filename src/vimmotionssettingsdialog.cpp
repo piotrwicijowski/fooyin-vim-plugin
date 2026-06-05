@@ -134,7 +134,8 @@ QString actionsHelpText()
         "moveRows(+/-1), extendCursor(+/-N), extendToFirst, extendToEnd, extendToRow(N), swapAnchor, "
         "deleteSelection, yankSelection, extendHalfPage(+/-1), moveVisualSelection(+/-1)\n"
         "spatialMoveFocus(down/up/left/right), undo, redo, focusNowPlaying, fooyinAction(Action.Id), "
-        "focusNowPlayingAndExit, beginSetMark, beginJumpToMark\n"
+        "adjustDspValue(DspId,Delta), setDspValue(DspId,Value), focusNowPlayingAndExit, beginSetMark, "
+        "beginJumpToMark\n"
         "enterSearch, nextMatch, prevMatch, enterFilter, nextMatchAndExit, prevMatchAndExit, enterSearchAndExit, "
         "clearPending");
 }

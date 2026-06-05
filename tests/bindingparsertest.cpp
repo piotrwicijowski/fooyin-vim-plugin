@@ -29,6 +29,9 @@ private Q_SLOTS:
     void testOrganiserAddGroupAction();
     void testSelectAllAction();
     void testFooyinAction();
+    void testAdjustDspValueAction();
+    void testAdjustDspValueNegativeAction();
+    void testSetDspValueAction();
     void testCopyAfterCurrentPlayingAction();
     void testMoveAfterCurrentPlayingAction();
 };
@@ -195,6 +198,33 @@ void TestParseBinding::testFooyinAction()
     QCOMPARE(e.args, QStringLiteral("Playback.Next"));
     QCOMPARE(e.keys.size(), 1);
     QCOMPARE(e.keys[0].key, Qt::Key_Space);
+}
+
+void TestParseBinding::testAdjustDspValueAction()
+{
+    auto e
+        = parseBindingString(QStringLiteral("x"), QStringLiteral("adjustDspValue:fooyin.dsp.soundtouch.tempo,+0.01"));
+    QCOMPARE(e.actionName, QStringLiteral("adjustDspValue"));
+    QCOMPARE(e.args, QStringLiteral("fooyin.dsp.soundtouch.tempo,+0.01"));
+    QCOMPARE(e.keys.size(), 1);
+    QCOMPARE(e.keys[0].ch, QChar(u'x'));
+}
+
+void TestParseBinding::testAdjustDspValueNegativeAction()
+{
+    auto e
+        = parseBindingString(QStringLiteral("x"), QStringLiteral("adjustDspValue:fooyin.dsp.soundtouch.tempo,-0.05"));
+    QCOMPARE(e.actionName, QStringLiteral("adjustDspValue"));
+    QCOMPARE(e.args, QStringLiteral("fooyin.dsp.soundtouch.tempo,-0.05"));
+}
+
+void TestParseBinding::testSetDspValueAction()
+{
+    auto e = parseBindingString(QStringLiteral("s"), QStringLiteral("setDspValue:fooyin.dsp.soundtouch.tempo,1.25"));
+    QCOMPARE(e.actionName, QStringLiteral("setDspValue"));
+    QCOMPARE(e.args, QStringLiteral("fooyin.dsp.soundtouch.tempo,1.25"));
+    QCOMPARE(e.keys.size(), 1);
+    QCOMPARE(e.keys[0].ch, QChar(u's'));
 }
 
 void TestParseBinding::testCopyAfterCurrentPlayingAction()

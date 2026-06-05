@@ -327,6 +327,7 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 - No args: `undo`, `enterInsert`, `jumpToFirst`
 - With args: `moveCursor:+1`, `spatialMoveFocus:down`, `treeMoveSibling:-1`
 - Trigger any fooyin command by ID: `fooyinAction:Playback.Next`, `fooyinAction:View.ShowNowPlaying`
+- Control numeric DSP parameters: `adjustDspValue:fooyin.dsp.soundtouch.tempo,+0.01`, `setDspValue:fooyin.dsp.soundtouch.tempo,1.25`
 - The arg string is passed to the action handler; each action parses its own args
 
 ### Available actions
@@ -366,6 +367,8 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `nextPlaylist` | — | Normal, Visual | Switch the selected playlist forward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `previousPlaylist` | — | Normal, Visual | Switch the selected playlist backward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
+| `adjustDspValue` | `DspId,Delta` | Normal, Visual, Insert | Adjust a single matching numeric DSP target by `Delta`; `[count]` multiplies the delta |
+| `setDspValue` | `DspId,Value` | Normal, Visual, Insert | Set a single matching numeric DSP target to `Value`; `[count]` is ignored |
 | `beginSetMark` | — | Normal, Visual | Begin setting a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
 | `beginJumpToMark` | — | Normal, Visual | Begin jumping to a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
 | `moveRows` | `+1` / `-1` | Normal | Move current row in playlist |
@@ -406,6 +409,27 @@ There is no default binding for `fooyinAction`; it is only available for custom 
 `nextPlaylist` and `previousPlaylist` are also available for custom config bindings only. They do not have default bindings.
 
 You can discover action IDs in **Settings -> Shortcuts**. The command ID is shown alongside each shortcut entry, for example `Playback.Next` or `View.ShowNowPlaying`.
+
+### Binding numeric DSP controls
+
+Use `adjustDspValue:<DspId>,<Delta>` and `setDspValue:<DspId>,<Value>` when you want vim bindings to change a DSP parameter directly through fooyin's public numeric DSP API.
+
+Example tempo-shift bindings:
+
+```ini
+[VimMotions]
+Bindings\Global\Normal\]t=adjustDspValue:fooyin.dsp.soundtouch.tempo,+0.01
+Bindings\Global\Normal\[t=adjustDspValue:fooyin.dsp.soundtouch.tempo,-0.01
+Bindings\Global\Normal\gt=setDspValue:fooyin.dsp.soundtouch.tempo,1.00
+Bindings\Global\Normal\gT=setDspValue:fooyin.dsp.soundtouch.tempo,1.25
+```
+
+Notes:
+
+- `[count]` multiplies the delta only for `adjustDspValue`, so `5]t` applies `+0.05`.
+- `setDspValue` ignores `[count]` and uses the explicit target value from the binding.
+- The action updates only when exactly one matching DSP target exists. Zero or multiple matches are treated as a no-op and logged as warnings.
+- These actions do not have default bindings; they are available only through custom config bindings.
 
 ### UseDefaultBindings
 

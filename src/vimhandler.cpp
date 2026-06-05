@@ -10,6 +10,7 @@
 #include <core/playlist/playlist.h>
 #include <core/playlist/playlisthandler.h>
 #include <core/plugins/coreplugincontext.h>
+#include <gui/dsp/dspnumericcontrol.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
 #include <gui/playlist/currentplaylistcontroller.h>
@@ -1158,6 +1159,12 @@ void VimHandler::setActionManager(Fooyin::ActionManager* manager)
     m_actionManager = manager;
 }
 
+void VimHandler::setDspNumericControl(Fooyin::DspNumericControlService* service)
+{
+    qCDebug(VIM_LOG) << "setDspNumericControl:" << (service ? "set" : "cleared");
+    m_dspNumericControl = service;
+}
+
 void VimHandler::beginSetMark()
 {
     qCDebug(VIM_LOG) << "beginSetMark";
@@ -1272,6 +1279,63 @@ void VimHandler::triggerFooyinAction(const QStringView& actionId)
     }
 
     triggerCurrentContextAction(Fooyin::Id(actionId.toString()));
+}
+
+void VimHandler::adjustDspValue(const QStringView& args)
+{
+    updateDspValue(args, true);
+}
+
+void VimHandler::setDspValue(const QStringView& args)
+{
+    updateDspValue(args, false);
+}
+
+void VimHandler::updateDspValue(const QStringView& args, const bool relative)
+{
+    if(!m_dspNumericControl) {
+        qCWarning(VIM_LOG) << "updateDspValue: no DspNumericControlService";
+        return;
+    }
+
+    const QString argString = args.toString();
+    const int separatorIdx  = argString.indexOf(u',');
+    if(separatorIdx <= 0 || argString.indexOf(u',', separatorIdx + 1) >= 0) {
+        qCWarning(VIM_LOG) << "updateDspValue: invalid args" << argString;
+        return;
+    }
+
+    const QString dspId    = argString.left(separatorIdx).trimmed();
+    const QString valueStr = argString.mid(separatorIdx + 1).trimmed();
+    bool ok                = false;
+    const double value     = valueStr.toDouble(&ok);
+    if(dspId.isEmpty() || !ok) {
+        qCWarning(VIM_LOG) << "updateDspValue: invalid dsp/value args" << argString;
+        return;
+    }
+
+    if(!m_dspNumericControl->supportsNumericControl(dspId)) {
+        qCWarning(VIM_LOG) << "updateDspValue: unsupported dsp id" << dspId;
+        return;
+    }
+
+    const auto targets = m_dspNumericControl->targetsFor(dspId);
+    if(targets.empty()) {
+        qCWarning(VIM_LOG) << "updateDspValue: no matching dsp targets for" << dspId;
+        return;
+    }
+
+    if(targets.size() > 1) {
+        qCWarning(VIM_LOG) << "updateDspValue: multiple matching dsp targets for" << dspId;
+        return;
+    }
+
+    const auto& target       = targets.front();
+    const double targetValue = relative ? target.value + (value * (hadExplicitCount() ? currentCount() : 1)) : value;
+
+    if(!m_dspNumericControl->setValue(target.scope, target.instanceId, targetValue, true)) {
+        qCWarning(VIM_LOG) << "updateDspValue: failed to update dsp target" << dspId << target.instanceId;
+    }
 }
 
 Fooyin::Playlist* VimHandler::selectedPlaylist() const
@@ -3933,13 +3997,15 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
         }
     }
 
-    m_hadExplicitCount = m_count > 0;
-    m_dispatchCount    = m_count > 0 ? m_count : 1;
-    m_count            = 0;
-
     const BindingScope activeScope = activeBindingScope();
     const auto scopedBindings      = m_configBindings.value(mode).value(activeScope);
     const auto globalBindings      = m_configBindings.value(mode).value(BindingScope::Global);
+
+    if(!m_pendingConfigScope.has_value()) {
+        m_hadExplicitCount = m_count > 0;
+        m_dispatchCount    = m_count > 0 ? m_count : 1;
+        m_count            = 0;
+    }
 
     const auto bestSingleBinding = [ev](const QList<BindingEntry>& bindings) -> const BindingEntry* {
         const BindingEntry* best = nullptr;
