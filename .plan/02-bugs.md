@@ -11,7 +11,7 @@
 - when a track is playing, pasting above the playing track changes the selection to the currently playing track. This is a bug in both legacy and UseConfigBindings=true modes - fixed
 - bindings are not reloaded on config change - wontfix
 - doing dd and undo changes line focus
-- Pasting to empty playlist - needs public API
+- Pasting to empty playlist - needs public API - PR in flight
 - Search and delete changes offsets/indexes - fixed
 - yc not working when the yy is not unmapped - fixed
 - text input in search bar - fixed

@@ -7,7 +7,7 @@
 - o and g; to move to currently playing song - done
 - rework mapping logic into configuration-driven - done
 - allow for spatial navigation when in visual mode - the selection should be retained, on the new widget the mode should be normal - done
-- save per-playlist cursor position when switching between playlists (fooyin by default does not have that, but the plugin could store it) - need public API
+- save per-playlist cursor position when switching between playlists (fooyin by default does not have that, but the plugin could store it) - need public API - done
 - search without wraparound - done
 - m - playlist local mark - done
 - Select-all visual style with one shortcut - done
@@ -16,9 +16,9 @@
 - Surround the bindings like apostrophe, slash, return with angled brackets - done
 - visual mode exit without removing selection
 - shift+j/shift+k for extending selection in normal mode
-- shortcuts for "next playlist/previous playlist" - needs public API
-- marks. M - global marks (regardless of playlist) - needs public API
-- mark column indicator - needs public API
+- shortcuts for "next playlist/previous playlist" - needs public API - done
+- marks. M - global marks (regardless of playlist) - needs public API - done
+- mark column indicator - needs public API - PR in flight
 - F2 (rename) - detect if we have text input and don't capture normal mode bindings - done
 - Move/copy this song right after the currently playing without moving focus there - done
 - Mode indicator - done
