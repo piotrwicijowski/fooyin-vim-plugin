@@ -1,13 +1,53 @@
 #include "spatialnavigator.h"
 #include "vimlog.h"
 
+#include <gui/fywidget.h>
+#include <gui/widgetcontainer.h>
+
 #include <QAbstractItemView>
 #include <QApplication>
-#include <QSplitter>
 #include <QWidget>
 #include <algorithm>
 
 namespace Fooyin::VimMotions {
+
+namespace {
+
+bool isSplitter(const Fooyin::WidgetContainer* container)
+{
+    if(!container)
+        return false;
+
+    const QString layoutName = container->layoutName();
+    return layoutName == QStringLiteral("SplitterHorizontal") || layoutName == QStringLiteral("SplitterVertical");
+}
+
+Fooyin::FyWidget* enclosingFyWidget(QWidget* widget)
+{
+    while(widget) {
+        if(auto* fyWidget = qobject_cast<Fooyin::FyWidget*>(widget))
+            return fyWidget;
+        widget = widget->parentWidget();
+    }
+
+    return nullptr;
+}
+
+int childIndex(const Fooyin::WidgetContainer* container, const Fooyin::FyWidget* child)
+{
+    if(!container || !child)
+        return -1;
+
+    const Fooyin::WidgetList children = container->widgets();
+    for(int index = 0; index < static_cast<int>(children.size()); ++index) {
+        if(children[static_cast<size_t>(index)] == child)
+            return index;
+    }
+
+    return -1;
+}
+
+} // namespace
 
 SpatialNavigator::SpatialNavigator(QObject* parent)
     : QObject{parent}
@@ -18,9 +58,15 @@ SpatialNavigator::SpatialNavigator(QObject* parent)
 
 void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
 {
-    QWidget* current = startFrom ? startFrom : QApplication::focusWidget();
-    if(!current) {
+    QWidget* startWidget = startFrom ? startFrom : QApplication::focusWidget();
+    if(!startWidget) {
         qCWarning(VIM_LOG) << "SpatialNavigator::moveFocus: no starting widget";
+        return;
+    }
+
+    auto* current = enclosingFyWidget(startWidget);
+    if(!current) {
+        qCDebug(VIM_LOG) << "SpatialNavigator::moveFocus: starting widget is outside the editable layout";
         return;
     }
 
@@ -30,27 +76,25 @@ void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
 
     qCDebug(VIM_LOG) << "SpatialNavigator::moveFocus: dir=" << static_cast<int>(dir)
                      << "orientation=" << (orientation == Qt::Horizontal ? "H" : "V") << "step=" << step
-                     << "from=" << current->metaObject()->className()
+                     << "from=" << startWidget->metaObject()->className()
                      << "(startFrom=" << (startFrom ? startFrom->metaObject()->className() : "null") << ")";
 
-    // Walk up the parent chain. 'child' is always the direct child of 'parent'.
-    QWidget* child  = current;
-    QWidget* parent = current->parentWidget();
-
-    while(parent) {
-        if(auto* splitter = qobject_cast<QSplitter*>(parent)) {
-            if(splitter->orientation() == orientation) {
-                const int idx    = splitter->indexOf(child);
-                const int newIdx = idx + step;
-                qCDebug(VIM_LOG) << "SpatialNavigator: found matching splitter" << splitter->metaObject()->className()
-                                 << "childIdx=" << idx << "targetIdx=" << newIdx
-                                 << "splitterCount=" << splitter->count();
-                if(idx >= 0 && newIdx >= 0 && newIdx < splitter->count()) {
-                    QWidget* target = resolveLastVisited(splitter->widget(newIdx));
+    // Walk the logical layout tree so implementation widgets such as FySplitter
+    // do not form part of the navigation contract.
+    while(auto* parentWidget = current->findParent()) {
+        if(auto* container = qobject_cast<Fooyin::WidgetContainer*>(parentWidget); isSplitter(container)) {
+            if(container->orientation() == orientation) {
+                const Fooyin::WidgetList children = container->widgets();
+                const int idx                     = childIndex(container, current);
+                const int newIdx                  = idx + step;
+                qCDebug(VIM_LOG) << "SpatialNavigator: found matching logical splitter" << container->layoutName()
+                                 << "childIdx=" << idx << "targetIdx=" << newIdx << "splitterCount=" << children.size();
+                if(idx >= 0 && newIdx >= 0 && newIdx < static_cast<int>(children.size())) {
+                    QWidget* target = resolveLastVisited(children[static_cast<size_t>(newIdx)]);
                     if(target) {
                         qCDebug(VIM_LOG) << "SpatialNavigator: focusing" << target->metaObject()->className()
                                          << "(lastVisited[splitter]=" << newIdx << ")";
-                        m_lastVisited[splitter] = newIdx;
+                        m_lastVisited[container] = newIdx;
                         target->setFocus(Qt::OtherFocusReason);
                         return;
                     }
@@ -64,8 +108,7 @@ void SpatialNavigator::moveFocus(Direction dir, QWidget* startFrom)
                 qCDebug(VIM_LOG) << "SpatialNavigator: splitter orientation mismatch, skipping";
             }
         }
-        child  = parent;
-        parent = parent->parentWidget();
+        current = parentWidget;
     }
 
     qCDebug(VIM_LOG) << "SpatialNavigator::moveFocus: reached top of tree, already at edge";
@@ -76,20 +119,18 @@ void SpatialNavigator::onFocusChanged(QWidget* /*old*/, QWidget* now)
     if(!now)
         return;
 
-    // Record the direct-child index in every QSplitter ancestor.
-    QWidget* child  = now;
-    QWidget* parent = now->parentWidget();
-    while(parent) {
-        if(auto* splitter = qobject_cast<QSplitter*>(parent)) {
-            const int idx = splitter->indexOf(child);
+    auto* current = enclosingFyWidget(now);
+    while(current) {
+        auto* parentWidget = current->findParent();
+        if(auto* container = qobject_cast<Fooyin::WidgetContainer*>(parentWidget); isSplitter(container)) {
+            const int idx = childIndex(container, current);
             if(idx >= 0) {
-                qCDebug(VIM_LOG) << "SpatialNavigator: lastVisited[" << splitter->metaObject()->className()
-                                 << "] =" << idx << "(focus →" << now->metaObject()->className() << ")";
-                m_lastVisited[splitter] = idx;
+                qCDebug(VIM_LOG) << "SpatialNavigator: lastVisited[" << container->layoutName() << "] =" << idx
+                                 << "(focus →" << now->metaObject()->className() << ")";
+                m_lastVisited[container] = idx;
             }
         }
-        child  = parent;
-        parent = parent->parentWidget();
+        current = parentWidget;
     }
 }
 
@@ -98,15 +139,15 @@ QWidget* SpatialNavigator::resolveLastVisited(QWidget* widget)
     if(!widget || !widget->isVisible())
         return nullptr;
 
-    // If this node is a splitter, recurse into the last-visited child.
-    if(auto* splitter = qobject_cast<QSplitter*>(widget)) {
-        const int count = splitter->count();
-        if(count == 0)
+    // Descend into a nested logical splitter through its remembered child.
+    if(auto* container = qobject_cast<Fooyin::WidgetContainer*>(widget); isSplitter(container)) {
+        const Fooyin::WidgetList children = container->widgets();
+        if(children.empty())
             return nullptr;
-        const int idx = std::clamp(m_lastVisited.value(splitter, 0), 0, count - 1);
+        const int idx = std::clamp(m_lastVisited.value(container, 0), 0, static_cast<int>(children.size()) - 1);
         qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: descending into splitter child" << idx << "/"
-                         << count;
-        return resolveLastVisited(splitter->widget(idx));
+                         << children.size();
+        return resolveLastVisited(children[static_cast<size_t>(idx)]);
     }
 
     qCDebug(VIM_LOG) << "SpatialNavigator::resolveLastVisited: examining" << widget->metaObject()->className()

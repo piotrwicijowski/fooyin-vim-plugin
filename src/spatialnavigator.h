@@ -3,8 +3,11 @@
 #include <QMap>
 #include <QObject>
 
-class QSplitter;
 class QWidget;
+
+namespace Fooyin {
+class WidgetContainer;
+}
 
 namespace Fooyin::VimMotions {
 
@@ -32,7 +35,7 @@ private:
     void onFocusChanged(QWidget* old, QWidget* now);
     QWidget* resolveLastVisited(QWidget* widget);
 
-    QMap<QSplitter*, int> m_lastVisited;
+    QMap<Fooyin::WidgetContainer*, int> m_lastVisited;
 };
 
 } // namespace Fooyin::VimMotions

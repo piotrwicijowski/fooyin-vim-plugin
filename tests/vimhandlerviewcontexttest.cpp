@@ -9,6 +9,7 @@
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
 #include <gui/playlist/currentplaylistcontroller.h>
+#include <gui/widgetcontainer.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/database/dbconnectionhandler.h>
 #include <utils/database/dbconnectionpool.h>
@@ -21,10 +22,10 @@
 #include <QDataStream>
 #include <QDialog>
 #include <QFocusEvent>
+#include <QHBoxLayout>
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QMimeData>
-#include <QSplitter>
 #include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QTest>
@@ -168,6 +169,10 @@ public:
     {
         return {};
     }
+    Fooyin::PendingTrackCoverProvider* pendingTrackCoverProvider() const override
+    {
+        return nullptr;
+    }
     void updateTrack(const Fooyin::Track&) override { }
     void updateTracks(const Fooyin::TrackList&) override { }
     void updateTrackMetadata(const Fooyin::TrackList&) override { }
@@ -284,6 +289,159 @@ private:
     QTreeView* m_view;
 };
 
+class FakePlaylistWidget : public Fooyin::FyWidget
+{
+    Q_OBJECT
+
+public:
+    explicit FakePlaylistWidget(QWidget* parent = nullptr)
+        : Fooyin::FyWidget(parent)
+        , m_view(new Fooyin::PlaylistView(this))
+    {
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(m_view);
+    }
+
+    [[nodiscard]] QString name() const override
+    {
+        return QStringLiteral("Playlist");
+    }
+
+    [[nodiscard]] QString layoutName() const override
+    {
+        return QStringLiteral("Playlist");
+    }
+
+    [[nodiscard]] Fooyin::PlaylistView* view() const
+    {
+        return m_view;
+    }
+
+private:
+    Fooyin::PlaylistView* m_view;
+};
+
+class FakeSplitterWidget : public Fooyin::WidgetContainer
+{
+    Q_OBJECT
+
+public:
+    explicit FakeSplitterWidget(QWidget* parent = nullptr)
+        : Fooyin::WidgetContainer(nullptr, nullptr, parent)
+        , m_layout(new QHBoxLayout(this))
+    {
+        m_layout->setContentsMargins(0, 0, 0, 0);
+    }
+
+    [[nodiscard]] QString name() const override
+    {
+        return QStringLiteral("Splitter (Left/Right)");
+    }
+
+    [[nodiscard]] QString layoutName() const override
+    {
+        return QStringLiteral("SplitterHorizontal");
+    }
+
+    [[nodiscard]] Qt::Orientation orientation() const override
+    {
+        return Qt::Horizontal;
+    }
+
+    [[nodiscard]] bool canAddWidget() const override
+    {
+        return true;
+    }
+
+    [[nodiscard]] bool canMoveWidget(int index, int newIndex) const override
+    {
+        return index >= 0 && index < static_cast<int>(m_widgets.size()) && newIndex >= 0
+            && newIndex <= static_cast<int>(m_widgets.size());
+    }
+
+    [[nodiscard]] int widgetIndex(const Fooyin::Id& id) const override
+    {
+        for(int index = 0; index < static_cast<int>(m_widgets.size()); ++index) {
+            if(m_widgets[static_cast<size_t>(index)]->id() == id)
+                return index;
+        }
+
+        return -1;
+    }
+
+    [[nodiscard]] Fooyin::FyWidget* widgetAtId(const Fooyin::Id& id) const override
+    {
+        const int index = widgetIndex(id);
+        return index >= 0 ? m_widgets[static_cast<size_t>(index)] : nullptr;
+    }
+
+    [[nodiscard]] Fooyin::FyWidget* widgetAtIndex(int index) const override
+    {
+        return index >= 0 && index < static_cast<int>(m_widgets.size()) ? m_widgets[static_cast<size_t>(index)]
+                                                                        : nullptr;
+    }
+
+    [[nodiscard]] int widgetCount() const override
+    {
+        return static_cast<int>(m_widgets.size());
+    }
+
+    [[nodiscard]] Fooyin::WidgetList widgets() const override
+    {
+        return m_widgets;
+    }
+
+    int addWidget(Fooyin::FyWidget* widget) override
+    {
+        const int index = static_cast<int>(m_widgets.size());
+        insertWidget(index, widget);
+        return index;
+    }
+
+    void insertWidget(int index, Fooyin::FyWidget* widget) override
+    {
+        if(!widget || index < 0 || index > static_cast<int>(m_widgets.size()))
+            return;
+
+        m_widgets.insert(m_widgets.begin() + index, widget);
+        m_layout->insertWidget(index, widget);
+    }
+
+    void removeWidget(int index) override
+    {
+        if(index < 0 || index >= static_cast<int>(m_widgets.size()))
+            return;
+
+        m_widgets.erase(m_widgets.begin() + index);
+    }
+
+    void replaceWidget(int index, Fooyin::FyWidget* widget) override
+    {
+        if(!widget || index < 0 || index >= static_cast<int>(m_widgets.size()))
+            return;
+
+        auto* oldWidget = m_widgets[static_cast<size_t>(index)];
+        m_layout->replaceWidget(oldWidget, widget);
+        m_widgets[static_cast<size_t>(index)] = widget;
+    }
+
+    void moveWidget(int index, int newIndex) override
+    {
+        if(!canMoveWidget(index, newIndex))
+            return;
+
+        auto* widget = m_widgets[static_cast<size_t>(index)];
+        m_widgets.erase(m_widgets.begin() + index);
+        m_widgets.insert(m_widgets.begin() + newIndex, widget);
+        m_layout->insertWidget(newIndex, widget);
+    }
+
+private:
+    QHBoxLayout* m_layout;
+    Fooyin::WidgetList m_widgets;
+};
+
 class SearchDialog : public QDialog
 {
     Q_OBJECT
@@ -344,6 +502,8 @@ public:
 
         changeCurrentPlaylist(m_playlistHandler->playlistById(id));
     }
+
+    void selectTracks(const Fooyin::TrackList&) override { }
 
     void setPlaylistHandler(Fooyin::PlaylistHandler* playlistHandler)
     {
@@ -3160,7 +3320,7 @@ void TestVimHandlerViewContext::restoresVisualSelectionWhenRefocusingAfterSpatia
     observer.setPlaylistHandler(&harness.handler);
     handler.setCurrentPlaylistController(&observer);
 
-    QSplitter splitter(Qt::Horizontal);
+    FakeSplitterWidget splitter;
 
     auto* organiser = new FakeOrganiserWidget();
     QStandardItemModel organiserModel;
@@ -3168,12 +3328,13 @@ void TestVimHandlerViewContext::restoresVisualSelectionWhenRefocusingAfterSpatia
     organiser->view()->setModel(&organiserModel);
     organiser->view()->setCurrentIndex(organiserModel.index(0, 0));
 
-    auto* view = new Fooyin::PlaylistView();
+    auto* playlistWidget = new FakePlaylistWidget();
+    auto* view           = playlistWidget->view();
     QStandardItemModel model;
     view->setModel(&model);
 
     splitter.addWidget(organiser);
-    splitter.addWidget(view);
+    splitter.addWidget(playlistWidget);
 
     syncPlaylistModel(model, playlistA);
     view->setCurrentIndex(model.index(1, 0));
