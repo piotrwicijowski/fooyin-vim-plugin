@@ -67,7 +67,10 @@ void VimActions::registerAll()
     registerAction(u"extendToRow"_s, [](VimHandler& h, const QStringView& a) { h.extendVisualToRow(a.toInt()); });
     registerAction(u"swapAnchor"_s, [](VimHandler& h, const QStringView&) { h.swapVisualAnchor(); });
     registerAction(u"deleteSelection"_s, [](VimHandler& h, const QStringView&) { h.deleteVisualSelection(); });
-    registerAction(u"yankSelection"_s, [](VimHandler& h, const QStringView&) { h.yankVisualSelection(); });
+    registerAction(u"yankSelection"_s, [](VimHandler& h, const QStringView&) {
+        h.yankVisualSelection();
+        h.enterNormal();
+    });
     registerAction(u"extendHalfPage"_s, [](VimHandler& h, const QStringView& a) { h.extendVisualHalfPage(a.toInt()); });
     registerAction(u"moveVisualSelection"_s,
                    [](VimHandler& h, const QStringView& a) { h.moveVisualSelection(a.toInt()); });

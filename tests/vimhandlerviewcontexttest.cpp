@@ -2300,7 +2300,7 @@ void TestVimHandlerViewContext::yankVisualSelectionUsesSearchLibrarySelectionTra
     QVERIFY(dispatchKey(handler, dialog.view(), u'v'));
     QVERIFY(dispatchKey(handler, dialog.view(), u'j'));
     QVERIFY(dispatchKey(handler, dialog.view(), u'y'));
-    handler.enterNormal();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
 
     Fooyin::PlaylistView destinationView;
     QStandardItemModel destinationModel;
