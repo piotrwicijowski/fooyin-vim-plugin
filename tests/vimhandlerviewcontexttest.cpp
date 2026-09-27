@@ -71,7 +71,8 @@ bool createPlaylistTables(const Fooyin::DbConnectionPoolPtr& dbPool)
                                                      "IsAutoPlaylist INTEGER DEFAULT 0, "
                                                      "Query TEXT, "
                                                      "SortQuery TEXT, "
-                                                     "ForceSorted INTEGER DEFAULT 1);"_s};
+                                                     "ForceSorted INTEGER DEFAULT 1, "
+                                                     "ExtraProperties BLOB);"_s};
     if(!createPlaylists.exec())
         return false;
 
@@ -184,8 +185,8 @@ public:
     {
         return {};
     }
-    void updateTrackStats(const Fooyin::TrackList&) override { }
-    void updateTrackStats(const Fooyin::Track&) override { }
+    void updateTrackStats(const Fooyin::TrackList&, Fooyin::Track::Stats) override { }
+    void updateTrackStats(const Fooyin::Track&, Fooyin::Track::Stats) override { }
     Fooyin::WriteRequest removeUnavailbleTracks() override
     {
         return {};

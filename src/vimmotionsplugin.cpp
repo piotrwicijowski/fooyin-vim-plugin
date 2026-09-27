@@ -33,18 +33,14 @@ public:
         , m_backend{backend}
     { }
 
-    void showSettings(QWidget* parent) override
+    QDialog* createSettings(QWidget* parent) override
     {
-        if(m_settings && m_settings->value<Settings::VimMotions::EnableSettingsUi>()) {
-            auto* dialog = new VimMotionsSettingsDialog(m_settings, m_backend, parent);
-            dialog->setAttribute(Qt::WA_DeleteOnClose);
-            dialog->show();
-            return;
-        }
+        if(m_settings && m_settings->value<Settings::VimMotions::EnableSettingsUi>())
+            return new VimMotionsSettingsDialog(m_settings, m_backend, parent);
 
-        QMessageBox::information(
-            parent, QApplication::translate("VimMotionsPlugin", "Vim Motions"),
-            QApplication::translate("VimMotionsPlugin", "The Vim Motions settings UI is disabled."));
+        return new QMessageBox(QMessageBox::Information, QApplication::translate("VimMotionsPlugin", "Vim Motions"),
+                               QApplication::translate("VimMotionsPlugin", "The Vim Motions settings UI is disabled."),
+                               QMessageBox::Ok, parent);
     }
 
 private:

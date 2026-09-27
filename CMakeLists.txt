@@ -145,8 +145,10 @@ if(Fooyin_FOUND)
         DEPENDS Fooyin::Gui Qt6::Widgets
         SOURCES ${PLUGIN_SOURCES}
     )
+    set(VIM_MOTIONS_PLUGIN_TARGET VimMotions)
 else()
     add_library(fyplugin_vimmotions MODULE ${PLUGIN_SOURCES})
+    set(VIM_MOTIONS_PLUGIN_TARGET fyplugin_vimmotions)
 
     set_target_properties(fyplugin_vimmotions PROPERTIES
         PREFIX ""

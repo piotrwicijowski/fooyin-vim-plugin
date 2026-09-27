@@ -101,7 +101,7 @@ Plugin-specific bindings are configured through **Settings → Plugins → Vim M
 
 ## Requirements
 
-- fooyin (source tree or installed with `-DINSTALL_HEADERS=ON`)
+- fooyin with plugin API `/2` (upstream commit `06c2b7e1d` or newer; source tree or installed with `-DINSTALL_HEADERS=ON`)
 - Qt 6.2 or later (Widgets, Sql modules)
 - CMake 3.19+
 - A C++23 compiler (GCC 12+, Clang 15+)
@@ -199,6 +199,7 @@ cmake --install build --prefix /usr
 ```
 
 After copying, restart fooyin. The plugin will appear in **Settings → Plugins** and load automatically on next startup.
+Rebuild the plugin after upgrading fooyin across a plugin API version change; older plugin binaries are rejected by fooyin.
 
 ## License
 
