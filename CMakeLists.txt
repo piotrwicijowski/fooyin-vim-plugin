@@ -7,8 +7,6 @@ set(CMAKE_AUTOMOC ON)
 
 option(BUILD_TESTING "Build tests" OFF)
 
-option(BUILD_TESTING "Build tests" OFF)
-
 # ---------------------------------------------------------------------------
 # Locate fooyin
 #
