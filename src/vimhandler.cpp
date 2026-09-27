@@ -1657,8 +1657,13 @@ Fooyin::Playlist* VimHandler::playlistForPersistentState() const
             return playlist;
     }
 
-    if(auto* playlist = targetPlaylist())
-        return playlist;
+    // During a focus change to the search/filter input, targetPlaylist() would
+    // fall back to ViewLocator::activeView(), which focuses the playlist again.
+    // Only use that lookup while a persistent playlist view actually has focus.
+    if(isPersistentPlaylistView(enclosingView(QApplication::focusWidget()))) {
+        if(auto* playlist = targetPlaylist())
+            return playlist;
+    }
 
     if(auto* view = playlistViewForState(); view && view->model()) {
         const int viewRows = view->model()->rowCount();

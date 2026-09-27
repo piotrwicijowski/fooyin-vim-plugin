@@ -893,6 +893,8 @@ private Q_SLOTS:
     void organiserMoveUpPastEmptyNestedGroupStaysInOuterGroup();
     void organiserInlineEditorSuspendsVimCapture();
     void searchBarTypingKeepsFocus();
+    void searchAndFilterKeepFocusBeforePlaylistSelection_data();
+    void searchAndFilterKeepFocusBeforePlaylistSelection();
     void scopedBindingsPreferActiveViewOverGlobalFallback();
     void searchLibraryScopedBindingsOverridePlaylistViewAndFallbackToGlobal();
     void searchLibrarySearchFieldDispatchesScopedBindingAndFallsBackToTyping();
@@ -1378,6 +1380,63 @@ void TestVimHandlerViewContext::searchBarTypingKeepsFocus()
     QTest::keyClick(editor, Qt::Key_Escape);
     qApp->processEvents();
 
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::searchAndFilterKeepFocusBeforePlaylistSelection_data()
+{
+    QTest::addColumn<bool>("filter");
+    QTest::newRow("search") << false;
+    QTest::newRow("filter") << true;
+}
+
+void TestVimHandlerViewContext::searchAndFilterKeepFocusBeforePlaylistSelection()
+{
+    QFETCH(bool, filter);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("startup_focus.ini"))};
+    PlaylistHandlerHarness harness{settings};
+    QVERIFY(harness.dbInitialised);
+
+    VimHandler handler;
+    handler.setPlaylistHandler(&harness.handler);
+    FakeCurrentPlaylistController observer;
+    observer.setPlaylistHandler(&harness.handler);
+    handler.setCurrentPlaylistController(&observer);
+
+    FakePlaylistWidget playlistWidget;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("Track")));
+    playlistWidget.view()->setModel(&model);
+    playlistWidget.view()->setCurrentIndex(model.index(0, 0));
+
+    qApp->installEventFilter(&handler);
+    focusTree(playlistWidget.view());
+    // The GUI has not reported an initial selected playlist yet.
+    if(filter)
+        handler.enterFilter();
+    else
+        handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = playlistWidget.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QVERIFY(editor->isVisible());
+    QVERIFY(editor->hasFocus());
+
+    playlistWidget.view()->setFocus();
+    QVERIFY(playlistWidget.view()->hasFocus());
+    QTest::mouseClick(editor, Qt::LeftButton);
+    QVERIFY(editor->hasFocus());
+
+    QTest::keyClicks(editor, QStringLiteral("foo"));
+    QCOMPARE(editor->text(), QStringLiteral("foo"));
+
+    QTest::keyClick(editor, Qt::Key_Escape);
+    qApp->processEvents();
     QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
     qApp->removeEventFilter(&handler);
 }
