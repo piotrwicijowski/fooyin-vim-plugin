@@ -933,6 +933,7 @@ private Q_SLOTS:
     void organiserSearchSkipsCollapsedChildren();
     void organiserSearchNavigatesVisibleMatches();
     void organiserSearchKeepsEarlierRootCandidatesAfterJump();
+    void playlistSearchAdvancesFromMatchInNonzeroColumn();
     void playlistSearchNavigationTracksReorderedMatches();
     void organiserSearchNavigationTracksReorderedMatches();
 };
@@ -3864,6 +3865,53 @@ void TestVimHandlerViewContext::organiserSearchKeepsEarlierRootCandidatesAfterJu
 
     QTest::keyClick(editor, Qt::Key_Escape);
     qApp->processEvents();
+    qApp->removeEventFilter(&handler);
+}
+
+void TestVimHandlerViewContext::playlistSearchAdvancesFromMatchInNonzeroColumn()
+{
+    VimHandler handler;
+    Fooyin::PlaylistView view;
+    QStandardItemModel model;
+
+    for(const QString& title : {QStringLiteral("Foo"), QStringLiteral("Foo"), QStringLiteral("Bar"),
+                                QStringLiteral("Foo"), QStringLiteral("Bar")}) {
+        model.appendRow({new QStandardItem(QStringLiteral("Track")), new QStandardItem(title)});
+    }
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 1));
+
+    qApp->installEventFilter(&handler);
+    focusTree(&view);
+    handler.enterSearch();
+    qApp->processEvents();
+
+    auto* editor = view.window()->findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QTest::keyClicks(editor, QStringLiteral("Bar"));
+    qApp->processEvents();
+    QCOMPARE(view.currentIndex(), model.index(2, 1));
+
+    QTest::keyClick(editor, Qt::Key_Return);
+    qApp->processEvents();
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    handler.nextMatch();
+    QCOMPARE(view.currentIndex(), model.index(4, 1));
+    handler.nextMatch();
+    QCOMPARE(view.currentIndex(), model.index(2, 1));
+    handler.prevMatch();
+    QCOMPARE(view.currentIndex(), model.index(4, 1));
+    handler.prevMatch();
+    QCOMPARE(view.currentIndex(), model.index(2, 1));
+
+    view.setCurrentIndex(model.index(3, 1));
+    handler.nextMatch();
+    QCOMPARE(view.currentIndex(), model.index(4, 1));
+    view.setCurrentIndex(model.index(3, 1));
+    handler.prevMatch();
+    QCOMPARE(view.currentIndex(), model.index(2, 1));
+
     qApp->removeEventFilter(&handler);
 }
 

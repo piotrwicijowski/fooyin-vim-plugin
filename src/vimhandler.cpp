@@ -224,8 +224,10 @@ static int searchMatchPosition(const std::vector<QPersistentModelIndex>& matches
     if(!index.isValid())
         return -1;
 
+    // Matches are stored in column 0, while the cursor keeps its current column.
+    const QModelIndex rowIndex = index.siblingAtColumn(0);
     for(int i = 0; i < static_cast<int>(matches.size()); ++i) {
-        if(matches[static_cast<size_t>(i)] == index)
+        if(matches[static_cast<size_t>(i)] == rowIndex)
             return i;
     }
 
@@ -2808,12 +2810,9 @@ void VimHandler::nextMatch()
             return;
 
         const QModelIndex currentIndex = view->currentIndex();
-        const bool cursorAtLastMatch   = m_searchMatchIdx >= 0
-                                    && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
-                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentIndex;
 
         int nextIdx = -1;
-        if(cursorAtLastMatch) {
+        if(m_searchMatchIdx >= 0) {
             nextIdx = nextSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
         }
         else if(auto* tree = asTreeView(view)) {
@@ -2858,12 +2857,9 @@ void VimHandler::prevMatch()
             return;
 
         const QModelIndex currentIndex = view->currentIndex();
-        const bool cursorAtLastMatch   = m_searchMatchIdx >= 0
-                                    && m_searchMatchIdx < static_cast<int>(m_searchMatches.size())
-                                    && m_searchMatches[static_cast<size_t>(m_searchMatchIdx)] == currentIndex;
 
         int prevIdx = -1;
-        if(cursorAtLastMatch) {
+        if(m_searchMatchIdx >= 0) {
             prevIdx = prevSearchMatchIndex(m_searchMatchIdx, static_cast<int>(m_searchMatches.size()), m_wrapScan);
         }
         else if(auto* tree = asTreeView(view)) {
