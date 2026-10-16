@@ -1,15 +1,18 @@
 #include "spatialnavigator.h"
 #include "vimhandler.h"
+#include "vimmarkvariableprovider.h"
 #include "vimmotionssettings.h"
 
 #include <core/engine/audioloader.h>
 #include <core/library/musiclibrary.h>
 #include <core/playlist/playlisthandler.h>
-#include <core/scripting/scripttypes.h>
+#include <core/scripting/scriptparser.h>
+#include <core/scripting/scriptregistry.h>
 #include <core/track.h>
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
 #include <gui/playlist/currentplaylistcontroller.h>
+#include <gui/playlist/playlistinteractor.h>
 #include <gui/widgetcontainer.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/database/dbconnectionhandler.h>
@@ -39,7 +42,9 @@
 #include <QSettings>
 #include <QTemporaryDir>
 
+#include <latch>
 #include <memory>
+#include <thread>
 
 namespace Fooyin {
 
@@ -543,52 +548,6 @@ private:
     Fooyin::Playlist* m_currentPlaylist{nullptr};
 };
 
-class TestScriptPlaylistEnvironment : public Fooyin::ScriptPlaylistEnvironment
-{
-public:
-    int currentIndex{-1};
-    int trackCount{0};
-
-    [[nodiscard]] int currentPlaylistTrackIndex() const override
-    {
-        return currentIndex;
-    }
-
-    [[nodiscard]] int playlistTrackCount() const override
-    {
-        return trackCount;
-    }
-
-    [[nodiscard]] int trackDepth() const override
-    {
-        return 0;
-    }
-
-    [[nodiscard]] std::span<const int> currentQueueIndexes() const override
-    {
-        return m_queueIndexes;
-    }
-
-private:
-    std::array<int, 0> m_queueIndexes;
-};
-
-class TestScriptEnvironment : public Fooyin::ScriptEnvironment
-{
-public:
-    explicit TestScriptEnvironment(const Fooyin::ScriptPlaylistEnvironment* playlistEnvironment)
-        : m_playlistEnvironment{playlistEnvironment}
-    { }
-
-    [[nodiscard]] const Fooyin::ScriptPlaylistEnvironment* playlistEnvironment() const override
-    {
-        return m_playlistEnvironment;
-    }
-
-private:
-    const Fooyin::ScriptPlaylistEnvironment* m_playlistEnvironment{nullptr};
-};
-
 class RecordingTreeModel : public QStandardItemModel
 {
 public:
@@ -928,6 +887,60 @@ void syncPlaylistModel(QStandardItemModel& model, const Fooyin::Playlist* playli
         model.appendRow(new QStandardItem(track.title()));
 }
 
+Fooyin::Track markTestTrack()
+{
+    Fooyin::Track track{u"/tmp/mark.flac"_s, 0};
+    track.setId(61);
+    track.setTitle(u"Mark test"_s);
+    track.generateHash();
+    return track;
+}
+
+struct MarkScriptHarness
+{
+    MarkScriptHarness()
+        : settings{tempDir.filePath(u"mark_script.ini"_s)}
+        , playlists{settings}
+        , interactor{&playlists.handler, nullptr, nullptr, &settings}
+        , provider{&handler}
+    {
+        handler.setPlaylistHandler(&playlists.handler);
+        handler.setPlaylistInteractor(&interactor);
+        observer.setPlaylistHandler(&playlists.handler);
+        handler.setCurrentPlaylistController(&observer);
+        view.setModel(&model);
+        for(const auto& variable : provider.variables())
+            registered = registry.registerVariable(variable) && registered;
+        registry.finalise();
+    }
+
+    void select(Fooyin::Playlist* playlist, int row)
+    {
+        syncPlaylistModel(model, playlist);
+        focusTree(&view);
+        observer.changeCurrentPlaylist(playlist);
+        view.setCurrentIndex(model.index(row, 0));
+    }
+
+    bool mark(QChar letter)
+    {
+        handler.beginSetMark();
+        return dispatchKey(handler, &view, letter);
+    }
+
+    QTemporaryDir tempDir;
+    Fooyin::SettingsManager settings;
+    PlaylistHandlerHarness playlists;
+    Fooyin::PlaylistInteractor interactor;
+    Fooyin::VimMotions::VimHandler handler;
+    FakeCurrentPlaylistController observer;
+    QStandardItemModel model;
+    Fooyin::PlaylistView view;
+    Fooyin::VimMotions::VimMarkVariableProvider provider;
+    Fooyin::ScriptRegistry registry;
+    bool registered{true};
+};
+
 } // namespace
 
 using namespace Fooyin::VimMotions;
@@ -997,6 +1010,10 @@ private Q_SLOTS:
     void jumpsToGlobalMarkInAnotherPlaylist();
     void clearsStaleGlobalMarkWhenMarkedEntryIsDeleted();
     void exposesMarksForScriptContext();
+    void refreshesMarksAfterReassignment();
+    void refreshesTransferredMarks_data();
+    void refreshesTransferredMarks();
+    void evaluatesMarksWhileTheyChange();
     void restoresSavedCursorWhenReturningToPlaylist();
     void clampsRestoredCursorWhenPlaylistShrinks();
     void restoresVisualSelectionWhenReturningToPlaylist();
@@ -3050,70 +3067,246 @@ void TestVimHandlerViewContext::clearsStaleGlobalMarkWhenMarkedEntryIsDeleted()
 
 void TestVimHandlerViewContext::exposesMarksForScriptContext()
 {
-    QTemporaryDir tempDir;
-    QVERIFY(tempDir.isValid());
-
-    Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("mark_script_context.ini"))};
-    PlaylistHandlerHarness harness{settings};
-    QVERIFY(harness.dbInitialised);
-
-    const Fooyin::TrackList tracks{
-        [] {
-            Fooyin::Track track{QStringLiteral("/tmp/a1.flac"), 0};
-            track.setId(61);
-            track.setTitle(QStringLiteral("A1"));
-            track.generateHash();
-            return track;
-        }(),
-        [] {
-            Fooyin::Track track{QStringLiteral("/tmp/a2.flac"), 0};
-            track.setId(62);
-            track.setTitle(QStringLiteral("A2"));
-            track.generateHash();
-            return track;
-        }(),
-    };
-
-    auto* playlist = harness.handler.createNewPlaylist(QStringLiteral("Playlist A"), tracks);
+    MarkScriptHarness harness;
+    QVERIFY(harness.playlists.dbInitialised);
+    QVERIFY(harness.registered);
+    const auto track = markTestTrack();
+    auto* playlist   = harness.playlists.handler.createNewPlaylist(u"Playlist A"_s, {track, track});
     QVERIFY(playlist);
+    harness.select(playlist, 1);
+    QVERIFY(harness.mark(u'c'));
+    QVERIFY(harness.mark(u'a'));
+    QVERIFY(harness.mark(u'D'));
+    QVERIFY(harness.mark(u'B'));
 
-    VimHandler handler;
-    handler.setPlaylistHandler(&harness.handler);
+    Fooyin::ScriptParser parser{&harness.registry};
+    Fooyin::ScriptPlaylistData row{.playlistId = playlist->id(), .entryId = playlist->playlistTrack(1)->entryId};
+    const Fooyin::ScriptContext context{.playlistData = &row};
+    // No live playlist or row index is needed, even for duplicate tracks.
+    const auto script = parser.parse(u"[%mark%]-[%global_mark%]"_s);
+    QCOMPARE(parser.evaluate(script, track, context), u"a-B"_s);
+    QCOMPARE(parser.evaluate(u"$if(%mark%,marked,unmarked)"_s, track, context), u"marked"_s);
+    for(const auto& variable : harness.provider.variables()) {
+        QCOMPARE(variable.category, u"Vim Motions"_s);
+        QVERIFY(!variable.description.isEmpty());
+    }
 
-    FakeCurrentPlaylistController observer;
-    observer.setPlaylistHandler(&harness.handler);
-    handler.setCurrentPlaylistController(&observer);
+    row.entryId = playlist->playlistTrack(0)->entryId;
+    QCOMPARE(parser.evaluate(script, track, context), u"-"_s);
+    QCOMPARE(parser.evaluate(u"$if(%mark%,marked,unmarked)"_s, track, context), u"unmarked"_s);
+    row.entryId    = playlist->playlistTrack(1)->entryId;
+    row.playlistId = Fooyin::UId::create();
+    QCOMPARE(parser.evaluate(script, track, context), u"-"_s);
+    row.playlistId = {};
+    QCOMPARE(parser.evaluate(script, track, context), u"-"_s);
+    row.playlistId = playlist->id();
+    row.entryId    = {};
+    QCOMPARE(parser.evaluate(script, track, context), u"-"_s);
+    QCOMPARE(parser.evaluate(script, track), u"-"_s);
 
-    Fooyin::PlaylistView view;
-    QStandardItemModel model;
-    view.setModel(&model);
+    auto entries = playlist->playlistTracks();
+    std::reverse(entries.begin(), entries.end());
+    harness.playlists.handler.replacePlaylistTracks(playlist->id(), entries);
+    row.entryId = entries.front().entryId;
+    QCOMPARE(parser.evaluate(script, track, context), u"a-B"_s);
 
-    syncPlaylistModel(model, playlist);
-    view.setCurrentIndex(model.index(1, 0));
-    focusTree(&view);
-    observer.changeCurrentPlaylist(playlist);
+    // A second provider must not redirect callbacks registered by the first.
+    VimHandler otherHandler;
+    VimMarkVariableProvider otherProvider{&otherHandler};
+    Fooyin::ScriptRegistry otherRegistry;
+    for(const auto& variable : otherProvider.variables())
+        QVERIFY(otherRegistry.registerVariable(variable));
+    otherRegistry.finalise();
+    Fooyin::ScriptParser otherParser{&otherRegistry};
+    QCOMPARE(otherParser.evaluate(script, track, context), u"-"_s);
+    QCOMPARE(parser.evaluate(script, track, context), u"a-B"_s);
+}
 
-    handler.beginSetMark();
-    QVERIFY(dispatchKey(handler, &view, u'c'));
-    handler.beginSetMark();
-    QVERIFY(dispatchKey(handler, &view, u'a'));
-    handler.beginSetMark();
-    QVERIFY(dispatchKey(handler, &view, u'D'));
-    handler.beginSetMark();
-    QVERIFY(dispatchKey(handler, &view, u'B'));
+void TestVimHandlerViewContext::refreshesMarksAfterReassignment()
+{
+    MarkScriptHarness harness;
+    QVERIFY(harness.playlists.dbInitialised);
+    const auto track = markTestTrack();
+    auto* playlistA  = harness.playlists.handler.createNewPlaylist(u"Playlist A"_s, {track, track});
+    auto* playlistB  = harness.playlists.handler.createNewPlaylist(u"Playlist B"_s, {track});
+    QVERIFY(playlistA);
+    QVERIFY(playlistB);
+    harness.select(playlistA, 0);
+    const auto first  = playlistA->playlistTrack(0)->entryId;
+    const auto second = playlistA->playlistTrack(1)->entryId;
+    const auto other  = playlistB->playlistTrack(0)->entryId;
 
-    TestScriptPlaylistEnvironment playlistEnvironment;
-    playlistEnvironment.currentIndex = 1;
-    playlistEnvironment.trackCount   = playlist->trackCount();
-    TestScriptEnvironment environment{&playlistEnvironment};
+    struct Refresh
+    {
+        Fooyin::UId playlistId;
+        std::vector<Fooyin::UId> entries;
+        QStringList values;
+    };
+    std::vector<Refresh> refreshes;
+    Fooyin::ScriptParser parser{&harness.registry};
+    connect(&harness.interactor, &Fooyin::PlaylistInteractor::playlistRefreshRequested, this,
+            [&](const Fooyin::UId& id, const std::vector<Fooyin::UId>& entries) {
+                Refresh refresh{id, entries, {}};
+                for(const auto& entry : entries) {
+                    Fooyin::ScriptPlaylistData row{.playlistId = id, .entryId = entry};
+                    refresh.values.push_back(
+                        parser.evaluate(u"%mark%/%global_mark%"_s, Fooyin::ScriptContext{.playlistData = &row}));
+                }
+                refreshes.push_back(std::move(refresh));
+            });
+    int secondViewRefreshes{0};
+    connect(&harness.interactor, &Fooyin::PlaylistInteractor::playlistRefreshRequested, &harness.view,
+            [&]() { ++secondViewRefreshes; });
 
-    const Fooyin::ScriptContext context{.environment = &environment, .playlist = playlist};
-    QCOMPARE(handler.localMarkForScriptContext(context), QStringLiteral("a"));
-    QCOMPARE(handler.globalMarkForScriptContext(context), QStringLiteral("B"));
+    QVERIFY(harness.mark(u'a'));
+    QCOMPARE(refreshes.size(), 1U);
+    QCOMPARE(refreshes.back().entries, std::vector{first});
+    QCOMPARE(refreshes.back().values, QStringList{u"a/"_s});
+    refreshes.clear();
+    harness.view.setCurrentIndex(harness.model.index(1, 0));
+    QVERIFY(harness.mark(u'a'));
+    QCOMPARE(refreshes.size(), 1U);
+    QCOMPARE(refreshes.back().entries, (std::vector{first, second}));
+    QCOMPARE(refreshes.back().values, (QStringList{u"/"_s, u"a/"_s}));
 
-    playlistEnvironment.currentIndex = 0;
-    QCOMPARE(handler.localMarkForScriptContext(context), QString{});
-    QCOMPARE(handler.globalMarkForScriptContext(context), QString{});
+    QVERIFY(harness.mark(u'B'));
+    refreshes.clear();
+    harness.select(playlistB, 0);
+    QVERIFY(harness.mark(u'B'));
+    QCOMPARE(refreshes.size(), 2U);
+    QCOMPARE(refreshes[0].playlistId, playlistA->id());
+    QCOMPARE(refreshes[0].entries, std::vector{second});
+    QCOMPARE(refreshes[0].values, QStringList{u"a/"_s});
+    QCOMPARE(refreshes[1].playlistId, playlistB->id());
+    QCOMPARE(refreshes[1].entries, std::vector{other});
+    QCOMPARE(refreshes[1].values, QStringList{u"/B"_s});
+    QCOMPARE(secondViewRefreshes, 5);
+
+    // Stale cleanup must also publish a snapshot, not only update navigation state.
+    harness.playlists.handler.removePlaylistTracks(playlistB->id(), {0});
+    harness.handler.beginJumpToMark();
+    QVERIFY(dispatchKey(harness.handler, &harness.view, u'B'));
+    Fooyin::ScriptPlaylistData stale{.playlistId = playlistB->id(), .entryId = other};
+    QCOMPARE(parser.evaluate(u"%global_mark%"_s, Fooyin::ScriptContext{.playlistData = &stale}), QString{});
+
+    harness.playlists.handler.removePlaylistTracks(playlistA->id(), {1});
+    harness.select(playlistA, 0);
+    harness.handler.beginJumpToMark();
+    QVERIFY(dispatchKey(harness.handler, &harness.view, u'a'));
+    stale.playlistId = playlistA->id();
+    stale.entryId    = second;
+    QCOMPARE(parser.evaluate(u"%mark%"_s, Fooyin::ScriptContext{.playlistData = &stale}), QString{});
+}
+
+void TestVimHandlerViewContext::refreshesTransferredMarks_data()
+{
+    QTest::addColumn<QString>("action");
+    QTest::newRow("paste-after") << u"pasteAfter"_s;
+    QTest::newRow("paste-before") << u"pasteBefore"_s;
+    QTest::newRow("move-after-playing") << u"moveAfterCurrentPlaying"_s;
+}
+
+void TestVimHandlerViewContext::refreshesTransferredMarks()
+{
+    QFETCH(QString, action);
+    MarkScriptHarness harness;
+    QVERIFY(harness.playlists.dbInitialised);
+    const auto track  = markTestTrack();
+    auto* source      = harness.playlists.handler.createNewPlaylist(u"Source"_s, {track});
+    auto* destination = harness.playlists.handler.createNewPlaylist(u"Destination"_s, {track});
+    QVERIFY(source);
+    QVERIFY(destination);
+    harness.select(destination, 0);
+    QVERIFY(harness.mark(u'a'));
+    const auto previous = destination->playlistTrack(0)->entryId;
+    harness.select(source, 0);
+    QVERIFY(harness.mark(u'a'));
+    const auto cutEntry = source->playlistTrack(0)->entryId;
+    Fooyin::ScriptParser parser{&harness.registry};
+    Fooyin::ScriptPlaylistData row{.playlistId = source->id(), .entryId = cutEntry};
+    if(action == u"moveAfterCurrentPlaying") {
+        destination->changeCurrentIndex(0);
+        harness.playlists.handler.changeActivePlaylist(destination);
+    }
+    else {
+        harness.handler.deleteRows(1);
+        QCOMPARE(parser.evaluate(u"%mark%"_s, Fooyin::ScriptContext{.playlistData = &row}), QString{});
+        harness.select(destination, 0);
+    }
+
+    std::vector<Fooyin::UId> refreshed;
+    connect(&harness.interactor, &Fooyin::PlaylistInteractor::playlistRefreshRequested, this,
+            [&](const Fooyin::UId& id, const std::vector<Fooyin::UId>& entries) {
+                if(id == source->id())
+                    return;
+                QCOMPARE(id, destination->id());
+                QCOMPARE(destination->trackCount(), 2);
+                for(const auto& entry : entries)
+                    QVERIFY(destination->indexOfTrackEntry(entry) >= 0);
+                refreshed = entries;
+            });
+    if(action == u"pasteBefore")
+        harness.handler.pasteBefore();
+    else if(action == u"pasteAfter")
+        harness.handler.pasteAfter();
+    else
+        harness.handler.moveAfterCurrentPlaying();
+    QCOMPARE(parser.evaluate(u"%mark%"_s, Fooyin::ScriptContext{.playlistData = &row}), QString{});
+    const auto inserted = destination->playlistTrack(action == u"pasteBefore" ? 0 : 1)->entryId;
+    QCOMPARE(refreshed, (std::vector{previous, inserted}));
+    row.playlistId = destination->id();
+    row.entryId    = previous;
+    QCOMPARE(parser.evaluate(u"%mark%"_s, Fooyin::ScriptContext{.playlistData = &row}), QString{});
+    row.entryId = inserted;
+    QCOMPARE(parser.evaluate(u"%mark%"_s, Fooyin::ScriptContext{.playlistData = &row}), u"a"_s);
+}
+
+void TestVimHandlerViewContext::evaluatesMarksWhileTheyChange()
+{
+    MarkScriptHarness harness;
+    QVERIFY(harness.playlists.dbInitialised);
+    const auto track = markTestTrack();
+    auto* playlist   = harness.playlists.handler.createNewPlaylist(u"Playlist"_s, {track, track});
+    QVERIFY(playlist);
+    harness.select(playlist, 0);
+    QVERIFY(harness.mark(u'a'));
+    QVERIFY(harness.mark(u'B'));
+    const Fooyin::ScriptPlaylistData row{.playlistId = playlist->id(), .entryId = playlist->playlistTrack(0)->entryId};
+    std::atomic<bool> valid{true};
+    std::latch ready{2};
+    std::vector<std::jthread> workers;
+    for(int i = 0; i < 2; ++i) {
+        workers.emplace_back([&](std::stop_token stop) {
+            Fooyin::ScriptParser parser{&harness.registry};
+            const auto local  = parser.parse(u"%mark%"_s);
+            const auto global = parser.parse(u"%global_mark%"_s);
+            const Fooyin::ScriptContext context{.playlistData = &row};
+            bool first{true};
+            do {
+                const auto localValue  = parser.evaluate(local, track, context);
+                const auto globalValue = parser.evaluate(global, track, context);
+                if((!localValue.isEmpty() && localValue != u"a") || (!globalValue.isEmpty() && globalValue != u"B"))
+                    valid.store(false);
+                if(first) {
+                    if(localValue != u"a" || globalValue != u"B")
+                        valid.store(false);
+                    ready.count_down();
+                    first = false;
+                }
+            } while(!stop.stop_requested());
+        });
+    }
+    ready.wait();
+    bool dispatched{true};
+    for(int i = 0; i < 64; ++i) {
+        harness.view.setCurrentIndex(harness.model.index(i % 2, 0));
+        dispatched = harness.mark(u'a') && harness.mark(u'B') && dispatched;
+    }
+    for(auto& worker : workers)
+        worker.request_stop();
+    workers.clear();
+    QVERIFY(dispatched);
+    QVERIFY(valid.load());
 }
 
 void TestVimHandlerViewContext::restoresSavedCursorWhenReturningToPlaylist()

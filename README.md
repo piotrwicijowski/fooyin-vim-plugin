@@ -27,13 +27,19 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 - If the playlist shrank while you were away, the restored cursor and selection are clamped to the remaining rows.
 - If the playlist is now empty, the plugin restores Normal mode without an invalid selection.
 
-### Script variable
+### Script variables
 
 The plugin exposes `%mark%` and `%global_mark%` for playlist script evaluation.
 
 - `%mark%` resolves to the local vim mark letter for the current playlist entry, or empty when the entry is unmarked.
 - `%global_mark%` resolves to the global vim mark letter for the current playlist entry, or empty when the entry is unmarked.
 - If multiple marks of the same kind point at the same entry, the variable returns the lowest-letter mark.
+- Both variables appear under **Vim Motions** in the Script Editor reference. They return empty when evaluation has no
+  specific playlist entry context.
+- Mark changes refresh the affected playlist rows in every view displaying those entries.
+
+This feature uses fooyin's upstream shared `ScriptRegistry` and `PlaylistInteractor` refresh APIs (commits `29c0d84`
+and `67f2735`, or later); a custom fooyin branch is no longer required.
 
 ### Normal mode bindings
 

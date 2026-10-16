@@ -17,6 +17,8 @@
 #include <core/playlist/playlist.h>
 #include <utils/id.h>
 
+#include <atomic>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -35,7 +37,7 @@ class FyWidget;
 class Playlist;
 class PlaylistHandler;
 class CurrentPlaylistController;
-class PlaylistViewRefresher;
+class PlaylistInteractor;
 class SettingsManager;
 struct ScriptContext;
 class TrackSelectionController;
@@ -85,7 +87,7 @@ public:
     void setSettingsBackend(VimMotionsBindingBackend* backend);
     void setTrackSelectionController(Fooyin::TrackSelectionController* controller);
     void setCurrentPlaylistController(Fooyin::CurrentPlaylistController* controller);
-    void setPlaylistViewRefresher(Fooyin::PlaylistViewRefresher* refresher);
+    void setPlaylistInteractor(Fooyin::PlaylistInteractor* interactor);
 
     [[nodiscard]] bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -220,6 +222,14 @@ private:
         Fooyin::UId entryId;
     };
 
+    struct MarkSnapshot
+    {
+        QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> local;
+        QHash<QChar, GlobalMark> global;
+    };
+
+    void publishMarkSnapshot();
+
     void pushUndoEntry(Fooyin::UId playlistId, Fooyin::PlaylistTrackList before, Fooyin::PlaylistTrackList after,
                        int cursorBefore, int cursorAfter, int col);
     void pushUndoEntry(std::vector<PlaylistSnapshot> before, std::vector<PlaylistSnapshot> after, int cursorBefore,
@@ -310,11 +320,13 @@ private:
     Fooyin::UId m_observedSelectedPlaylistId;
     Fooyin::UId m_pendingPlaylistRestoreId;
     Fooyin::UId m_preserveVisualStateOnNextPlaylistSaveId;
-    Fooyin::PlaylistViewRefresher* m_playlistViewRefresher{nullptr};
+    QPointer<Fooyin::PlaylistInteractor> m_playlistInteractor;
 
     PendingMarkOp m_pendingMarkOp{PendingMarkOp::None};
     QHash<Fooyin::UId, QHash<QChar, Fooyin::UId>> m_localMarks;
     QHash<QChar, GlobalMark> m_globalMarks;
+    // Only the GUI thread mutates the maps above. Script workers read immutable copies.
+    std::atomic<std::shared_ptr<const MarkSnapshot>> m_markSnapshot{std::make_shared<const MarkSnapshot>()};
     QHash<Fooyin::UId, PlaylistCursorState> m_playlistCursorStates;
 
     std::vector<UndoEntry> m_undoStack;

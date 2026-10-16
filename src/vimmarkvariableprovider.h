@@ -1,6 +1,6 @@
 #pragma once
 
-#include <core/scripting/scriptproviders.h>
+#include <core/scripting/scriptdefs.h>
 
 #include <array>
 
@@ -8,20 +8,20 @@ namespace Fooyin::VimMotions {
 
 class VimHandler;
 
-class VimMarkVariableProvider : public ScriptVariableProvider
+class VimMarkVariableProvider
 {
 public:
-    explicit VimMarkVariableProvider(VimHandler* handler = nullptr);
+    explicit VimMarkVariableProvider(const VimHandler* handler);
+    VimMarkVariableProvider(const VimMarkVariableProvider&)            = delete;
+    VimMarkVariableProvider& operator=(const VimMarkVariableProvider&) = delete;
 
-    void setHandler(VimHandler* handler);
-
-    [[nodiscard]] std::span<const ScriptVariableDescriptor> variables() const override;
+    [[nodiscard]] std::span<const ScriptVariableDescriptor> variables() const;
 
 private:
-    static ScriptResult localMarkVariable(const ScriptContext& context, const QString& name);
-    static ScriptResult globalMarkVariable(const ScriptContext& context, const QString& name);
+    ScriptResult localMarkVariable(const ScriptContext& context) const;
+    ScriptResult globalMarkVariable(const ScriptContext& context) const;
 
-    inline static VimHandler* s_handler{nullptr};
+    const VimHandler* m_handler;
     std::array<ScriptVariableDescriptor, 2> m_variables;
 };
 

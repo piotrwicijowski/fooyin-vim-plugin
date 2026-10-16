@@ -14,7 +14,7 @@
 #include <gui/fywidget.h>
 #include <gui/guiconstants.h>
 #include <gui/playlist/currentplaylistcontroller.h>
-#include <gui/playlist/playlistviewrefresher.h>
+#include <gui/playlist/playlistinteractor.h>
 #include <gui/trackselectioncontroller.h>
 #include <utils/actions/actionmanager.h>
 #include <utils/actions/command.h>
@@ -1155,10 +1155,10 @@ void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController*
         });
 }
 
-void VimHandler::setPlaylistViewRefresher(Fooyin::PlaylistViewRefresher* refresher)
+void VimHandler::setPlaylistInteractor(Fooyin::PlaylistInteractor* interactor)
 {
-    qCDebug(VIM_LOG) << "setPlaylistViewRefresher:" << (refresher ? "set" : "cleared");
-    m_playlistViewRefresher = refresher;
+    qCDebug(VIM_LOG) << "setPlaylistInteractor:" << (interactor ? "set" : "cleared");
+    m_playlistInteractor = interactor;
 }
 
 void VimHandler::setActionManager(Fooyin::ActionManager* manager)
@@ -1429,7 +1429,7 @@ Fooyin::TrackList VimHandler::selectedTracksFromActiveViewRows(const int startRo
 
 void VimHandler::refreshPlaylistEntries(const Fooyin::UId& playlistId, std::span<const Fooyin::UId> entryIds) const
 {
-    if(m_playlistViewRefresher == nullptr || !playlistId.isValid() || entryIds.empty()) {
+    if(m_playlistInteractor == nullptr || !playlistId.isValid() || entryIds.empty()) {
         return;
     }
 
@@ -1443,35 +1443,31 @@ void VimHandler::refreshPlaylistEntries(const Fooyin::UId& playlistId, std::span
     }
 
     if(!refreshedEntryIds.empty()) {
-        m_playlistViewRefresher->refreshEntries(playlistId, refreshedEntryIds);
+        m_playlistInteractor->refreshEntries(playlistId, refreshedEntryIds);
     }
+}
+
+void VimHandler::publishMarkSnapshot()
+{
+    m_markSnapshot.store(std::make_shared<const MarkSnapshot>(MarkSnapshot{m_localMarks, m_globalMarks}));
 }
 
 QString VimHandler::localMarkForScriptContext(const Fooyin::ScriptContext& context) const
 {
-    const auto* playlistEnvironment = context.environment ? context.environment->playlistEnvironment() : nullptr;
-    if(context.playlist == nullptr || playlistEnvironment == nullptr) {
+    const auto* row = context.playlistData;
+    if(!row || !row->playlistId.isValid() || !row->entryId.isValid()) {
         return {};
     }
 
-    const int row = playlistEnvironment->currentPlaylistTrackIndex();
-    if(row < 0) {
-        return {};
-    }
-
-    const auto playlistTrack = context.playlist->playlistTrack(row);
-    if(!playlistTrack) {
-        return {};
-    }
-
-    const auto playlistMarks = m_localMarks.constFind(context.playlist->id());
-    if(playlistMarks == m_localMarks.cend()) {
+    const auto snapshot      = m_markSnapshot.load();
+    const auto playlistMarks = snapshot->local.constFind(row->playlistId);
+    if(playlistMarks == snapshot->local.cend()) {
         return {};
     }
 
     QChar firstMark;
     for(auto it = playlistMarks->cbegin(); it != playlistMarks->cend(); ++it) {
-        if(it.value() == playlistTrack->entryId && (firstMark.isNull() || it.key() < firstMark)) {
+        if(it.value() == row->entryId && (firstMark.isNull() || it.key() < firstMark)) {
             firstMark = it.key();
         }
     }
@@ -1481,24 +1477,15 @@ QString VimHandler::localMarkForScriptContext(const Fooyin::ScriptContext& conte
 
 QString VimHandler::globalMarkForScriptContext(const Fooyin::ScriptContext& context) const
 {
-    const auto* playlistEnvironment = context.environment ? context.environment->playlistEnvironment() : nullptr;
-    if(context.playlist == nullptr || playlistEnvironment == nullptr) {
-        return {};
-    }
-
-    const int row = playlistEnvironment->currentPlaylistTrackIndex();
-    if(row < 0) {
-        return {};
-    }
-
-    const auto playlistTrack = context.playlist->playlistTrack(row);
-    if(!playlistTrack) {
+    const auto* row = context.playlistData;
+    if(!row || !row->playlistId.isValid() || !row->entryId.isValid()) {
         return {};
     }
 
     QChar firstMark;
-    for(auto it = m_globalMarks.cbegin(); it != m_globalMarks.cend(); ++it) {
-        if(it.value().playlistId == context.playlist->id() && it.value().entryId == playlistTrack->entryId
+    const auto snapshot = m_markSnapshot.load();
+    for(auto it = snapshot->global.cbegin(); it != snapshot->global.cend(); ++it) {
+        if(it.value().playlistId == row->playlistId && it.value().entryId == row->entryId
            && (firstMark.isNull() || it.key() < firstMark)) {
             firstMark = it.key();
         }
@@ -1523,6 +1510,7 @@ void VimHandler::setLocalMark(QChar mark)
 
     const Fooyin::UId previousEntryId  = m_localMarks[playlist->id()].value(mark);
     m_localMarks[playlist->id()][mark] = entryId;
+    publishMarkSnapshot();
     const std::array refreshedEntryIds{previousEntryId, entryId};
     refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
     qCDebug(VIM_LOG) << "setLocalMark:" << mark << "playlist=" << playlist->name() << "entryId=" << entryId;
@@ -1544,6 +1532,7 @@ void VimHandler::setGlobalMark(QChar mark)
 
     const auto previousMark = m_globalMarks.value(mark);
     m_globalMarks.insert(mark, {.playlistId = playlist->id(), .entryId = entryId});
+    publishMarkSnapshot();
 
     if(previousMark.playlistId.isValid()) {
         refreshPlaylistEntries(previousMark.playlistId, std::array{previousMark.entryId});
@@ -1575,6 +1564,7 @@ void VimHandler::jumpToLocalMark(QChar mark)
         m_localMarks[playlist->id()].remove(mark);
         if(m_localMarks[playlist->id()].isEmpty())
             m_localMarks.remove(playlist->id());
+        publishMarkSnapshot();
         refreshPlaylistEntries(playlist->id(), std::array{entryId});
         return;
     }
@@ -1616,6 +1606,8 @@ void VimHandler::jumpToGlobalMark(QChar mark)
     if(!playlist) {
         qCDebug(VIM_LOG) << "jumpToGlobalMark: stale playlist mark cleared" << mark;
         m_globalMarks.remove(mark);
+        publishMarkSnapshot();
+        refreshPlaylistEntries(globalMark.playlistId, std::array{globalMark.entryId});
         return;
     }
 
@@ -1623,6 +1615,8 @@ void VimHandler::jumpToGlobalMark(QChar mark)
     if(row < 0) {
         qCDebug(VIM_LOG) << "jumpToGlobalMark: stale entry mark cleared" << mark;
         m_globalMarks.remove(mark);
+        publishMarkSnapshot();
+        refreshPlaylistEntries(globalMark.playlistId, std::array{globalMark.entryId});
         return;
     }
 
@@ -1689,6 +1683,7 @@ std::vector<VimClipboard::MarkTransfer> VimHandler::takeCutMarks(Fooyin::Playlis
     if(marks.isEmpty())
         m_localMarks.erase(playlistIt);
 
+    publishMarkSnapshot();
     refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
 
     return transfers;
@@ -1985,21 +1980,17 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
     auto insertedEntries = move && samePlaylist
                              ? selectedEntries
                              : Fooyin::PlaylistTrack::fromTracks(selectedTracks, destinationPlaylist->id());
+    std::vector<Fooyin::UId> refreshedEntryIds;
     for(const auto& transfer : cutMarks) {
         if(transfer.offset >= 0 && transfer.offset < static_cast<int>(insertedEntries.size())) {
+            refreshedEntryIds.push_back(m_localMarks[destinationPlaylist->id()].value(transfer.mark));
             m_localMarks[destinationPlaylist->id()][transfer.mark]
                 = insertedEntries[static_cast<size_t>(transfer.offset)].entryId;
+            refreshedEntryIds.push_back(insertedEntries[static_cast<size_t>(transfer.offset)].entryId);
         }
     }
     if(!cutMarks.empty()) {
-        std::vector<Fooyin::UId> refreshedEntryIds;
-        refreshedEntryIds.reserve(cutMarks.size());
-        for(const auto& transfer : cutMarks) {
-            if(transfer.offset >= 0 && transfer.offset < static_cast<int>(insertedEntries.size())) {
-                refreshedEntryIds.push_back(insertedEntries[static_cast<size_t>(transfer.offset)].entryId);
-            }
-        }
-        refreshPlaylistEntries(destinationPlaylist->id(), refreshedEntryIds);
+        publishMarkSnapshot();
     }
 
     int adjustedPlayingIndex = playingIndex;
@@ -2034,6 +2025,7 @@ void VimHandler::insertSelectionAfterCurrentPlaying(const bool move)
                      << "cursorBeforeEntryId=" << cursorBeforeEntryId << "restoreEntryId=" << restoreEntryId;
 
     applyPlaylistSnapshots(afterSnapshots);
+    refreshPlaylistEntries(destinationPlaylist->id(), refreshedEntryIds);
 
     const int rowCountBefore = static_cast<int>(sourceBefore.size());
     const int rowCountAfter
@@ -2544,15 +2536,18 @@ void VimHandler::pasteAfter()
     std::vector<Fooyin::UId> refreshedEntryIds;
     for(const auto& transfer : markTransfers) {
         if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size())) {
+            refreshedEntryIds.push_back(m_localMarks[playlist->id()].value(transfer.mark));
             m_localMarks[playlist->id()][transfer.mark] = newEntries[static_cast<size_t>(transfer.offset)].entryId;
             refreshedEntryIds.push_back(newEntries[static_cast<size_t>(transfer.offset)].entryId);
         }
     }
-    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
+    if(!markTransfers.empty())
+        publishMarkSnapshot();
     qCDebug(VIM_LOG) << "pasteAfter: playlist=" << playlist->name() << "originalRow=" << originalRow
                      << "insertPos=" << insertPos << "trackCount=" << newEntries.size();
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
     if(!markTransfers.empty())
         m_clipboard.clearMarkTransfers();
     const int afterSize              = static_cast<int>(all.size());
@@ -2594,15 +2589,18 @@ void VimHandler::pasteBefore()
     std::vector<Fooyin::UId> refreshedEntryIds;
     for(const auto& transfer : markTransfers) {
         if(transfer.offset >= 0 && transfer.offset < static_cast<int>(newEntries.size())) {
+            refreshedEntryIds.push_back(m_localMarks[playlist->id()].value(transfer.mark));
             m_localMarks[playlist->id()][transfer.mark] = newEntries[static_cast<size_t>(transfer.offset)].entryId;
             refreshedEntryIds.push_back(newEntries[static_cast<size_t>(transfer.offset)].entryId);
         }
     }
-    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
+    if(!markTransfers.empty())
+        publishMarkSnapshot();
     qCDebug(VIM_LOG) << "pasteBefore: playlist=" << playlist->name() << "originalRow=" << originalRow
                      << "insertPos=" << insertPos << "trackCount=" << newEntries.size();
     all.insert(all.begin() + insertPos, newEntries.begin(), newEntries.end());
     m_playlistHandler->replacePlaylistTracks(playlist->id(), all);
+    refreshPlaylistEntries(playlist->id(), refreshedEntryIds);
     if(!markTransfers.empty())
         m_clipboard.clearMarkTransfers();
     const int afterSize              = static_cast<int>(all.size());
