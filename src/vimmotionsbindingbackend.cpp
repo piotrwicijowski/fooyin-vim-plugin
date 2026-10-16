@@ -2,10 +2,11 @@
 
 #include "vimmotionssettings.h"
 
+#include <utils/fypaths.h>
 #include <utils/settings/settingsmanager.h>
 
+#include <QDir>
 #include <QSettings>
-#include <QStandardPaths>
 #include <QStringList>
 
 #include <algorithm>
@@ -15,11 +16,6 @@ using namespace Qt::StringLiterals;
 namespace Fooyin::VimMotions {
 
 namespace {
-
-QSettings* settingsFile(SettingsManager* settingsManager)
-{
-    return settingsManager ? settingsManager->findChild<QSettings*>() : nullptr;
-}
 
 std::optional<BindingScope> scopeFromString(const QString& scope)
 {
@@ -136,14 +132,6 @@ bool isValidBinding(const QString& keys, const QString& actionName, const QStrin
     return isValidBindingEntry(parseBindingString(keys, bindingValue(actionName, args)));
 }
 
-QString customBindingsFilePath(SettingsManager* settingsManager)
-{
-    if(auto* settings = settingsFile(settingsManager))
-        return settings->fileName();
-
-    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/fooyin.conf");
-}
-
 void loadCustomBindingFile(QSettings& settings, QHash<QString, QString>* customValues)
 {
     settings.beginGroup(QStringLiteral("VimMotions"));
@@ -157,19 +145,11 @@ void loadCustomBindingFile(QSettings& settings, QHash<QString, QString>* customV
     settings.endGroup();
 }
 
-QHash<QString, QString> loadCustomBindingValues(SettingsManager* settingsManager)
+QHash<QString, QString> loadCustomBindingValues(const QString& settingsPath)
 {
     QHash<QString, QString> customValues;
-
-    if(auto* settings = settingsFile(settingsManager))
-        loadCustomBindingFile(*settings, &customValues);
-
-    const QString appConfigPath
-        = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/fooyin.conf");
-    if(!settingsFile(settingsManager) || settingsFile(settingsManager)->fileName() != appConfigPath) {
-        QSettings appConfigSettings{appConfigPath, QSettings::IniFormat};
-        loadCustomBindingFile(appConfigSettings, &customValues);
-    }
+    QSettings settings{settingsPath, QSettings::IniFormat};
+    loadCustomBindingFile(settings, &customValues);
 
     return customValues;
 }
@@ -227,8 +207,14 @@ BindingRow bindingRowFromValue(BindingScope scope, BindingMode mode, const QStri
 } // namespace
 
 VimMotionsBindingBackend::VimMotionsBindingBackend(SettingsManager* settingsManager, QObject* parent)
+    : VimMotionsBindingBackend{settingsManager, QDir{Utils::configPath()}.filePath(u"fooyin.conf"_s), parent}
+{ }
+
+VimMotionsBindingBackend::VimMotionsBindingBackend(SettingsManager* settingsManager, const QString& settingsPath,
+                                                   QObject* parent)
     : QObject{parent}
     , m_settingsManager{settingsManager}
+    , m_settingsPath{settingsPath}
 {
     reloadBindings();
 }
@@ -270,7 +256,7 @@ const EffectiveBindings& VimMotionsBindingBackend::effectiveBindings() const
 QList<BindingDefinition> VimMotionsBindingBackend::bindingDefinitions() const
 {
     QList<BindingDefinition> definitions = defaultBindingDefinitions();
-    const auto customValues              = loadCustomBindingValues(m_settingsManager);
+    const auto customValues              = loadCustomBindingValues(m_settingsPath);
 
     for(auto it = customValues.constBegin(); it != customValues.constEnd(); ++it) {
         const QStringList parts = it.key().split(u'/');
@@ -499,7 +485,7 @@ bool VimMotionsBindingBackend::unmapBinding(QList<BindingDefinition>& definition
 
 bool VimMotionsBindingBackend::saveBindingDefinitions(const QList<BindingDefinition>& definitions)
 {
-    QSettings settings(customBindingsFilePath(m_settingsManager), QSettings::IniFormat);
+    QSettings settings(m_settingsPath, QSettings::IniFormat);
     settings.beginGroup(QStringLiteral("VimMotions"));
 
     const QStringList allKeys = settings.allKeys();

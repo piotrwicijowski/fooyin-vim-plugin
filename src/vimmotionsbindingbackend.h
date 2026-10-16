@@ -89,6 +89,8 @@ class VimMotionsBindingBackend : public QObject
 
 public:
     explicit VimMotionsBindingBackend(SettingsManager* settingsManager, QObject* parent = nullptr);
+    // Override the host configuration file when using a SettingsManager with an explicit path (e.g. in tests).
+    VimMotionsBindingBackend(SettingsManager* settingsManager, const QString& settingsPath, QObject* parent = nullptr);
 
     [[nodiscard]] bool settingsUiEnabled() const;
     [[nodiscard]] bool useDefaultBindings() const;
@@ -126,6 +128,7 @@ private:
     [[nodiscard]] static std::optional<BindingScope> scopeFromString(const QString& scope);
 
     SettingsManager* m_settingsManager{nullptr};
+    const QString m_settingsPath;
     EffectiveBindings m_effectiveBindings;
 };
 

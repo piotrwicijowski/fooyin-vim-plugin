@@ -94,7 +94,7 @@ void TestVimMotionsSettingsDialog::testBindingEditorShowsHelp()
     Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("vim_settings_dialog_help.ini"))};
     VimMotionsSettings vimSettings{&settings};
     Q_UNUSED(vimSettings);
-    VimMotionsBindingBackend backend{&settings};
+    VimMotionsBindingBackend backend{&settings, tempDir.filePath(QStringLiteral("vim_settings_dialog_help.ini"))};
     VimMotionsSettingsDialog dialog{&settings, &backend};
 
     QTimer::singleShot(0, [&dialog]() {
@@ -171,7 +171,7 @@ void TestVimMotionsSettingsDialog::testBindingEditorIncludesSearchLibraryDialogS
     Fooyin::SettingsManager settings{tempDir.filePath(QStringLiteral("vim_settings_dialog_scope.ini"))};
     VimMotionsSettings vimSettings{&settings};
     Q_UNUSED(vimSettings);
-    VimMotionsBindingBackend backend{&settings};
+    VimMotionsBindingBackend backend{&settings, tempDir.filePath(QStringLiteral("vim_settings_dialog_scope.ini"))};
     VimMotionsSettingsDialog dialog{&settings, &backend};
 
     QTimer::singleShot(0, [&dialog]() {

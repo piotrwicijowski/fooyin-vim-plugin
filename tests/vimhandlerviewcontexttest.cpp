@@ -889,7 +889,17 @@ class TestVimHandlerViewContext : public QObject
 {
     Q_OBJECT
 
+private:
+    QTemporaryDir m_configDir;
+
 private Q_SLOTS:
+    void initTestCase()
+    {
+        QVERIFY(m_configDir.isValid());
+        QStandardPaths::setTestModeEnabled(true);
+        qputenv("XDG_CONFIG_HOME", m_configDir.path().toUtf8());
+    }
+
     void classifiesNullView();
     void classifiesPlaylistView();
     void classifiesPlaylistOrganiserTree();
@@ -1473,7 +1483,9 @@ void TestVimHandlerViewContext::scopedBindingsPreferActiveViewOverGlobalFallback
     settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistOrganiser/Normal/j"),
                      QStringLiteral("treeOpenOrDescend"));
 
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
+    handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);
 
     Fooyin::PlaylistView playlistView;
@@ -1529,7 +1541,9 @@ void TestVimHandlerViewContext::searchLibraryScopedBindingsOverridePlaylistViewA
     settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/k"), QStringLiteral("enterVisual"));
     settings.fileSet(QStringLiteral("VimMotions/Bindings/PlaylistView/Normal/k"), QStringLiteral("moveCursor:-1"));
 
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
+    handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);
 
     SearchDialog dialog;
@@ -1561,7 +1575,9 @@ void TestVimHandlerViewContext::searchLibrarySearchFieldDispatchesScopedBindingA
     settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J"),
                      QStringLiteral("spatialMoveFocus:down"));
 
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
+    handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);
 
     SearchDialog dialog;
@@ -1604,7 +1620,9 @@ void TestVimHandlerViewContext::searchLibrarySearchFieldFallsBackToGlobalBinding
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
     settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Insert/<Esc>"), QStringLiteral("leaveInsertMode"));
 
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
+    handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);
 
     SearchDialog dialog;
@@ -1635,7 +1653,9 @@ void TestVimHandlerViewContext::searchLibraryCtrlJMovesFocusToResults()
     settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J"),
                      QStringLiteral("spatialMoveFocus:down"));
 
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
+    handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);
 
     SearchDialog dialog;
@@ -1667,7 +1687,9 @@ void TestVimHandlerViewContext::searchLibraryCtrlKMovesFocusToSearchField()
     settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+K"),
                      QStringLiteral("spatialMoveFocus:up"));
 
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
+    handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);
 
     SearchDialog dialog;

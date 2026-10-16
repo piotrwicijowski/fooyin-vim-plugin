@@ -257,7 +257,12 @@ QT_LOGGING_RULES="fy.vim.debug=true" fooyin 2>&1 | grep "fy.vim"
 
 ## Configurable bindings
 
-The plugin reads vim bindings from fooyin's config file (`~/.config/fooyin/fooyin.conf`). By default, all built-in bindings are active through this config-driven system. Use `UseDefaultBindings` (see below) to start from a clean slate.
+The plugin reads and writes vim bindings in fooyin's config file, located using fooyin's public configuration-path helper.
+For a normal Linux installation this is typically `~/.config/fooyin/fooyin.conf` (or under `XDG_CONFIG_HOME` when set).
+In portable mode, it uses `config/fooyin.conf` beside the executable. Portable bindings are kept separate from those of a
+normal installation.
+
+By default, all built-in bindings are active through this config-driven system. Use `UseDefaultBindings` (see below) to start from a clean slate.
 
 You can also manage vim settings and bindings in **Settings -> Plugins -> Vim Motions -> Configure**. Changes made there apply on `Apply` or `OK` without restarting fooyin.
 

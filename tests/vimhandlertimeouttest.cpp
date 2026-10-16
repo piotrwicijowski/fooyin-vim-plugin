@@ -4,6 +4,7 @@
 #include "vimmotionssettingsdialog.h"
 
 #include <utils/actions/actionmanager.h>
+#include <utils/fypaths.h>
 #include <utils/settings/settingsmanager.h>
 
 #include <QAction>
@@ -21,6 +22,7 @@
 #include <QSignalSpy>
 #include <QStandardItemModel>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <QTreeView>
@@ -81,7 +83,7 @@ void focusView(QTreeView* view)
 
 void writeFooyinConfig(const std::function<void(QSettings&)>& configure)
 {
-    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    const QString configDir = Fooyin::Utils::configPath();
     QDir{}.mkpath(configDir);
 
     QSettings fileSettings(configDir + QStringLiteral("/fooyin.conf"), QSettings::IniFormat);
@@ -136,7 +138,22 @@ class TestVimHandlerTimeout : public QObject
 {
     Q_OBJECT
 
+private:
+    QTemporaryDir m_configDir;
+
 private Q_SLOTS:
+    void initTestCase()
+    {
+        QVERIFY(m_configDir.isValid());
+        QStandardPaths::setTestModeEnabled(true);
+        qputenv("XDG_CONFIG_HOME", m_configDir.path().toUtf8());
+    }
+
+    void init()
+    {
+        writeFooyinConfig([](QSettings&) { });
+    }
+
     void twoKeyTimeoutClearsPendingSequence();
     void markTimeoutClearsPendingMark();
     void configBindingTriggersFooyinAction();
@@ -209,7 +226,7 @@ void TestVimHandlerTimeout::configBindingTriggersFooyinAction()
     Q_UNUSED(vimSettings)
     settings.set(QStringLiteral("VimMotions/UseDefaultBindings"), false);
 
-    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    const QString configDir = Fooyin::Utils::configPath();
     QVERIFY(QDir{}.mkpath(configDir));
     QSettings fileSettings(configDir + QStringLiteral("/fooyin.conf"), QSettings::IniFormat);
     fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/x"),
@@ -490,7 +507,7 @@ void TestVimHandlerTimeout::settingsDialogApplyReloadsHandlerBindings()
     VimMotionsSettings vimSettings(&settings);
     Q_UNUSED(vimSettings)
 
-    VimMotionsBindingBackend backend{&settings};
+    VimMotionsBindingBackend backend{&settings, settingsPath};
     VimHandler handler;
     handler.setSettingsBackend(&backend);
     handler.setSettingsManager(&settings);

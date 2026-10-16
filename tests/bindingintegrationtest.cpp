@@ -10,17 +10,23 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLineEdit>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QPushButton>
 #include <QSet>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <QTreeView>
 
+#include <utils/fypaths.h>
 #include <utils/settings/settingsmanager.h>
 
 using namespace Fooyin::VimMotions;
@@ -328,6 +334,125 @@ private Q_SLOTS:
         QCOMPARE(settings.value<Fooyin::Settings::VimMotions::UseVimMotionsInSettings>(), false);
     }
 
+    void testConfigurationPath_data()
+    {
+        QTest::addColumn<bool>("portable");
+        QTest::newRow("installed") << false;
+        QTest::newRow("portable") << true;
+    }
+
+    void testConfigurationPath()
+    {
+        QFETCH(bool, portable);
+        if(!qEnvironmentVariableIsSet("VIM_TEST_CONFIG_PATH_CHILD")) {
+            // Portable detection uses the executable directory. Run a private copy so other tests are unaffected.
+            QTemporaryDir sandbox;
+            QVERIFY(sandbox.isValid());
+            const QString binDir = sandbox.filePath(QStringLiteral("bin"));
+            QVERIFY(QDir{}.mkpath(binDir));
+            const QString executable
+                = QDir{binDir}.filePath(QFileInfo{QCoreApplication::applicationFilePath()}.fileName());
+            QVERIFY(QFile::copy(QCoreApplication::applicationFilePath(), executable));
+            if(portable) {
+                QFile marker{QDir{binDir}.filePath(QStringLiteral("PORTABLE"))};
+                QVERIFY(marker.open(QIODevice::WriteOnly));
+            }
+
+            auto environment = QProcessEnvironment::systemEnvironment();
+            environment.insert(QStringLiteral("VIM_TEST_CONFIG_PATH_CHILD"), QStringLiteral("1"));
+            environment.insert(QStringLiteral("HOME"), sandbox.path());
+            environment.insert(QStringLiteral("XDG_CONFIG_HOME"), sandbox.filePath(QStringLiteral("user-config")));
+            environment.insert(QStringLiteral("APPDATA"), sandbox.filePath(QStringLiteral("roaming")));
+            environment.insert(QStringLiteral("LOCALAPPDATA"), sandbox.filePath(QStringLiteral("local")));
+            // Preserve DLL discovery when running the copied executable on Windows.
+            environment.insert(QStringLiteral("PATH"), QCoreApplication::applicationDirPath() + QDir::listSeparator()
+                                                           + environment.value(QStringLiteral("PATH")));
+            QProcess child;
+            child.setProcessEnvironment(environment);
+            child.setProcessChannelMode(QProcess::MergedChannels);
+            child.start(executable, {QStringLiteral("testConfigurationPath:")
+                                     + (portable ? QStringLiteral("portable") : QStringLiteral("installed"))});
+            QVERIFY2(child.waitForStarted(), qPrintable(child.errorString()));
+            if(!child.waitForFinished(30000)) {
+                child.kill();
+                child.waitForFinished();
+                QFAIL("Configuration-path subprocess timed out");
+            }
+            const QByteArray output = child.readAll();
+            QVERIFY2(child.exitStatus() == QProcess::NormalExit && child.exitCode() == 0, output.constData());
+            return;
+        }
+
+        QCOMPARE(Fooyin::Utils::isPortable(), portable);
+        const QString hostPath = QDir{Fooyin::Utils::configPath()}.filePath(QStringLiteral("fooyin.conf"));
+        const QString installedPath
+            = QDir{QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)}.filePath(
+                QStringLiteral("fooyin.conf"));
+        if(portable) {
+            QCOMPARE(hostPath,
+                     QDir{QCoreApplication::applicationDirPath()}.filePath(QStringLiteral("config/fooyin.conf")));
+            QVERIFY(hostPath != installedPath);
+            QSettings installed{installedPath, QSettings::IniFormat};
+            installed.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("enterVisual"));
+            installed.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/q"), QStringLiteral("enterVisual"));
+            installed.sync();
+            QCOMPARE(installed.status(), QSettings::NoError);
+        }
+        else {
+            QCOMPARE(hostPath, installedPath);
+        }
+
+        Fooyin::SettingsManager settings{hostPath};
+        VimMotionsSettings vimSettings{&settings};
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("focusNowPlaying"));
+        settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/x"), QStringLiteral("enterVisual"));
+        settings.fileSet(QStringLiteral("Unrelated/Setting"), 42);
+        // A child QSettings is not a supported way to discover the host's configuration file.
+        QSettings decoy{m_tempDir.filePath(QStringLiteral("decoy.ini")), QSettings::IniFormat, &settings};
+        decoy.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("enterVisual"));
+        VimMotionsBindingBackend backend{&settings};
+        const auto bindings = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+        QVERIFY(hasBinding(bindings, u'z', QStringLiteral("focusNowPlaying")));
+        QVERIFY(!hasBinding(bindings, u'q', QStringLiteral("enterVisual")));
+
+        auto definitions = backend.bindingDefinitions();
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal, QStringLiteral("w"),
+                                         QStringLiteral("jumpToFirst"), {}));
+        QVERIFY(backend.saveBindingDefinitions(definitions));
+        QCOMPARE(settings.fileValue(QStringLiteral("VimMotions/Bindings/Global/Normal/w")).toString(),
+                 QStringLiteral("jumpToFirst"));
+        QCOMPARE(settings.fileValue(QStringLiteral("Unrelated/Setting")).toInt(), 42);
+        VimMotionsBindingBackend reloaded{&settings};
+        QVERIFY(hasBinding(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
+                           u'w', QStringLiteral("jumpToFirst")));
+        if(portable) {
+            QSettings installed{installedPath, QSettings::IniFormat};
+            QCOMPARE(installed.value(QStringLiteral("VimMotions/Bindings/Global/Normal/z")).toString(),
+                     QStringLiteral("enterVisual"));
+            QCOMPARE(installed.value(QStringLiteral("VimMotions/Bindings/Global/Normal/q")).toString(),
+                     QStringLiteral("enterVisual"));
+            QVERIFY(!installed.contains(QStringLiteral("VimMotions/Bindings/Global/Normal/w")));
+        }
+
+        const QString explicitPath = m_tempDir.filePath(QStringLiteral("explicit.ini"));
+        Fooyin::SettingsManager explicitSettings{explicitPath};
+        VimMotionsSettings explicitVimSettings{&explicitSettings};
+        explicitSettings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("enterVisual"));
+        VimMotionsBindingBackend explicitBackend{&explicitSettings, explicitPath};
+        const auto explicitBindings
+            = scopedBindings(explicitBackend.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+        QVERIFY(hasBinding(explicitBindings, u'z', QStringLiteral("enterVisual")));
+        QVERIFY(!hasBinding(explicitBindings, u'x', QStringLiteral("enterVisual")));
+        auto explicitDefinitions = explicitBackend.bindingDefinitions();
+        QVERIFY(explicitBackend.addCustomBinding(explicitDefinitions, BindingScope::Global, BindingMode::Normal,
+                                                 QStringLiteral("w"), QStringLiteral("jumpToLast"), {}));
+        QVERIFY(explicitBackend.saveBindingDefinitions(explicitDefinitions));
+        QCOMPARE(explicitSettings.fileValue(QStringLiteral("VimMotions/Bindings/Global/Normal/w")).toString(),
+                 QStringLiteral("jumpToLast"));
+        QCOMPARE(settings.fileValue(QStringLiteral("VimMotions/Bindings/Global/Normal/w")).toString(),
+                 QStringLiteral("jumpToFirst"));
+    }
+
     void testBindingBackendReloadsCustomBindings()
     {
         Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("vim_settings.ini"))};
@@ -336,7 +461,7 @@ private Q_SLOTS:
 
         settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("focusNowPlaying"));
 
-        VimMotionsBindingBackend backend{&settings};
+        VimMotionsBindingBackend backend{&settings, m_tempDir.filePath(QStringLiteral("vim_settings.ini"))};
         const auto initialBindings
             = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
         QVERIFY(hasBinding(initialBindings, QChar(u'z'), QStringLiteral("focusNowPlaying")));
@@ -360,7 +485,8 @@ private Q_SLOTS:
         settings.fileSet(QStringLiteral("VimMotions/Bindings/SearchLibraryDialog/Normal/Ctrl+J"),
                          QStringLiteral("spatialMoveFocus:down"));
 
-        VimMotionsBindingBackend backend{&settings};
+        VimMotionsBindingBackend backend{&settings,
+                                         m_tempDir.filePath(QStringLiteral("vim_settings_search_library_scope.ini"))};
         const auto bindings
             = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::SearchLibraryDialog);
 
@@ -385,7 +511,7 @@ private Q_SLOTS:
         settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false);
         settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("focusNowPlaying"));
 
-        VimMotionsBindingBackend backend{&settings};
+        VimMotionsBindingBackend backend{&settings, m_tempDir.filePath(QStringLiteral("vim_settings_dialog.ini"))};
         VimMotionsSettingsDialog dialog{&settings, &backend};
         auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
         QVERIFY(tree);
@@ -508,7 +634,8 @@ private Q_SLOTS:
         VimMotionsSettings vimSettings{&settings};
         Q_UNUSED(vimSettings);
 
-        VimMotionsBindingBackend backend{&settings};
+        VimMotionsBindingBackend backend{&settings,
+                                         m_tempDir.filePath(QStringLiteral("vim_settings_backend_editable.ini"))};
         auto definitions = backend.bindingDefinitions();
 
         QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal, QStringLiteral("z"),
@@ -574,7 +701,8 @@ private Q_SLOTS:
 
         settings.fileSet(QStringLiteral("VimMotions/Bindings/Global/Normal/z"), QStringLiteral("focusNowPlaying"));
 
-        VimMotionsBindingBackend backend{&settings};
+        VimMotionsBindingBackend backend{&settings,
+                                         m_tempDir.filePath(QStringLiteral("vim_settings_dialog_stage6.ini"))};
         VimMotionsSettingsDialog dialog{&settings, &backend};
         auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
         QVERIFY(tree);

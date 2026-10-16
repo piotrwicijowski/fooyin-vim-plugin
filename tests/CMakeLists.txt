@@ -110,7 +110,7 @@ add_test(NAME test_vimhandler_timeout COMMAND test_vimhandler_timeout)
 
 # Load the actual module to catch plugin IID and interface registration mismatches.
 add_executable(test_pluginload pluginloadtest.cpp)
-target_link_libraries(test_pluginload PRIVATE Fooyin::Gui Qt6::Test Qt6::Widgets)
+target_link_libraries(test_pluginload PRIVATE Fooyin::Gui Qt6::Test Qt6::Widgets Qt6::Sql)
 add_dependencies(test_pluginload ${VIM_MOTIONS_PLUGIN_TARGET})
 add_test(NAME test_pluginload
     COMMAND ${CMAKE_COMMAND} -E env
