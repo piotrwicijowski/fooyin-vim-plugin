@@ -355,6 +355,11 @@ public:
         return true;
     }
 
+    [[nodiscard]] bool canInsertWidget(int index) const override
+    {
+        return index >= 0 && index <= widgetCount();
+    }
+
     [[nodiscard]] bool canMoveWidget(int index, int newIndex) const override
     {
         return index >= 0 && index < static_cast<int>(m_widgets.size()) && newIndex >= 0
@@ -417,14 +422,27 @@ public:
         m_widgets.erase(m_widgets.begin() + index);
     }
 
-    void replaceWidget(int index, Fooyin::FyWidget* widget) override
+    Fooyin::FyWidget* takeWidget(int index) override
+    {
+        auto* widget = widgetAtIndex(index);
+        if(!widget)
+            return nullptr;
+        m_widgets.erase(m_widgets.begin() + index);
+        m_layout->removeWidget(widget);
+        widget->hide();
+        widget->setParent(nullptr);
+        return widget;
+    }
+
+    Fooyin::FyWidget* exchangeWidgetImpl(int index, Fooyin::FyWidget* widget) override
     {
         if(!widget || index < 0 || index >= static_cast<int>(m_widgets.size()))
-            return;
+            return nullptr;
 
         auto* oldWidget = m_widgets[static_cast<size_t>(index)];
         m_layout->replaceWidget(oldWidget, widget);
         m_widgets[static_cast<size_t>(index)] = widget;
+        return oldWidget;
     }
 
     void moveWidget(int index, int newIndex) override
