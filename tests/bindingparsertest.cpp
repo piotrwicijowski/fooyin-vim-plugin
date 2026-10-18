@@ -31,6 +31,9 @@ private Q_SLOTS:
     void testFooyinAction();
     void testCopyAfterCurrentPlayingAction();
     void testMoveAfterCurrentPlayingAction();
+    void testJumpBindings_data();
+    void testJumpBindings();
+    void testFilterSequence();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -42,6 +45,36 @@ void TestParseBinding::testSimpleKey()
     QVERIFY(!e.keys[0].ch.isNull());
     QCOMPARE(e.keys[0].ch, QChar(u'j'));
     QCOMPARE(e.keys[0].modifiers, Qt::NoModifier);
+}
+
+void TestParseBinding::testJumpBindings_data()
+{
+    QTest::addColumn<QString>("keys");
+    QTest::addColumn<QString>("action");
+    QTest::addColumn<QChar>("letter");
+    QTest::newRow("older") << QStringLiteral("Ctrl+O") << QStringLiteral("jumpOlder") << QChar(u'O');
+    QTest::newRow("newer") << QStringLiteral("Ctrl+I") << QStringLiteral("jumpNewer") << QChar(u'I');
+}
+
+void TestParseBinding::testJumpBindings()
+{
+    QFETCH(QString, keys);
+    QFETCH(QString, action);
+    QFETCH(QChar, letter);
+    const auto binding = parseBindingString(keys, action);
+    QCOMPARE(binding.actionName, action);
+    QCOMPARE(binding.keys.size(), 1);
+    QCOMPARE(binding.keys.front().ch, letter);
+    QCOMPARE(binding.keys.front().modifiers, Qt::ControlModifier);
+}
+
+void TestParseBinding::testFilterSequence()
+{
+    const auto binding = parseBindingString(QStringLiteral("gi"), QStringLiteral("enterFilter"));
+    QCOMPARE(binding.actionName, QStringLiteral("enterFilter"));
+    QCOMPARE(binding.keys.size(), 2);
+    QCOMPARE(binding.keys.front().ch, QChar(u'g'));
+    QCOMPARE(binding.keys.back().ch, QChar(u'i'));
 }
 
 void TestParseBinding::testKeyWithArgs()

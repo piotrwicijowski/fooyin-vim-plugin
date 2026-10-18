@@ -941,6 +941,80 @@ struct MarkScriptHarness
     bool registered{true};
 };
 
+struct JumpHarness
+{
+    JumpHarness(int playlistCount = 4, int trackCount = 6)
+        : settings{tempDir.filePath(u"jumps.ini"_s)}
+        , playlists{settings}
+        , backend{&settings, tempDir.filePath(u"jumps.ini"_s)}
+    {
+        Fooyin::VimMotions::VimMotionsSettings defaults{&settings};
+        handler.setSettingsBackend(&backend);
+        handler.setSettingsManager(&settings);
+        handler.setPlaylistHandler(&playlists.handler);
+        observer.setPlaylistHandler(&playlists.handler);
+        handler.setCurrentPlaylistController(&observer);
+        view.setModel(&model);
+        for(int p = 0; p < playlistCount; ++p) {
+            Fooyin::TrackList tracks;
+            for(int t = 0; t < trackCount; ++t) {
+                auto track = markTestTrack();
+                track.setTitle(u"Track %1"_s.arg(t));
+                tracks.push_back(track);
+            }
+            lists.push_back(playlists.handler.createNewPlaylist(u"Playlist %1"_s.arg(p), tracks));
+        }
+        QObject::connect(&observer, &Fooyin::CurrentPlaylistController::currentPlaylistChanged, &view,
+                         [this](Fooyin::Playlist*, Fooyin::Playlist* current) {
+                             if(!autoPopulate) {
+                                 model.clear();
+                                 return;
+                             }
+                             populate(current);
+                         });
+        focusTree(&view);
+        observer.changeCurrentPlaylist(lists.front());
+        pumpEvents();
+        select(0);
+    }
+
+    void populate(Fooyin::Playlist* playlist)
+    {
+        model.clear();
+        for(const auto& track : playlist->playlistTracks()) {
+            auto* item = new QStandardItem(track.track.title());
+            item->setData(QVariant::fromValue(track), PlaylistItemDataRole);
+            model.appendRow({item, new QStandardItem(u"Column 2"_s)});
+        }
+    }
+
+    void select(int row, int col = 0)
+    {
+        view.selectionModel()->setCurrentIndex(model.index(row, col),
+                                               QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        dispatchFocusIn(handler, &view);
+    }
+
+    bool ctrl(int key)
+    {
+        QKeyEvent event{QEvent::KeyPress, key, Qt::ControlModifier};
+        const bool handled = handler.eventFilter(&view, &event);
+        pumpEvents();
+        return handled;
+    }
+
+    QTemporaryDir tempDir;
+    Fooyin::SettingsManager settings;
+    PlaylistHandlerHarness playlists;
+    FakeCurrentPlaylistController observer;
+    QStandardItemModel model;
+    Fooyin::PlaylistView view;
+    Fooyin::VimMotions::VimMotionsBindingBackend backend;
+    Fooyin::VimMotions::VimHandler handler;
+    std::vector<Fooyin::Playlist*> lists;
+    bool autoPopulate{true};
+};
+
 } // namespace
 
 using namespace Fooyin::VimMotions;
@@ -1031,7 +1105,309 @@ private Q_SLOTS:
     void playlistSearchAdvancesFromMatchInNonzeroColumn();
     void playlistSearchNavigationTracksReorderedMatches();
     void organiserSearchNavigationTracksReorderedMatches();
+    void jumpHistoryRoundTripAndCounts();
+    void jumpHistoryPlaylistSwitchesAreSeparateStops();
+    void jumpHistoryIgnoresOrdinaryMovesAndPaneChanges();
+    void jumpHistoryBranchesAndDeduplicates();
+    void jumpHistoryTracksEntriesThroughReorderingAndDeletion();
+    void jumpHistorySkipsDeletedPlaylistsAndEmptyPositions();
+    void jumpHistorySearchCommitAndCancel();
+    void jumpHistoryMarksAndVisualMode();
+    void jumpHistoryWaitsForPopulationAndCancelsStaleRestores();
+    void jumpHistoryRestoresGroupedTracksAndSkipsHiddenRows();
+    void jumpHistoryIsBounded();
+    void filterUsesGiInsteadOfCtrlI();
 };
+
+void TestVimHandlerViewContext::jumpHistoryRoundTripAndCounts()
+{
+    JumpHarness h;
+    QVERIFY(h.playlists.dbInitialised);
+    h.select(1, 1);
+    QVERIFY(dispatchKey(h.handler, &h.view, u'G'));
+    QCOMPARE(h.view.currentIndex().row(), 5);
+    QVERIFY(dispatchKey(h.handler, &h.view, u'g'));
+    QVERIFY(dispatchKey(h.handler, &h.view, u'g'));
+    QCOMPARE(h.view.currentIndex().row(), 0);
+    QKeyEvent count{QEvent::KeyPress, Qt::Key_2, Qt::NoModifier, u"2"_s};
+    QVERIFY(h.handler.eventFilter(&h.view, &count));
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    QCOMPARE(h.view.currentIndex().column(), 1);
+    QVERIFY(h.handler.eventFilter(&h.view, &count));
+    QVERIFY(h.ctrl(Qt::Key_I));
+    QCOMPARE(h.view.currentIndex().row(), 0);
+    QCOMPARE(h.view.currentIndex().column(), 0); // G's tree motion selects column zero.
+    QVERIFY(h.ctrl(Qt::Key_I));
+    QCOMPARE(h.view.currentIndex().row(), 0);
+}
+
+void TestVimHandlerViewContext::jumpHistoryPlaylistSwitchesAreSeparateStops()
+{
+    JumpHarness h;
+    h.select(1);
+    for(int p = 1; p < 4; ++p) {
+        h.handler.nextPlaylist();
+        pumpEvents();
+        h.select(p + 1);
+    }
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[3]);
+    for(int p = 2; p >= 0; --p) {
+        QVERIFY(h.ctrl(Qt::Key_O));
+        QCOMPARE(h.observer.currentPlaylist(), h.lists[p]);
+        QCOMPARE(h.view.currentIndex().row(), p + 1);
+    }
+    for(int p = 1; p < 4; ++p) {
+        QVERIFY(h.ctrl(Qt::Key_I));
+        QCOMPARE(h.observer.currentPlaylist(), h.lists[p]);
+        QCOMPARE(h.view.currentIndex().row(), p + 1);
+    }
+    h.handler.previousPlaylist();
+    pumpEvents();
+    h.select(0);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[3]);
+    QCOMPARE(h.view.currentIndex().row(), 4);
+}
+
+void TestVimHandlerViewContext::jumpHistoryIgnoresOrdinaryMovesAndPaneChanges()
+{
+    JumpHarness h;
+    h.handler.moveCursor(2);
+    h.handler.moveCursorHalfPage(+1);
+    const int row = h.view.currentIndex().row();
+    QTreeView library;
+    QStandardItemModel libraryModel(4, 1);
+    library.setModel(&libraryModel);
+    focusTree(&library);
+    h.handler.jumpToLast();
+    h.view.activateWindow();
+    focusTree(&h.view);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), row);
+
+    h.select(1);
+    h.handler.jumpToLast();
+    h.handler.moveCursor(-2);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    QVERIFY(h.ctrl(Qt::Key_I));
+    QCOMPARE(h.view.currentIndex().row(), 3);
+}
+
+void TestVimHandlerViewContext::jumpHistoryBranchesAndDeduplicates()
+{
+    JumpHarness h;
+    h.handler.jumpToRow(2);
+    h.handler.jumpToRow(4);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 2);
+    h.handler.jumpToRow(3);
+    QVERIFY(h.ctrl(Qt::Key_I));
+    QCOMPARE(h.view.currentIndex().row(), 3); // The old forward branch (row 4) is gone.
+    h.handler.jumpToRow(2);
+    h.handler.jumpToRow(2); // No-op jumps do not record another stop.
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 3);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 0); // Row 2 is deduplicated.
+}
+
+void TestVimHandlerViewContext::jumpHistoryTracksEntriesThroughReorderingAndDeletion()
+{
+    JumpHarness h;
+    h.select(1, 1);
+    const auto remembered = h.lists[0]->playlistTrack(1)->entryId;
+    h.handler.jumpToRow(5);
+    auto tracks = h.lists[0]->playlistTracks();
+    std::swap(tracks[1], tracks[3]);
+    h.playlists.handler.replacePlaylistTracks(h.lists[0]->id(), tracks);
+    h.populate(h.lists[0]);
+    h.select(5);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 3);
+    QCOMPARE(h.view.currentIndex().column(), 1);
+    QCOMPARE(h.view.currentIndex().siblingAtColumn(0).data(PlaylistItemDataRole).value<Fooyin::PlaylistTrack>().entryId,
+             remembered);
+    h.handler.jumpToRow(2);
+    tracks.erase(tracks.begin() + 3);
+    h.playlists.handler.replacePlaylistTracks(h.lists[0]->id(), tracks);
+    h.populate(h.lists[0]);
+    h.select(2);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 2); // Deleted occurrence is skipped, not replaced by its old row.
+}
+
+void TestVimHandlerViewContext::jumpHistorySkipsDeletedPlaylistsAndEmptyPositions()
+{
+    JumpHarness h;
+    h.select(1);
+    h.handler.nextPlaylist();
+    pumpEvents();
+    h.select(2);
+    h.handler.nextPlaylist();
+    pumpEvents();
+    h.select(3);
+    h.playlists.handler.removePlaylist(h.lists[1]->id());
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex().row(), 1);
+
+    h.playlists.handler.replacePlaylistTracks(h.lists[2]->id(), Fooyin::PlaylistTrackList{});
+    h.handler.nextPlaylist();
+    pumpEvents();
+    QVERIFY(!h.view.currentIndex().isValid());
+    h.handler.nextPlaylist();
+    pumpEvents();
+    h.select(0);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex().row(), 1);
+}
+
+void TestVimHandlerViewContext::jumpHistorySearchCommitAndCancel()
+{
+    JumpHarness h;
+    h.select(1);
+    h.handler.enterSearch();
+    auto* edit = h.view.findChild<QLineEdit*>();
+    QVERIFY(edit);
+    edit->setText(u"Track 2"_s);
+    QCOMPARE(h.view.currentIndex().row(), 2);
+    edit->setText(u"Track 4"_s);
+    QCOMPARE(h.view.currentIndex().row(), 4);
+    QTest::keyClick(edit, Qt::Key_Return);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    QVERIFY(h.ctrl(Qt::Key_I));
+    QCOMPARE(h.view.currentIndex().row(), 4);
+    h.handler.enterSearch();
+    edit->setText(u"Track 0"_s);
+    QTest::keyClick(edit, Qt::Key_Escape);
+    QCOMPARE(h.view.currentIndex().row(), 4);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 1);
+
+    h.handler.enterSearch();
+    edit->setText(u"Track"_s);
+    QTest::keyClick(edit, Qt::Key_Return);
+    h.handler.nextMatch();
+    QCOMPARE(h.view.currentIndex().row(), 2);
+    h.handler.prevMatch();
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 2);
+}
+
+void TestVimHandlerViewContext::jumpHistoryMarksAndVisualMode()
+{
+    JumpHarness h;
+    h.select(1);
+    h.handler.beginSetMark();
+    QVERIFY(dispatchKey(h.handler, &h.view, u'a'));
+    h.handler.beginSetMark();
+    QVERIFY(dispatchKey(h.handler, &h.view, u'A'));
+    h.select(4);
+    h.handler.beginJumpToMark();
+    QVERIFY(dispatchKey(h.handler, &h.view, u'a'));
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 4);
+    h.handler.nextPlaylist();
+    pumpEvents();
+    h.select(2);
+    h.handler.beginJumpToMark();
+    QVERIFY(dispatchKey(h.handler, &h.view, u'A'));
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QCOMPARE(h.view.currentIndex().row(), 2);
+    h.handler.enterVisual();
+    h.handler.extendVisualToEnd();
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 2);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(h.view.selectionModel()->selectedRows().size(), 1);
+}
+
+void TestVimHandlerViewContext::jumpHistoryWaitsForPopulationAndCancelsStaleRestores()
+{
+    JumpHarness h;
+    h.select(1);
+    h.handler.nextPlaylist();
+    pumpEvents();
+    h.select(4);
+    h.autoPopulate = false;
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    h.model.clear();
+    pumpEvents();
+    h.populate(h.lists[0]);
+    pumpEvents();
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    QVERIFY(h.ctrl(Qt::Key_I)); // Restore is pending for playlist 2.
+    QVERIFY(h.ctrl(Qt::Key_O)); // Supersede it before its model is populated.
+    h.populate(h.lists[0]);
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex().row(), 1);
+    h.handler.moveCursor(+1);
+    h.model.setData(h.model.index(0, 0), u"Changed"_s);
+    pumpEvents();
+    QCOMPARE(h.view.currentIndex().row(), 2);
+}
+
+void TestVimHandlerViewContext::jumpHistoryRestoresGroupedTracksAndSkipsHiddenRows()
+{
+    JumpHarness h;
+    h.select(1);
+    h.handler.jumpToRow(4);
+    auto* group = new QStandardItem(u"Group"_s);
+    group->appendRow(h.model.takeRow(1));
+    h.model.appendRow(group);
+    h.select(3); // The original row 4 moved up when row 1 was grouped.
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().parent(), group->index());
+    QCOMPARE(h.view.currentIndex().row(), 0);
+    QVERIFY(h.view.isExpanded(group->index()));
+    QVERIFY(h.ctrl(Qt::Key_I));
+    h.view.setRowHidden(0, group->index(), true);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 3);
+    QVERIFY(!h.view.currentIndex().parent().isValid());
+}
+
+void TestVimHandlerViewContext::jumpHistoryIsBounded()
+{
+    JumpHarness h{1, 110};
+    for(int row = 1; row < 110; ++row)
+        h.handler.jumpToRow(row);
+    QKeyEvent count{QEvent::KeyPress, Qt::Key_9, Qt::NoModifier, u"9"_s};
+    for(int i = 0; i < 3; ++i)
+        QVERIFY(h.handler.eventFilter(&h.view, &count));
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.view.currentIndex().row(), 10); // 100 positions, including the return position.
+}
+
+void TestVimHandlerViewContext::filterUsesGiInsteadOfCtrlI()
+{
+    JumpHarness h;
+    FakeFyWidget pane;
+    QStandardItemModel model(3, 1);
+    pane.view()->setModel(&model);
+    focusTree(pane.view());
+    QVERIFY(dispatchKey(h.handler, pane.view(), u'g'));
+    QVERIFY(dispatchKey(h.handler, pane.view(), u'i'));
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Filter);
+    auto* edit = pane.findChild<QLineEdit*>();
+    QVERIFY(edit);
+    QTest::keyClick(edit, Qt::Key_Escape);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QKeyEvent forward{QEvent::KeyPress, Qt::Key_I, Qt::ControlModifier};
+    QVERIFY(h.handler.eventFilter(pane.view(), &forward));
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+}
 
 void TestVimHandlerViewContext::classifiesNullView()
 {
@@ -4118,12 +4494,23 @@ void TestVimHandlerViewContext::focusNowPlayingRestoresPlayingRowInsteadOfSavedR
     observer.changeCurrentPlaylist(playlistA);
     pumpEvents();
 
+    const int browsingRow = view.currentIndex().row();
     handler.focusNowPlaying();
     pumpEvents();
 
     QCOMPARE(observer.currentPlaylist(), playlistB);
     QCOMPARE(view.currentIndex().row(), 2);
     QCOMPARE(view.currentIndex().data().toString(), QStringLiteral("B3"));
+    handler.jumpOlder();
+    syncPlaylistModel(model, playlistA);
+    pumpEvents();
+    QCOMPARE(observer.currentPlaylist(), playlistA);
+    QCOMPARE(view.currentIndex().row(), browsingRow);
+    handler.jumpNewer();
+    syncPlaylistModel(model, playlistB);
+    pumpEvents();
+    QCOMPARE(observer.currentPlaylist(), playlistB);
+    QCOMPARE(view.currentIndex().row(), 2);
 }
 
 void TestVimHandlerViewContext::organiserSearchFindsVisibleChild()
