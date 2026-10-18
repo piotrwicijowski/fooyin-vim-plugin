@@ -29,6 +29,8 @@
 #include <utils/fypaths.h>
 #include <utils/settings/settingsmanager.h>
 
+#include <algorithm>
+
 using namespace Fooyin::VimMotions;
 
 class TestConfigFileBindings : public QObject
@@ -192,6 +194,41 @@ private:
     }
 
 private Q_SLOTS:
+    void testJumpDefaultsAndOverrides()
+    {
+        Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("jump_bindings.ini"))};
+        VimMotionsSettings defaults{&settings};
+        VimMotionsBindingBackend backend{&settings, m_tempDir.filePath(QStringLiteral("jump_bindings.ini"))};
+        for(const auto mode : {BindingMode::Normal, BindingMode::Visual}) {
+            const auto bindings = scopedBindings(backend.effectiveBindings(), mode, BindingScope::Global);
+            const auto* older   = findBinding(bindings, u'O', QStringLiteral("jumpOlder"));
+            const auto* newer   = findBinding(bindings, u'I', QStringLiteral("jumpNewer"));
+            QVERIFY(older);
+            QVERIFY(newer);
+            QCOMPARE(older->keys.front().modifiers, Qt::ControlModifier);
+            QCOMPARE(newer->keys.front().modifiers, Qt::ControlModifier);
+        }
+        const auto normal = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+        QVERIFY(std::ranges::any_of(normal, [](const auto& binding) {
+            return binding.actionName == QStringLiteral("enterFilter") && binding.keys.size() == 2
+                && binding.keys.front().ch == u'g' && binding.keys.back().ch == u'i';
+        }));
+
+        auto definitions = backend.bindingDefinitions();
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal,
+                                         QStringLiteral("Ctrl+I"), QStringLiteral("enterFilter"), {}));
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal, QStringLiteral("zx"),
+                                         QStringLiteral("jumpNewer"), {}));
+        QVERIFY(backend.saveBindingDefinitions(definitions));
+        VimMotionsBindingBackend reloaded{&settings, m_tempDir.filePath(QStringLiteral("jump_bindings.ini"))};
+        const auto overridden = scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+        QVERIFY(hasBinding(overridden, u'I', QStringLiteral("enterFilter")));
+        QVERIFY(!hasBinding(overridden, u'I', QStringLiteral("jumpNewer")));
+        QVERIFY(std::ranges::any_of(overridden, [](const auto& binding) {
+            return binding.actionName == QStringLiteral("jumpNewer") && binding.keys.size() == 2;
+        }));
+    }
+
     void initTestCase()
     {
         QVERIFY(m_tempDir.isValid());

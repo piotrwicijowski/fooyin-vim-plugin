@@ -11,7 +11,7 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 | Normal | Start-up default / `Esc` from Insert, Search, Filter | All vim keys active; fooyin shortcuts suppressed |
 | Visual | `v` | Linewise range selection |
 | Insert | `i` | Vim off; all keys pass through to fooyin normally |
-| Filter | `Ctrl+i` | Live incremental filter — hides non-matching rows |
+| Filter | `gi` | Live incremental filter — hides non-matching rows |
 | Search | `/` | Live search — all rows visible, cursor jumps to matches; wraps by default |
 
 ### Mode indicator widget
@@ -26,6 +26,35 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 - If you left that playlist in Visual mode, the previous visual selection is restored when possible.
 - If the playlist shrank while you were away, the restored cursor and selection are clamped to the remaining rows.
 - If the playlist is now empty, the plugin restores Normal mode without an invalid selection.
+
+### Track-position jump history
+
+`Ctrl+o` goes to an older playlist track position; `Ctrl+i` goes forward again. Both accept a count
+(for example, `3Ctrl+o`) and work from Normal or Visual mode. Traversal restores a single cursor selection in Normal mode.
+
+- History is shared across playlists and kept for the current session, up to 100 positions.
+- A position identifies a **playlist and a particular track occurrence**. Duplicate copies of the same song are distinct;
+  reordering or inserting tracks does not change the identity of a remembered position. The cursor column is restored,
+  but changing columns alone does not create another history stop.
+- The position **before** a successful jump is recorded: `gg`, `G`, `[count]G`, custom `jumpToRow` actions,
+  accepted `/` searches, `n`/`N` search jumps, local/global mark jumps, `o`/`g;`, and the plugin's
+  `nextPlaylist`/`previousPlaylist` actions. Their Visual-mode equivalents also record departures.
+- Each next/previous-playlist action is a separate jump: after visiting playlists 1 → 2 → 3 → 4,
+  `Ctrl+o` returns to the track left in playlist 3, then 2, then 1. One counted playlist-switch action records one departure.
+- The first backward traversal preserves the current track position so `Ctrl+i` can return to it.
+- Pane-focus changes, ordinary `j`/`k` movement (including counts), half-page scrolling, tree navigation, editing,
+  filter changes, and automatic playback/model updates do not record jumps. `n`/`N` acting as row movement in a filtered
+  view does not record jumps either. History contains only main-playlist track positions, not library, queue,
+  organiser, or detached Search Library result positions.
+- Search previews while typing do not create entries. Accepting a search records its starting position once if it moved;
+  cancelling or failing a search records nothing.
+- Revisited track positions are deduplicated. A new jump after going back discards the old forward branch
+  (browser-style, like Vim's `jumpoptions=stack`). Failed and same-position jumps do not add entries.
+- Deleted tracks/playlists are skipped. Hidden destinations in the current playlist are skipped without changing filters;
+  collapsed ancestors are expanded when revealing a grouped track.
+
+`gi` replaces the old Filter default on `Ctrl+i`. Existing explicit custom bindings continue to take precedence;
+remove or update an old `Ctrl+I=enterFilter` override to use forward history traversal there.
 
 ### Script variables
 
@@ -72,7 +101,8 @@ Default bindings are installed per scope. `Global` bindings apply everywhere unl
 | `i` | Global | Enter Insert mode |
 | `/` | Global | Enter Search mode |
 | `n` / `N` | Global | Next / previous search match (+/-1 row if filter active) |
-| `Ctrl+i` | Global | Enter Filter mode |
+| `gi` | Global | Enter Filter mode |
+| `[count]Ctrl+o` / `[count]Ctrl+i` | Global | Older / newer playlist track position |
 | `h` | Global | Collapse node / ascend to parent (tree views) |
 | `l` | Global | Expand node / descend to first child (tree views) |
 | `Ctrl+Shift+J` | Playlist organiser | Next sibling at same level (tree views) |
@@ -91,6 +121,7 @@ Default bindings are installed per scope. `Global` bindings apply everywhere unl
 | `G` / `[count]G` | Global | Extend selection to last row / row N (1-indexed) |
 | `Ctrl+d` | Global | Extend selection half page down |
 | `Ctrl+u` | Global | Extend selection half page up |
+| `[count]Ctrl+o` / `[count]Ctrl+i` | Global | Older / newer playlist track position, return to Normal |
 | `o` | Global | Toggle anchor; swap cursor between start and end |
 | `v` | Global | Exit Visual mode |
 | `h` / `l` | Global | Collapse / expand node (tree views) |
@@ -357,6 +388,8 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `jumpToFirst` | — | Normal | Jump to first row |
 | `jumpToLast` | — | Normal | Jump to last row |
 | `jumpToRow` | `N` | Normal | Jump to row N (0-indexed) |
+| `jumpOlder` | — | Normal, Visual | Go to an older playlist track position, using `[count]` if given; return to Normal |
+| `jumpNewer` | — | Normal, Visual | Go to a newer playlist track position, using `[count]` if given; return to Normal |
 | `moveCursorHalfPage` | `+1` / `-1` | Normal | Move cursor by half page |
 | `activateCurrentRow` | — | Normal | Activate (Enter) current row |
 | `treeMoveSibling` | `+1` / `-1` | Normal | Move to next/prev tree sibling |
@@ -499,7 +532,9 @@ Bindings\Global\Normal\Ctrl+H=spatialMoveFocus:left
 Bindings\Global\Normal\Ctrl+L=spatialMoveFocus:right
 Bindings\Global\Normal\Ctrl+D=moveCursorHalfPage:+1
 Bindings\Global\Normal\Ctrl+U=moveCursorHalfPage:-1
-Bindings\Global\Normal\Ctrl+I=enterFilter
+Bindings\Global\Normal\gi=enterFilter
+Bindings\Global\Normal\Ctrl+O=jumpOlder
+Bindings\Global\Normal\Ctrl+I=jumpNewer
 Bindings\Global\Normal\Alt+J=moveRows:+1
 Bindings\Global\Normal\Alt+K=moveRows:-1
 
@@ -535,6 +570,8 @@ Bindings\Global\Visual\N=prevMatchAndExit
 Bindings\Global\Visual\<Slash>=enterSearchAndExit
 Bindings\Global\Visual\Ctrl+D=extendHalfPage:+1
 Bindings\Global\Visual\Ctrl+U=extendHalfPage:-1
+Bindings\Global\Visual\Ctrl+O=jumpOlder
+Bindings\Global\Visual\Ctrl+I=jumpNewer
 Bindings\Global\Visual\Ctrl+J=spatialMoveFocus:down
 Bindings\Global\Visual\Ctrl+K=spatialMoveFocus:up
 Bindings\Global\Visual\Ctrl+H=spatialMoveFocus:left

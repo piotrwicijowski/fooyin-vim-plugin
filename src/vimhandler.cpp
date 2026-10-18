@@ -836,6 +836,7 @@ void VimHandler::jumpToFirst()
     const int fromRow = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
     const int col     = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     qCDebug(VIM_LOG) << "jumpToFirst: row" << fromRow << "-> 0";
+    recordJump(jumpPosition(view, view->currentIndex()), jumpPosition(view, view->model()->index(0, col)));
     view->selectionModel()->setCurrentIndex(view->model()->index(0, col),
                                             QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
@@ -859,6 +860,7 @@ void VimHandler::jumpToLast()
             cur = next;
         }
         qCDebug(VIM_LOG) << "jumpToLast (tree): last visible item row=" << cur.row();
+        recordJump(jumpPosition(view, view->currentIndex()), jumpPosition(view, cur));
         tree->selectionModel()->setCurrentIndex(cur, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         return;
     }
@@ -871,6 +873,7 @@ void VimHandler::jumpToLast()
     const int fromRow = view->currentIndex().isValid() ? view->currentIndex().row() : -1;
     const int col     = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     qCDebug(VIM_LOG) << "jumpToLast: row" << fromRow << "->" << last;
+    recordJump(jumpPosition(view, view->currentIndex()), jumpPosition(view, view->model()->index(last, col)));
     view->selectionModel()->setCurrentIndex(view->model()->index(last, col),
                                             QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
@@ -891,6 +894,7 @@ void VimHandler::jumpToRow(int row)
     const int col     = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     const int dest    = std::clamp(row, 0, last);
     qCDebug(VIM_LOG) << "jumpToRow: requested=" << row << "clamped=" << dest << "from=" << fromRow;
+    recordJump(jumpPosition(view, view->currentIndex()), jumpPosition(view, view->model()->index(dest, col)));
     view->selectionModel()->setCurrentIndex(view->model()->index(dest, col),
                                             QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 }
@@ -1133,6 +1137,14 @@ void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController*
             m_observedSelectedPlaylistId = current ? current->id() : Fooyin::UId{};
             refreshPlaylistStateTracking();
 
+            // History restores by entry identity after the new model is populated.
+            // Do not schedule a competing row-based cursor/Visual restoration.
+            if(m_pendingJumpRestore && current && m_pendingJumpRestore->playlistId == current->id()) {
+                m_pendingPlaylistRestoreId = {};
+                return;
+            }
+            cancelJumpRestore();
+
             if(previous && current
                && m_playlistCursorStates.constFind(current->id()) == m_playlistCursorStates.cend()) {
                 const Mode prevMode = m_mode;
@@ -1230,10 +1242,14 @@ void VimHandler::focusNowPlaying()
         return;
     }
 
+    const auto from = currentJumpPosition();
     if(m_playlistHandler) {
         if(auto* playingPlaylist = m_playlistHandler->activePlaylist()) {
             const int playingRow = playingPlaylist->currentTrackIndex();
             if(playingRow >= 0) {
+                const auto track = playingPlaylist->playlistTrack(playingRow);
+                if(track)
+                    recordJump(from, JumpPosition{playingPlaylist->id(), track->entryId, 0});
                 PlaylistCursorState state;
                 state.row = playingRow;
                 if(auto* view = playlistViewForState()) {
@@ -1249,6 +1265,211 @@ void VimHandler::focusNowPlaying()
     }
 
     cmd->action()->trigger();
+}
+
+std::optional<VimHandler::JumpPosition> VimHandler::jumpPosition(QAbstractItemView* view,
+                                                                 const QModelIndex& index) const
+{
+    if(!isPersistentPlaylistView(view) || !index.isValid() || !m_playlistHandler)
+        return std::nullopt;
+
+    auto* playlist
+        = m_currentPlaylistController ? m_currentPlaylistController->currentPlaylist() : playlistForPersistentState();
+    if(!playlist)
+        return std::nullopt;
+
+    const QVariant data = index.siblingAtColumn(0).data(PlaylistItemDataRole);
+    Fooyin::UId entryId;
+    if(data.canConvert<Fooyin::PlaylistTrack>()) {
+        entryId = data.value<Fooyin::PlaylistTrack>().entryId;
+    }
+    else if(!data.isValid() && !index.parent().isValid() && !view->model()->hasChildren(index)
+            && view->model()->rowCount() == playlist->trackCount()) {
+        // Ungrouped models without playlist payloads can be mapped by their row.
+        if(const auto track = playlist->playlistTrack(index.row()))
+            entryId = track->entryId;
+    }
+
+    if(!entryId.isValid() || playlist->indexOfTrackEntry(entryId) < 0)
+        return std::nullopt;
+    return JumpPosition{playlist->id(), entryId, index.column()};
+}
+
+std::optional<VimHandler::JumpPosition> VimHandler::currentJumpPosition() const
+{
+    if(m_pendingJumpRestore)
+        return m_pendingJumpRestore;
+    auto* view = playlistViewForState();
+    return view ? jumpPosition(view, view->currentIndex()) : std::nullopt;
+}
+
+QModelIndex VimHandler::jumpPositionIndex(QAbstractItemView* view, const JumpPosition& position) const
+{
+    if(!view || !view->model() || !m_playlistHandler)
+        return {};
+    auto* playlist = m_playlistHandler->playlistById(position.playlistId);
+    if(!playlist || playlist->indexOfTrackEntry(position.entryId) < 0)
+        return {};
+
+    auto* model          = view->model();
+    const auto findEntry = [&](auto&& self, const QModelIndex& parent) -> QModelIndex {
+        for(int row = 0; row < model->rowCount(parent); ++row) {
+            const QModelIndex index = model->index(row, 0, parent);
+            const QVariant data     = index.data(PlaylistItemDataRole);
+            if(data.canConvert<Fooyin::PlaylistTrack>()
+               && data.value<Fooyin::PlaylistTrack>().entryId == position.entryId)
+                return index;
+            if(const auto child = self(self, index); child.isValid())
+                return child;
+        }
+        return {};
+    };
+    QModelIndex index = findEntry(findEntry, {});
+    if(!index.isValid() && model->rowCount() == playlist->trackCount()) {
+        const auto flatIndex = model->index(playlist->indexOfTrackEntry(position.entryId), 0);
+        if(!flatIndex.data(PlaylistItemDataRole).isValid() && !model->hasChildren(flatIndex))
+            index = flatIndex;
+    }
+    if(!index.isValid())
+        return {};
+
+    if(auto* tree = asTreeView(view)) {
+        for(auto ancestor = index; ancestor.isValid(); ancestor = ancestor.parent()) {
+            if(tree->isRowHidden(ancestor.row(), ancestor.parent()))
+                return {};
+        }
+    }
+    return index.siblingAtColumn(std::clamp(position.col, 0, qMax(0, model->columnCount(index.parent()) - 1)));
+}
+
+void VimHandler::appendJumpPosition(const JumpPosition& position)
+{
+    std::erase(m_jumpList, position);
+    m_jumpList.push_back(position);
+    constexpr size_t MaxJumps = 100;
+    if(m_jumpList.size() > MaxJumps)
+        m_jumpList.erase(m_jumpList.begin());
+}
+
+void VimHandler::recordJump(const std::optional<JumpPosition>& from, const std::optional<JumpPosition>& to)
+{
+    if(!from || !to || *from == *to)
+        return;
+    cancelJumpRestore();
+    ++m_playlistRestoreGeneration;
+    if(m_jumpIndex < static_cast<int>(m_jumpList.size()))
+        m_jumpList.erase(m_jumpList.begin() + m_jumpIndex + 1, m_jumpList.end());
+    appendJumpPosition(*from);
+    m_jumpIndex = static_cast<int>(m_jumpList.size());
+    qCDebug(VIM_LOG) << "recordJump: playlist=" << from->playlistId << "entry=" << from->entryId
+                     << "history size=" << m_jumpList.size();
+}
+
+void VimHandler::jumpOlder()
+{
+    traverseJumps(-1);
+}
+
+void VimHandler::jumpNewer()
+{
+    traverseJumps(+1);
+}
+
+void VimHandler::traverseJumps(int direction)
+{
+    if(m_jumpList.empty() || !m_playlistHandler || !m_currentPlaylistController)
+        return;
+    auto* view = playlistViewForState();
+    if(!view || !view->model() || !view->selectionModel())
+        return;
+
+    const auto current = currentJumpPosition();
+    int index          = m_jumpIndex;
+    if(index == static_cast<int>(m_jumpList.size())) {
+        if(direction > 0)
+            return;
+        if(current) {
+            appendJumpPosition(*current);
+            index = static_cast<int>(m_jumpList.size()) - 1;
+        }
+    }
+
+    std::optional<JumpPosition> target;
+    int remaining = currentCount();
+    for(int candidate = index + direction; candidate >= 0 && candidate < static_cast<int>(m_jumpList.size());
+        candidate += direction) {
+        const auto& position = m_jumpList[static_cast<size_t>(candidate)];
+        auto* playlist       = m_playlistHandler->playlistById(position.playlistId);
+        if(!playlist || playlist->indexOfTrackEntry(position.entryId) < 0 || (current && position == *current))
+            continue;
+        if(m_currentPlaylistController->currentPlaylistId() == position.playlistId
+           && !jumpPositionIndex(view, position).isValid())
+            continue;
+        target = position;
+        index  = candidate;
+        if(--remaining <= 0)
+            break;
+    }
+    if(!target) {
+        m_jumpIndex = index;
+        return;
+    }
+
+    cancelJumpRestore();
+    ++m_playlistRestoreGeneration;
+    m_jumpIndex                = index;
+    m_pendingJumpRestore       = target;
+    m_jumpRestoreView          = view;
+    m_pendingPlaylistRestoreId = {};
+    qCDebug(VIM_LOG) << "traverseJumps: direction=" << direction << "index=" << index
+                     << "playlist=" << target->playlistId << "entry=" << target->entryId;
+    enterNormal();
+    // Retry after asynchronous playlist resets/population, without retaining stale callbacks.
+    const auto retry = [this]() {
+        QTimer::singleShot(0, this, &VimHandler::tryRestoreJump);
+    };
+    m_jumpRestoreConnections.push_back(connect(view->model(), &QAbstractItemModel::modelReset, this, retry));
+    m_jumpRestoreConnections.push_back(connect(view->model(), &QAbstractItemModel::rowsInserted, this, retry));
+    m_jumpRestoreConnections.push_back(connect(view->model(), &QAbstractItemModel::layoutChanged, this, retry));
+    const bool switching = m_currentPlaylistController->currentPlaylistId() != target->playlistId;
+    if(switching)
+        m_currentPlaylistController->changeCurrentPlaylist(target->playlistId);
+    view->setFocus(Qt::OtherFocusReason);
+    if(!switching)
+        tryRestoreJump();
+    retry();
+}
+
+void VimHandler::cancelJumpRestore()
+{
+    for(const auto& connection : m_jumpRestoreConnections)
+        QObject::disconnect(connection);
+    m_jumpRestoreConnections.clear();
+    m_pendingJumpRestore.reset();
+    m_jumpRestoreView = nullptr;
+}
+
+void VimHandler::tryRestoreJump()
+{
+    if(!m_pendingJumpRestore)
+        return;
+    if(!m_jumpRestoreView || !m_currentPlaylistController
+       || m_currentPlaylistController->currentPlaylistId() != m_pendingJumpRestore->playlistId) {
+        cancelJumpRestore();
+        return;
+    }
+    auto* view       = m_jumpRestoreView.data();
+    const auto index = jumpPositionIndex(view, *m_pendingJumpRestore);
+    if(!index.isValid() || !view->selectionModel())
+        return;
+    if(auto* tree = asTreeView(view)) {
+        for(auto parent = index.parent(); parent.isValid(); parent = parent.parent())
+            tree->expand(parent);
+    }
+    view->selectionModel()->setCurrentIndex(index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    view->scrollTo(index);
+    syncPersistentPlaylistCursorState(view);
+    cancelJumpRestore();
 }
 
 void VimHandler::nextPlaylist()
@@ -1574,6 +1795,8 @@ void VimHandler::jumpToLocalMark(QChar mark)
     if(!idx.isValid())
         return;
 
+    if(isPersistentPlaylistView(view))
+        recordJump(currentJumpPosition(), JumpPosition{playlist->id(), entryId, col});
     if(m_mode == Mode::Visual) {
         qCDebug(VIM_LOG) << "jumpToLocalMark (visual):" << mark << "row=" << row;
         m_visualCursor = row;
@@ -1622,6 +1845,8 @@ void VimHandler::jumpToGlobalMark(QChar mark)
 
     const int col = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
     if(m_currentPlaylistController && m_currentPlaylistController->currentPlaylistId() != playlist->id()) {
+        if(isPersistentPlaylistView(view))
+            recordJump(currentJumpPosition(), JumpPosition{playlist->id(), globalMark.entryId, col});
         PlaylistCursorState state;
         state.row = row;
         state.col = col;
@@ -1643,6 +1868,8 @@ void VimHandler::jumpToGlobalMark(QChar mark)
     if(!idx.isValid())
         return;
 
+    if(isPersistentPlaylistView(view))
+        recordJump(currentJumpPosition(), JumpPosition{playlist->id(), globalMark.entryId, col});
     if(m_mode == Mode::Visual) {
         qCDebug(VIM_LOG) << "jumpToGlobalMark (visual):" << mark << "row=" << row;
         m_visualCursor = row;
@@ -1817,6 +2044,7 @@ void VimHandler::changePlaylistByOffset(const int delta)
             if(auto* targetPlaylist = organiserPlaylists[static_cast<size_t>(targetSequenceIndex)]) {
                 qCDebug(VIM_LOG) << "changePlaylistByOffset organiser:" << currentPlaylist->name() << "->"
                                  << targetPlaylist->name() << "delta=" << delta;
+                recordJump(currentJumpPosition(), JumpPosition{targetPlaylist->id(), {}, 0});
                 m_currentPlaylistController->changeCurrentPlaylist(targetPlaylist->id());
                 return;
             }
@@ -1833,6 +2061,7 @@ void VimHandler::changePlaylistByOffset(const int delta)
     if(auto* targetPlaylist = m_playlistHandler->playlistByIndex(targetIndex)) {
         qCDebug(VIM_LOG) << "changePlaylistByOffset:" << currentPlaylist->name() << "->" << targetPlaylist->name()
                          << "delta=" << delta;
+        recordJump(currentJumpPosition(), JumpPosition{targetPlaylist->id(), {}, 0});
         m_currentPlaylistController->changeCurrentPlaylist(targetPlaylist->id());
         return;
     }
@@ -2842,7 +3071,7 @@ void VimHandler::moveVisualSelection(int delta)
 }
 
 // ---------------------------------------------------------------------------
-// Filter (Ctrl+I)
+// Filter (gi)
 // ---------------------------------------------------------------------------
 
 void VimHandler::enterFilter()
@@ -3179,6 +3408,7 @@ void VimHandler::savePlaylistCursorState(Fooyin::Playlist* playlist)
 
 void VimHandler::restorePlaylistCursorState(Fooyin::Playlist* playlist)
 {
+    const auto generation = ++m_playlistRestoreGeneration;
     if(!playlist) {
         qCDebug(VIM_LOG) << "restorePlaylistCursorState: skipped, current playlist is null";
         return;
@@ -3219,7 +3449,9 @@ void VimHandler::restorePlaylistCursorState(Fooyin::Playlist* playlist)
     const Fooyin::UId playlistId = playlist->id();
     const int expectedRowCount   = playlist->trackCount();
 
-    auto tryRestore = [this, viewPtr, playlistId, state]() -> bool {
+    auto tryRestore = [this, viewPtr, playlistId, state, generation]() -> bool {
+        if(generation != m_playlistRestoreGeneration)
+            return false;
         if(!viewPtr || !viewPtr->model() || !viewPtr->selectionModel()) {
             qCDebug(VIM_LOG) << "restorePlaylistCursorState: tryRestore failed because "
                                 "view/model/selectionModel disappeared";
@@ -3531,8 +3763,9 @@ void VimHandler::enterSearch()
 
     // Save the view now — once the search bar gains focus, activeView() would
     // lose its cache and its fallback would steal focus back to the view.
-    m_searchView     = view;
-    m_preSearchIndex = view->currentIndex();
+    m_searchView            = view;
+    m_preSearchIndex        = view->currentIndex();
+    m_preSearchJumpPosition = jumpPosition(view, m_preSearchIndex);
 
     if(!m_searchBar) {
         m_searchBar = new VimSearchBar();
@@ -3559,6 +3792,9 @@ void VimHandler::enterSearch()
 
 void VimHandler::commitSearch()
 {
+    if(m_searchView)
+        recordJump(m_preSearchJumpPosition, jumpPosition(m_searchView, m_searchView->currentIndex()));
+    m_preSearchJumpPosition.reset();
     m_lastSearchPattern = m_searchBar ? m_searchBar->text() : QString{};
     if(m_searchBar)
         m_searchBar->hide();
@@ -3576,6 +3812,7 @@ void VimHandler::commitSearch()
 
 void VimHandler::cancelSearch()
 {
+    m_preSearchJumpPosition.reset();
     if(m_searchBar)
         m_searchBar->hide();
 
@@ -3726,6 +3963,8 @@ void VimHandler::jumpToMatch(int idx)
         if(sibling.isValid())
             mi = sibling;
     }
+    if(m_mode != Mode::Search)
+        recordJump(jumpPosition(view, view->currentIndex()), jumpPosition(view, mi));
     view->selectionModel()->setCurrentIndex(mi, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     view->scrollTo(mi);
     qCDebug(VIM_LOG) << "jumpToMatch: idx=" << idx << searchIndexDescription(mi);
@@ -3909,8 +4148,7 @@ void VimHandler::extendVisualCursor(int delta)
 
 void VimHandler::extendVisualToFirst()
 {
-    m_visualCursor = 0;
-    updateVisualSelection();
+    extendVisualToRow(0);
 }
 
 void VimHandler::extendVisualToEnd()
@@ -3919,8 +4157,7 @@ void VimHandler::extendVisualToEnd()
     if(view && view->model()) {
         const int last = view->model()->rowCount() - 1;
         if(last >= 0) {
-            m_visualCursor = hadExplicitCount() ? std::clamp(currentCount() - 1, 0, last) : last;
-            updateVisualSelection();
+            extendVisualToRow(hadExplicitCount() ? currentCount() - 1 : last);
         }
     }
 }
@@ -3931,6 +4168,9 @@ void VimHandler::extendVisualToRow(int row)
     if(view && view->model()) {
         const int last = view->model()->rowCount() - 1;
         m_visualCursor = std::clamp(row, 0, qMax(0, last));
+        const int col  = view->currentIndex().isValid() ? view->currentIndex().column() : 0;
+        recordJump(jumpPosition(view, view->currentIndex()),
+                   jumpPosition(view, view->model()->index(m_visualCursor, col)));
         updateVisualSelection();
     }
 }
@@ -3990,6 +4230,10 @@ void VimHandler::applyBackendBindings()
 
 void VimHandler::executeAction(const BindingEntry& entry)
 {
+    if(entry.actionName != u"jumpOlder" && entry.actionName != u"jumpNewer") {
+        tryRestoreJump();
+        cancelJumpRestore();
+    }
     auto handler = m_actions.find(entry.actionName);
     if(handler) {
         handler(*this, QStringView{entry.args});

@@ -134,6 +134,8 @@ public:
     void focusNowPlaying();
     void nextPlaylist();
     void previousPlaylist();
+    void jumpOlder();
+    void jumpNewer();
     void triggerFooyinAction(const QStringView& actionId);
     void beginSetMark();
     void beginJumpToMark();
@@ -221,6 +223,28 @@ private:
         Fooyin::UId playlistId;
         Fooyin::UId entryId;
     };
+
+    struct JumpPosition
+    {
+        Fooyin::UId playlistId;
+        Fooyin::UId entryId;
+        int col{0};
+
+        // Columns are restored, but do not make a separate history stop.
+        bool operator==(const JumpPosition& other) const
+        {
+            return playlistId == other.playlistId && entryId == other.entryId;
+        }
+    };
+
+    [[nodiscard]] std::optional<JumpPosition> jumpPosition(QAbstractItemView* view, const QModelIndex& index) const;
+    [[nodiscard]] std::optional<JumpPosition> currentJumpPosition() const;
+    [[nodiscard]] QModelIndex jumpPositionIndex(QAbstractItemView* view, const JumpPosition& position) const;
+    void recordJump(const std::optional<JumpPosition>& from, const std::optional<JumpPosition>& to);
+    void appendJumpPosition(const JumpPosition& position);
+    void traverseJumps(int direction);
+    void cancelJumpRestore();
+    void tryRestoreJump();
 
     struct MarkSnapshot
     {
@@ -328,6 +352,13 @@ private:
     // Only the GUI thread mutates the maps above. Script workers read immutable copies.
     std::atomic<std::shared_ptr<const MarkSnapshot>> m_markSnapshot{std::make_shared<const MarkSnapshot>()};
     QHash<Fooyin::UId, PlaylistCursorState> m_playlistCursorStates;
+    std::vector<JumpPosition> m_jumpList;
+    int m_jumpIndex{0}; // size() denotes the live cursor, outside history traversal.
+    std::optional<JumpPosition> m_pendingJumpRestore;
+    QPointer<QAbstractItemView> m_jumpRestoreView;
+    std::vector<QMetaObject::Connection> m_jumpRestoreConnections;
+    std::optional<JumpPosition> m_preSearchJumpPosition;
+    size_t m_playlistRestoreGeneration{0};
 
     std::vector<UndoEntry> m_undoStack;
     int m_undoIndex{-1};
