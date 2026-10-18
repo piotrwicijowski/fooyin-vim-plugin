@@ -14,6 +14,7 @@ struct GuiPluginContext;
 class ActionManager;
 class PlaylistHandler;
 class CurrentPlaylistController;
+class PlaylistInteractor;
 class SearchController;
 class SettingsManager;
 class TrackSelectionController;
@@ -21,6 +22,7 @@ class TrackSelectionController;
 namespace VimMotions {
 
 class VimHandler;
+class VimMarkVariableProvider;
 class VimMotionsBindingBackend;
 
 class VimMotionsPlugin : public QObject,
@@ -46,10 +48,12 @@ private:
     ActionManager* m_actionManager{nullptr};
     PlaylistHandler* m_playlistHandler{nullptr};
     CurrentPlaylistController* m_playlistSelection{nullptr};
+    PlaylistInteractor* m_playlistInteractor{nullptr};
     SearchController* m_searchController{nullptr};
     TrackSelectionController* m_trackSelection{nullptr};
     SettingsManager* m_settingsManager{nullptr};
     std::unique_ptr<VimMotionsBindingBackend> m_settingsBackend;
+    std::unique_ptr<VimMarkVariableProvider> m_markVariableProvider;
     VimHandler* m_vimHandler{nullptr};
 };
 

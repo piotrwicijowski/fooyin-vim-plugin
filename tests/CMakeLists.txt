@@ -66,6 +66,7 @@ add_executable(test_vimhandler_viewcontext
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
     ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimmarkvariableprovider.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
     ${CMAKE_SOURCE_DIR}/src/vimsearchbar.cpp

@@ -7,8 +7,6 @@ set(CMAKE_AUTOMOC ON)
 
 option(BUILD_TESTING "Build tests" OFF)
 
-option(BUILD_TESTING "Build tests" OFF)
-
 # ---------------------------------------------------------------------------
 # Locate fooyin
 #
@@ -120,6 +118,8 @@ set(PLUGIN_SOURCES
     src/vimclipboard.cpp
     src/vimclipboard.h
     src/vimlog.h
+    src/vimmarkvariableprovider.cpp
+    src/vimmarkvariableprovider.h
     src/vimmodeindicatorwidget.cpp
     src/vimmodeindicatorwidget.h
     src/vimmotionsbindingbackend.cpp
