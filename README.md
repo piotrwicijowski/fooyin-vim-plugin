@@ -8,9 +8,9 @@ Vim-style keybindings for [fooyin](https://github.com/ludouzi/fooyin). Adds Norm
 
 | Mode | How to enter | What it does |
 |---|---|---|
-| Normal | Start-up default / `Esc` from Insert, Search, Filter | All vim keys active; fooyin shortcuts suppressed |
+| Normal | Start-up default / `Esc` from Insert, Search, Filter | Configured Vim bindings take precedence; unhandled keys and shortcuts pass through to fooyin |
 | Visual | `v` | Linewise range selection |
-| Insert | `i` | Vim off; all keys pass through to fooyin normally |
+| Insert | `i` | Ordinary input passes through to fooyin; configured Insert bindings remain active |
 | Filter | `gi` | Live incremental filter — hides non-matching rows |
 | Search | `/` | Live search — all rows visible, cursor jumps to matches; wraps by default |
 
@@ -102,8 +102,8 @@ The plugin exposes `%mark%` and `%global_mark%` for playlist script evaluation.
   specific playlist entry context.
 - Mark changes refresh the affected playlist rows in every view displaying those entries.
 
-This feature uses fooyin's upstream shared `ScriptRegistry` and `PlaylistInteractor` refresh APIs (commits `29c0d84`
-and `67f2735`, or later); a custom fooyin branch is no longer required.
+This feature uses fooyin's upstream shared `ScriptRegistry` and `PlaylistInteractor` refresh APIs; see
+[fooyin compatibility](#fooyin-compatibility) for the required upstream changes.
 
 ### Normal mode bindings
 
@@ -183,10 +183,23 @@ Plugin-specific bindings are configured through **Settings → Plugins → Vim M
 
 ## Requirements
 
-- fooyin with plugin API `/2` (upstream commit `06c2b7e1d` or newer; source tree or installed with `-DINSTALL_HEADERS=ON`)
-- Qt 6.2 or later (Widgets, Sql modules)
-- CMake 3.19+
+- A compatible fooyin source/build tree, or fooyin installed with `-DINSTALL_HEADERS=ON` (see below)
+- Qt development packages (Widgets and Sql modules), compatible with the Qt build used by fooyin. Current upstream fooyin requires Qt 6.4+ on Linux and 6.8+ on Windows; building fooyin itself also requires its additional dependencies.
+- CMake 3.21+ for the included presets (schema version 3), or 3.19+ when configuring without presets
 - A C++23 compiler (GCC 12+, Clang 15+)
+- Ninja for commands using `-G Ninja` or `ninja`; Make for the optional `make` workflow
+
+### fooyin compatibility
+
+The plugin requires fooyin's plugin API `/2` and public APIs including the following upstream changes. Use a fooyin revision containing all three commits:
+
+| Upstream change | Commit |
+|---|---|
+| Plugin API versioning (`/2`) | [`06c2b7e1d`](https://github.com/fooyin/fooyin/commit/06c2b7e1d) |
+| Shared `ScriptRegistry` and playlist-entry evaluation contexts | [`29c0d84cf`](https://github.com/fooyin/fooyin/commit/29c0d84cf) |
+| `PlaylistInteractor` playlist-row refresh API | [`67f2735a2`](https://github.com/fooyin/fooyin/commit/67f2735a2) |
+
+Plugin API `/2` alone is not sufficient if the later scripting and row-refresh APIs are missing.
 
 ## Building
 
@@ -226,24 +239,27 @@ make run             # launch fooyin (set FOOYIN_BIN if auto-detection does not 
 make run-debug       # same, with fy.vim debug logging enabled
 ```
 
-Useful overrides:
+Launch overrides:
 
 ```bash
-make dev FOOYIN_SRC_DIR=/path/to/fooyin FOOYIN_BUILD_DIR=/path/to/fooyin/build
 make run FOOYIN_BIN=/path/to/fooyin/build/run/fooyin
 XDG_CONFIG_HOME=/tmp/fooyin-dev-config make run-debug FOOYIN_BIN=/path/to/fooyin/build/run/fooyin
 ```
 
-If your fooyin checkout is not a sibling directory, pass the paths explicitly:
+The Makefile's `FOOYIN_SRC_DIR` and `FOOYIN_BUILD_DIR` overrides affect its fooyin build, plugin-copy, and launch steps, but are not forwarded to plugin configuration. `make dev` configures the plugin through the `dev` preset, which uses the sibling paths shown above.
+
+For a non-sibling checkout or a different fooyin build directory, first build fooyin at your chosen paths, then configure the plugin explicitly from this repository:
 
 ```bash
-cmake -B build \
+cmake -S . -B build -G Ninja \
+  -DFOOYIN_FORCE_DEV_TREE=ON \
   -DFOOYIN_SRC_DIR=/path/to/fooyin \
   -DFOOYIN_BUILD_DIR=/path/to/fooyin/build
 cmake --build build
+make install-plugin FOOYIN_BUILD_DIR=/path/to/fooyin/build
 ```
 
-A release build:
+For a release build with custom paths, add `-DCMAKE_BUILD_TYPE=RelWithDebInfo` to that configure command. For the sibling layout, use the release preset:
 
 ```bash
 cmake --preset dev-release
@@ -256,11 +272,11 @@ If fooyin is installed system-wide with headers (`-DINSTALL_HEADERS=ON` at fooyi
 
 ```bash
 cd /path/to/fooyin-vim-plugin
-cmake -B build -G Ninja
+cmake -B build -G Ninja -DFOOYIN_FORCE_DEV_TREE=OFF
 cmake --build build
 ```
 
-`find_package(Fooyin)` will be used automatically and the official `create_fooyin_plugin()` macro handles output naming and install rules.
+`FOOYIN_FORCE_DEV_TREE` defaults to `ON`; setting it to `OFF` enables `find_package(Fooyin)`. When the installed package is found, the official `create_fooyin_plugin()` macro handles output naming and install rules. For a non-standard install prefix, also pass `-DCMAKE_PREFIX_PATH=/path/to/prefix`. If the package is not found, configuration falls back to the dev-tree workflow.
 
 ## Installation
 
