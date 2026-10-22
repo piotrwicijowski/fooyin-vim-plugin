@@ -35,6 +35,8 @@ private Q_SLOTS:
     void testJumpBindings();
     void testFilterSequence();
     void testPlaylistPicker();
+    void testPlaylistPickerMappings_data();
+    void testPlaylistPickerMappings();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -60,6 +62,42 @@ void TestParseBinding::testPlaylistPicker()
     QCOMPARE(custom.keys.size(), 1);
     QCOMPARE(custom.keys.front().modifiers, Qt::ControlModifier);
     QCOMPARE(custom.actionName, binding.actionName);
+}
+
+void TestParseBinding::testPlaylistPickerMappings_data()
+{
+    QTest::addColumn<QString>("keys");
+    QTest::addColumn<QString>("value");
+    QTest::addColumn<int>("qtKey");
+    QTest::addColumn<QString>("args");
+    QTest::newRow("next") << QStringLiteral("Ctrl+N") << QStringLiteral("playlistPickerMove:+1") << int(Qt::Key_N)
+                          << QStringLiteral("+1");
+    QTest::newRow("previous") << QStringLiteral("<Up>") << QStringLiteral("playlistPickerMove:-1") << int(Qt::Key_Up)
+                              << QStringLiteral("-1");
+    QTest::newRow("return") << QStringLiteral("<CR>") << QStringLiteral("playlistPickerAccept") << int(Qt::Key_Return)
+                            << QString{};
+    QTest::newRow("keypad-enter") << QStringLiteral("<Enter>") << QStringLiteral("playlistPickerAccept")
+                                  << int(Qt::Key_Enter) << QString{};
+    QTest::newRow("cancel") << QStringLiteral("<Esc>") << QStringLiteral("playlistPickerCancel") << int(Qt::Key_Escape)
+                            << QString{};
+    QTest::newRow("mode") << QStringLiteral("<Esc>") << QStringLiteral("leaveInsertMode") << int(Qt::Key_Escape)
+                          << QString{};
+}
+
+void TestParseBinding::testPlaylistPickerMappings()
+{
+    QFETCH(QString, keys);
+    QFETCH(QString, value);
+    QFETCH(int, qtKey);
+    QFETCH(QString, args);
+    const auto binding = parseBindingString(keys, value);
+    QCOMPARE(binding.keys.size(), 1);
+    QCOMPARE(binding.keys.front().key, qtKey);
+    QCOMPARE(binding.actionName, value.section(u':', 0, 0));
+    QCOMPARE(binding.args, args);
+    const auto sequence = parseBindingString(QStringLiteral("zz"), QStringLiteral("playlistPickerAccept"));
+    QCOMPARE(sequence.keys.size(), 2);
+    QCOMPARE(sequence.actionName, QStringLiteral("playlistPickerAccept"));
 }
 
 void TestParseBinding::testJumpBindings_data()

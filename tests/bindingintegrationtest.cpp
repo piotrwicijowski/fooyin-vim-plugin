@@ -182,6 +182,11 @@ private:
             QVERIFY(buttons);
 
             scopeBox->setCurrentIndex(scopeBox->findData(static_cast<int>(scope)));
+            if(scope == BindingScope::PlaylistPicker) {
+                QCOMPARE(modeBox->findData(static_cast<int>(BindingMode::Visual)), -1);
+                QVERIFY(modeBox->findData(static_cast<int>(BindingMode::Insert)) >= 0);
+                QVERIFY(modeBox->findData(static_cast<int>(BindingMode::Normal)) >= 0);
+            }
             modeBox->setCurrentIndex(modeBox->findData(static_cast<int>(mode)));
             keysEdit->setText(keys);
             actionEdit->setText(actionName);
@@ -194,6 +199,137 @@ private:
     }
 
 private Q_SLOTS:
+    void testPlaylistPickerLocalDefaultsAndOverrides()
+    {
+        const auto path = m_tempDir.filePath(QStringLiteral("picker_local.ini"));
+        Fooyin::SettingsManager settings{path};
+        VimMotionsSettings defaults{&settings};
+        VimMotionsBindingBackend backend{&settings, path};
+        for(const auto mode : {BindingMode::Insert, BindingMode::Normal}) {
+            const auto bindings = scopedBindings(backend.effectiveBindings(), mode, BindingScope::PlaylistPicker);
+            QCOMPARE(bindings.size(), mode == BindingMode::Insert ? 7 : 10);
+            QVERIFY(std::ranges::none_of(bindings, [](const auto& binding) {
+                const auto& key = binding.keys.front();
+                return key.modifiers == Qt::ControlModifier && (key.key == Qt::Key_J || key.key == Qt::Key_K);
+            }));
+            for(const auto& [keys, value] : QList<QPair<QString, QString>>{
+                    {QStringLiteral("Ctrl+N"), QStringLiteral("playlistPickerMove:+1")},
+                    {QStringLiteral("<Down>"), QStringLiteral("playlistPickerMove:+1")},
+                    {QStringLiteral("Ctrl+P"), QStringLiteral("playlistPickerMove:-1")},
+                    {QStringLiteral("<Up>"), QStringLiteral("playlistPickerMove:-1")},
+                    {QStringLiteral("<CR>"), QStringLiteral("playlistPickerAccept")},
+                    {QStringLiteral("<Enter>"), QStringLiteral("playlistPickerAccept")},
+                    {QStringLiteral("<Esc>"), mode == BindingMode::Insert ? QStringLiteral("leaveInsertMode")
+                                                                          : QStringLiteral("playlistPickerCancel")}}) {
+                const auto expected = parseBindingString(keys, value);
+                QVERIFY(std::ranges::any_of(bindings, [&expected](const auto& binding) {
+                    return binding.keys == expected.keys && binding.actionName == expected.actionName
+                        && binding.args == expected.args;
+                }));
+            }
+        }
+        auto definitions = backend.bindingDefinitions();
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::PlaylistPicker, BindingMode::Insert,
+                                         QStringLiteral("<Esc>"), QStringLiteral("playlistPickerCancel"), {}));
+        QVERIFY(backend.unmapBinding(definitions, BindingScope::PlaylistPicker, BindingMode::Insert,
+                                     QStringLiteral("Ctrl+N")));
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::PlaylistPicker, BindingMode::Normal,
+                                         QStringLiteral("zz"), QStringLiteral("playlistPickerAccept"), {}));
+        QVERIFY(backend.saveBindingDefinitions(definitions));
+        VimMotionsBindingBackend reloaded{&settings, path};
+        auto bindings = scopedBindings(reloaded.effectiveBindings(), BindingMode::Insert, BindingScope::PlaylistPicker);
+        QCOMPARE(bindings.size(), 6);
+        QVERIFY(std::ranges::any_of(
+            bindings, [](const auto& b) { return b.actionName == QStringLiteral("playlistPickerCancel"); }));
+        QVERIFY(settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false));
+        reloaded.reloadBindings();
+        QCOMPARE(scopedBindings(reloaded.effectiveBindings(), BindingMode::Insert, BindingScope::PlaylistPicker).size(),
+                 1);
+        QCOMPARE(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::PlaylistPicker).size(),
+                 1);
+        definitions = reloaded.bindingDefinitions();
+        QVERIFY(reloaded.resetBinding(definitions, BindingScope::PlaylistPicker, BindingMode::Insert,
+                                      QStringLiteral("<Esc>")));
+        QVERIFY(reloaded.removeCustomBinding(definitions, BindingScope::PlaylistPicker, BindingMode::Normal,
+                                             QStringLiteral("zz")));
+        QVERIFY(reloaded.saveBindingDefinitions(definitions));
+        QVERIFY(
+            scopedBindings(reloaded.effectiveBindings(), BindingMode::Insert, BindingScope::PlaylistPicker).isEmpty());
+        QVERIFY(
+            scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::PlaylistPicker).isEmpty());
+        QVERIFY(settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(true));
+        reloaded.reloadBindings();
+        QCOMPARE(scopedBindings(reloaded.effectiveBindings(), BindingMode::Insert, BindingScope::PlaylistPicker).size(),
+                 6);
+    }
+
+    void testPlaylistPickerVisualDefinitionsStayDisabled()
+    {
+        const auto path = m_tempDir.filePath(QStringLiteral("picker_visual.ini"));
+        Fooyin::SettingsManager settings{path};
+        VimMotionsSettings defaults{&settings};
+        VimMotionsBindingBackend backend{&settings, path};
+        auto definitions = backend.bindingDefinitions();
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::PlaylistPicker, BindingMode::Visual,
+                                         QStringLiteral("x"), QStringLiteral("playlistPickerAccept"), {}));
+        QVERIFY(backend.saveBindingDefinitions(definitions));
+        VimMotionsBindingBackend reloaded{&settings, path};
+        QVERIFY(
+            scopedBindings(reloaded.effectiveBindings(), BindingMode::Visual, BindingScope::PlaylistPicker).isEmpty());
+        const auto rows = reloaded.bindingRows(reloaded.bindingDefinitions(), true);
+        QVERIFY(std::ranges::any_of(rows, [](const auto& row) {
+            return row.scope == BindingScope::PlaylistPicker && row.mode == BindingMode::Visual
+                && row.keys == QStringLiteral("x") && row.status == BindingRowStatus::Disabled;
+        }));
+    }
+
+    void testSettingsDialogEditsLocalPickerBindings()
+    {
+        const auto path = m_tempDir.filePath(QStringLiteral("picker_local_dialog.ini"));
+        Fooyin::SettingsManager settings{path};
+        VimMotionsSettings defaults{&settings};
+        VimMotionsBindingBackend backend{&settings, path};
+        VimMotionsSettingsDialog dialog{&settings, &backend};
+        auto* tree    = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
+        auto* buttons = dialog.findChild<QDialogButtonBox*>();
+        QVERIFY(tree);
+        QVERIFY(buttons);
+        selectTreeRow(tree, tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Insert"),
+                      QStringLiteral("<Esc>"));
+        acceptBindingEditor(BindingScope::PlaylistPicker, BindingMode::Insert, QStringLiteral("<Esc>"),
+                            QStringLiteral("playlistPickerCancel"));
+        dialog.findChild<QPushButton*>(QStringLiteral("addBinding"))->click();
+        QVERIFY(hasTreeRow(tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Insert"),
+                           QStringLiteral("<Esc>"), QStringLiteral("playlistPickerCancel")));
+        dialog.findChild<QPushButton*>(QStringLiteral("unmapBinding"))->click();
+        QVERIFY(hasTreeRow(tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Insert"),
+                           QStringLiteral("<Esc>"), QStringLiteral("Unmapped")));
+        dialog.findChild<QPushButton*>(QStringLiteral("resetBinding"))->click();
+        QVERIFY(hasTreeRow(tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Insert"),
+                           QStringLiteral("<Esc>"), QStringLiteral("leaveInsertMode")));
+        acceptBindingEditor(BindingScope::PlaylistPicker, BindingMode::Normal, QStringLiteral("zz"),
+                            QStringLiteral("playlistPickerAccept"));
+        dialog.findChild<QPushButton*>(QStringLiteral("addBinding"))->click();
+        buttons->button(QDialogButtonBox::Apply)->click();
+        VimMotionsBindingBackend reloaded{&settings, path};
+        QCOMPARE(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::PlaylistPicker).size(),
+                 11);
+        selectTreeRow(tree, tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Normal"),
+                      QStringLiteral("zz"));
+        acceptBindingEditor(BindingScope::PlaylistPicker, BindingMode::Normal, QStringLiteral("zx"),
+                            QStringLiteral("playlistPickerCancel"));
+        dialog.findChild<QPushButton*>(QStringLiteral("editBinding"))->click();
+        QVERIFY(hasTreeRow(tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Normal"),
+                           QStringLiteral("zx"), QStringLiteral("playlistPickerCancel")));
+        selectTreeRow(tree, tree->model(), QStringLiteral("Playlist Picker"), QStringLiteral("Normal"),
+                      QStringLiteral("zx"));
+        dialog.findChild<QPushButton*>(QStringLiteral("removeBinding"))->click();
+        buttons->button(QDialogButtonBox::Apply)->click();
+        reloaded.reloadBindings();
+        QCOMPARE(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::PlaylistPicker).size(),
+                 10);
+    }
+
     void testSettingsDialogEditsPlaylistPickerBinding()
     {
         const auto path = m_tempDir.filePath(QStringLiteral("picker_dialog.ini"));
@@ -761,11 +897,14 @@ private Q_SLOTS:
         int kRow        = -1;
         int zRow        = -1;
         for(int i = 0; i < rows.size(); ++i) {
-            if(rows.at(i).mode == BindingMode::Normal && rows.at(i).keys == QStringLiteral("j"))
+            if(rows.at(i).scope == BindingScope::Global && rows.at(i).mode == BindingMode::Normal
+               && rows.at(i).keys == QStringLiteral("j"))
                 jRow = i;
-            if(rows.at(i).mode == BindingMode::Normal && rows.at(i).keys == QStringLiteral("k"))
+            if(rows.at(i).scope == BindingScope::Global && rows.at(i).mode == BindingMode::Normal
+               && rows.at(i).keys == QStringLiteral("k"))
                 kRow = i;
-            if(rows.at(i).mode == BindingMode::Normal && rows.at(i).keys == QStringLiteral("z"))
+            if(rows.at(i).scope == BindingScope::Global && rows.at(i).mode == BindingMode::Normal
+               && rows.at(i).keys == QStringLiteral("z"))
                 zRow = i;
         }
 
@@ -790,7 +929,8 @@ private Q_SLOTS:
         const auto resetRows = backend.bindingRows(definitions, true);
         bool foundDefaultJ   = false;
         for(const auto& row : resetRows) {
-            if(row.mode == BindingMode::Normal && row.keys == QStringLiteral("j")) {
+            if(row.scope == BindingScope::Global && row.mode == BindingMode::Normal
+               && row.keys == QStringLiteral("j")) {
                 foundDefaultJ = true;
                 QCOMPARE(row.source, BindingRowSource::Default);
                 QCOMPARE(row.status, BindingRowStatus::Active);
@@ -887,7 +1027,7 @@ private Q_SLOTS:
         tree->sortByColumn(0, Qt::AscendingOrder);
         QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Global"));
         tree->sortByColumn(0, Qt::DescendingOrder);
-        QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Search Library Dialog"));
+        QCOMPARE(treeCell(treeModel, 0, 0), QStringLiteral("Playlist Picker"));
 
         selectTreeRow(tree, treeModel, QStringLiteral("Playlist View"), QStringLiteral("Normal"), QStringLiteral("qq"));
         removeButton->click();

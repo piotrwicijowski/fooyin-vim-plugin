@@ -28,20 +28,6 @@ protected:
     }
 };
 
-int navigationDelta(const QKeyEvent* event)
-{
-    const auto modifiers = event->modifiers() & ~Qt::KeypadModifier;
-    if(modifiers == Qt::NoModifier)
-        return event->key() == Qt::Key_Down ? 1 : event->key() == Qt::Key_Up ? -1 : 0;
-    if(modifiers == Qt::ControlModifier) {
-        if(event->key() == Qt::Key_N || event->key() == Qt::Key_J)
-            return 1;
-        if(event->key() == Qt::Key_P || event->key() == Qt::Key_K)
-            return -1;
-    }
-    return 0;
-}
-
 } // namespace
 
 VimPlaylistPickerDialog::VimPlaylistPickerDialog(QWidget* parent)
@@ -49,6 +35,7 @@ VimPlaylistPickerDialog::VimPlaylistPickerDialog(QWidget* parent)
     , m_input{new QLineEdit(this)}
     , m_results{new QListWidget(this)}
     , m_emptyState{new QLabel(this)}
+    , m_modeLabel{new QLabel(this)}
 {
     setObjectName(QStringLiteral("vimPlaylistPicker"));
     setWindowTitle(tr("Find Playlist"));
@@ -67,7 +54,9 @@ VimPlaylistPickerDialog::VimPlaylistPickerDialog(QWidget* parent)
     layout->addWidget(m_input);
     layout->addWidget(m_results, 1);
     layout->addWidget(m_emptyState, 1);
-    layout->addWidget(new QLabel(tr("Ctrl+n/p: next/previous · Enter: open · Esc: cancel"), this));
+    m_modeLabel->setObjectName(QStringLiteral("playlistPickerMode"));
+    layout->addWidget(m_modeLabel);
+    setInputMode(true);
     setFocusProxy(m_input);
     m_input->installEventFilter(this);
     connect(m_input, &QLineEdit::textChanged, this, [this]() { rebuildResults(false); });
@@ -137,37 +126,43 @@ void VimPlaylistPickerDialog::rebuildResults(bool preserveSelection)
     m_emptyState->setText(m_entries.isEmpty() ? tr("No playlists") : tr("No matching playlists"));
 }
 
-void VimPlaylistPickerDialog::moveSelection(int delta)
+void VimPlaylistPickerDialog::moveSelection(qint64 delta)
 {
     const int count = m_results->count();
     if(count == 0)
         return;
-    m_results->setCurrentRow((m_results->currentRow() + delta + count) % count);
+    m_results->setCurrentRow(static_cast<int>((m_results->currentRow() + delta % count + count) % count));
     m_results->scrollToItem(m_results->currentItem());
 }
 
 bool VimPlaylistPickerDialog::eventFilter(QObject* watched, QEvent* event)
 {
     if(watched == m_input && (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)) {
-        auto* key          = static_cast<QKeyEvent*>(event);
-        const int delta    = navigationDelta(key);
-        const bool plain   = (key->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier;
-        const bool confirm = plain && (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter);
-        const bool cancel  = plain && key->key() == Qt::Key_Escape;
-        if(delta || confirm || cancel) {
+        auto* key = static_cast<QKeyEvent*>(event);
+        // Mappings are handled by VimHandler's application filter first. Never
+        // let unmapped dialog keys fall back to QDialog's implicit actions.
+        if(key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter || key->key() == Qt::Key_Escape
+           || key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) {
             key->accept();
-            if(event->type() == QEvent::KeyPress) {
-                if(delta)
-                    moveSelection(delta);
-                else if(confirm)
-                    accept();
-                else
-                    reject();
-            }
             return true;
         }
     }
     return QDialog::eventFilter(watched, event);
+}
+
+void VimPlaylistPickerDialog::keyPressEvent(QKeyEvent* event)
+{
+    if(event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Escape) {
+        event->accept();
+        return;
+    }
+    QDialog::keyPressEvent(event);
+}
+
+void VimPlaylistPickerDialog::setInputMode(bool insert)
+{
+    m_input->setReadOnly(!insert);
+    m_modeLabel->setText(insert ? tr("INSERT") : tr("NORMAL"));
 }
 
 void VimPlaylistPickerDialog::accept()

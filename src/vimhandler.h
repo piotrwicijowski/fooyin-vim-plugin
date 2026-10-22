@@ -136,6 +136,9 @@ public:
     void nextPlaylist();
     void previousPlaylist();
     void findPlaylist();
+    void playlistPickerMove(int delta);
+    void playlistPickerAccept();
+    void playlistPickerCancel();
     void jumpOlder();
     void jumpNewer();
     void triggerFooyinAction(const QStringView& actionId);
@@ -182,7 +185,6 @@ private:
     [[nodiscard]] bool pendingConfigPrefixMatches(const BindingEntry& entry) const;
 
     bool dispatchFromConfig(QKeyEvent* ev, Mode mode);
-    bool dispatchFromBindings(QKeyEvent* ev, BindingScope scope, const QList<BindingEntry>& bindings);
     void executeAction(const BindingEntry& entry);
     bool handlePendingMarkOp(QKeyEvent* ev);
     void clearPendingInputState();
@@ -305,6 +307,10 @@ private:
                               int fallbackRow, int col, int expectedRowCount);
     void changePlaylistByOffset(int delta);
     void refreshPlaylistPicker();
+    bool handlePlaylistPickerEvent(QObject* watched, QEvent* event);
+    void setPlaylistPickerMode(Mode mode);
+    void clearPlaylistPickerInput();
+    void finishPlaylistPickerInput();
     void restoreAutoInsertedMode();
 
     Mode m_mode{Mode::Normal};
@@ -362,6 +368,8 @@ private:
     std::vector<QMetaObject::Connection> m_jumpRestoreConnections;
     std::optional<JumpPosition> m_preSearchJumpPosition;
     QPointer<VimPlaylistPickerDialog> m_playlistPicker;
+    std::optional<Mode> m_playlistPickerMode;
+    size_t m_playlistPickerSession{0};
     size_t m_playlistRestoreGeneration{0};
 
     std::vector<UndoEntry> m_undoStack;

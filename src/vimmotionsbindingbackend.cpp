@@ -27,6 +27,8 @@ std::optional<BindingScope> scopeFromString(const QString& scope)
         return BindingScope::PlaylistOrganiser;
     if(scope == QStringLiteral("SearchLibraryDialog"))
         return BindingScope::SearchLibraryDialog;
+    if(scope == QStringLiteral("PlaylistPicker"))
+        return BindingScope::PlaylistPicker;
 
     return std::nullopt;
 }
@@ -54,6 +56,8 @@ QString scopeText(BindingScope scope)
             return QStringLiteral("PlaylistOrganiser");
         case BindingScope::SearchLibraryDialog:
             return QStringLiteral("SearchLibraryDialog");
+        case BindingScope::PlaylistPicker:
+            return QStringLiteral("PlaylistPicker");
     }
 
     return QStringLiteral("Global");
@@ -84,6 +88,8 @@ int scopeOrder(BindingScope scope)
             return 2;
         case BindingScope::SearchLibraryDialog:
             return 3;
+        case BindingScope::PlaylistPicker:
+            return 4;
     }
 
     return 0;
@@ -197,6 +203,8 @@ BindingRow bindingRowFromValue(BindingScope scope, BindingMode mode, const QStri
     row.keys   = keys;
     row.source = source;
     row.status = status;
+    if(scope == BindingScope::PlaylistPicker && mode == BindingMode::Visual && status == BindingRowStatus::Active)
+        row.status = BindingRowStatus::Disabled;
 
     const BindingEntry entry = parseBindingString(keys, value);
     row.actionName           = entry.actionName;

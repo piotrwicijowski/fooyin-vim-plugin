@@ -22,6 +22,7 @@ enum class BindingScope
     PlaylistView,
     PlaylistOrganiser,
     SearchLibraryDialog,
+    PlaylistPicker,
 };
 
 inline size_t qHash(BindingScope key, size_t seed = 0)

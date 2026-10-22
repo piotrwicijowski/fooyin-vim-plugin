@@ -187,7 +187,8 @@ void TestVimMotionsSettingsDialog::testBindingEditorIncludesSearchLibraryDialogS
             QVERIFY(scopeBox);
             QVERIFY(buttons);
 
-            QCOMPARE(scopeBox->count(), 4);
+            QCOMPARE(scopeBox->count(), 5);
+            QVERIFY(scopeBox->findData(static_cast<int>(BindingScope::PlaylistPicker)) >= 0);
             QCOMPARE(scopeBox->itemText(0), QStringLiteral("Global"));
             QCOMPARE(scopeBox->itemText(1), QStringLiteral("Playlist View"));
             QCOMPARE(scopeBox->itemText(2), QStringLiteral("Playlist Organiser"));

@@ -70,6 +70,8 @@ QString scopeText(BindingScope scope)
             return QApplication::translate("VimMotionsSettingsDialog", "Playlist Organiser");
         case BindingScope::SearchLibraryDialog:
             return QApplication::translate("VimMotionsSettingsDialog", "Search Library Dialog");
+        case BindingScope::PlaylistPicker:
+            return QApplication::translate("VimMotionsSettingsDialog", "Playlist Picker");
     }
 
     return QApplication::translate("VimMotionsSettingsDialog", "Global");
@@ -137,7 +139,10 @@ QString actionsHelpText()
         "spatialMoveFocus(down/up/left/right), undo, redo, focusNowPlaying, fooyinAction(Action.Id), "
         "focusNowPlayingAndExit, beginSetMark, beginJumpToMark\n"
         "enterSearch, nextMatch, prevMatch, enterFilter, nextMatchAndExit, prevMatchAndExit, enterSearchAndExit, "
-        "clearPending");
+        "clearPending\n"
+        "Playlist Picker (local Insert/Normal modes, picker scope overrides Global): playlistPickerMove(+/-N), "
+        "playlistPickerAccept, playlistPickerCancel, enterInsert, leaveInsertMode, clearPending. "
+        "Other actions are unsupported in the picker.");
 }
 
 void showHelpDialog(QWidget* parent, const QString& title, const QString& text, const QString& objectName)
@@ -238,11 +243,22 @@ public:
         m_scope->addItem(scopeText(BindingScope::PlaylistOrganiser), static_cast<int>(BindingScope::PlaylistOrganiser));
         m_scope->addItem(scopeText(BindingScope::SearchLibraryDialog),
                          static_cast<int>(BindingScope::SearchLibraryDialog));
+        m_scope->addItem(scopeText(BindingScope::PlaylistPicker), static_cast<int>(BindingScope::PlaylistPicker));
 
         m_mode->setObjectName(u"bindingMode"_s);
         m_mode->addItem(modeText(BindingMode::Normal), static_cast<int>(BindingMode::Normal));
         m_mode->addItem(modeText(BindingMode::Visual), static_cast<int>(BindingMode::Visual));
         m_mode->addItem(modeText(BindingMode::Insert), static_cast<int>(BindingMode::Insert));
+        QObject::connect(m_scope, &QComboBox::currentIndexChanged, this, [this]() {
+            const auto previous = mode();
+            m_mode->clear();
+            m_mode->addItem(modeText(BindingMode::Normal), static_cast<int>(BindingMode::Normal));
+            if(scope() != BindingScope::PlaylistPicker)
+                m_mode->addItem(modeText(BindingMode::Visual), static_cast<int>(BindingMode::Visual));
+            m_mode->addItem(modeText(BindingMode::Insert), static_cast<int>(BindingMode::Insert));
+            const int index = m_mode->findData(static_cast<int>(previous));
+            m_mode->setCurrentIndex(index >= 0 ? index : 0);
+        });
 
         m_keys->setObjectName(u"bindingKeys"_s);
         m_actionName->setObjectName(u"bindingActionName"_s);
@@ -291,6 +307,9 @@ public:
                     const QString& args)
     {
         m_scope->setCurrentIndex(m_scope->findData(static_cast<int>(scope)));
+        // Preserve an existing handwritten inactive Visual entry when editing it.
+        if(m_mode->findData(static_cast<int>(mode)) < 0)
+            m_mode->addItem(modeText(mode), static_cast<int>(mode));
         m_mode->setCurrentIndex(m_mode->findData(static_cast<int>(mode)));
         m_keys->setText(keys);
         m_actionName->setText(actionName);

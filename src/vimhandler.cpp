@@ -39,6 +39,7 @@
 #include <QTimer>
 #include <QTreeView>
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 Q_LOGGING_CATEGORY(VIM_LOG, "fy.vim")
@@ -388,6 +389,10 @@ VimHandler::VimHandler(QObject* parent)
 {
     m_pendingTimeoutTimer.setSingleShot(true);
     connect(&m_pendingTimeoutTimer, &QTimer::timeout, this, [this]() {
+        if(m_playlistPicker && QApplication::activeModalWidget() != m_playlistPicker) {
+            clearPlaylistPickerInput();
+            return;
+        }
         if(!m_pendingConfigSequence.isEmpty() && m_pendingConfigFallback.has_value()) {
             const auto fallback = *m_pendingConfigFallback;
             qCDebug(VIM_LOG) << "Pending input timeout expired; executing fallback action" << fallback.actionName;
@@ -398,6 +403,8 @@ VimHandler::VimHandler(QObject* parent)
 
         qCDebug(VIM_LOG) << "Pending input timeout expired; clearing pending state";
         clearPendingInputState();
+        if(m_playlistPicker)
+            clearPlaylistPickerInput();
     });
 
     if(qApp) {
@@ -563,15 +570,14 @@ VimHandler::~VimHandler()
 
 VimHandler::Mode VimHandler::mode() const
 {
-    return m_mode;
+    return m_playlistPickerMode.value_or(m_mode);
 }
 
 bool VimHandler::eventFilter(QObject* watched, QEvent* event)
 {
-    // The picker owns input, including ShortcutOverride. Do this before view
-    // tracking can discover its list or activate a background playlist view.
+    // Route modal input before view discovery can activate a background view.
     if(m_playlistPicker)
-        return false;
+        return handlePlaylistPickerEvent(watched, event);
     auto* focusView = enclosingView(QApplication::focusWidget());
     if(event->type() == QEvent::FocusIn) {
         if(auto* widget = qobject_cast<QWidget*>(watched)) {
@@ -1170,7 +1176,7 @@ void VimHandler::setCurrentPlaylistController(Fooyin::CurrentPlaylistController*
                     playlistView->selectionModel()->setCurrentIndex({}, QItemSelectionModel::NoUpdate);
                 }
 
-                if(prevMode != m_mode)
+                if(prevMode != m_mode && !m_playlistPicker)
                     emit modeChanged(m_mode);
             }
 
@@ -1507,6 +1513,83 @@ void VimHandler::refreshPlaylistPicker()
                                                            : Fooyin::UId{});
 }
 
+void VimHandler::clearPlaylistPickerInput()
+{
+    clearPendingState();
+    m_dispatchCount    = 0;
+    m_hadExplicitCount = false;
+}
+
+void VimHandler::finishPlaylistPickerInput()
+{
+    const auto previousMode = mode();
+    clearPlaylistPickerInput();
+    m_playlistPicker = nullptr;
+    m_playlistPickerMode.reset();
+    if(previousMode != mode())
+        emit modeChanged(mode());
+}
+
+void VimHandler::setPlaylistPickerMode(Mode localMode)
+{
+    const auto previousMode = mode();
+    clearPlaylistPickerInput();
+    m_playlistPickerMode = localMode;
+    m_playlistPicker->setInputMode(localMode == Mode::Insert);
+    if(previousMode != mode())
+        emit modeChanged(mode());
+}
+
+bool VimHandler::handlePlaylistPickerEvent(QObject* watched, QEvent* event)
+{
+    if(event->type() != QEvent::ShortcutOverride && event->type() != QEvent::KeyPress)
+        return false;
+    auto* widget = qobject_cast<QWidget*>(watched);
+    if(!widget || QApplication::activeModalWidget() != m_playlistPicker
+       || (widget != m_playlistPicker && !m_playlistPicker->isAncestorOf(widget)))
+        return false;
+
+    auto* key = static_cast<QKeyEvent*>(event);
+    if(key->key() == Qt::Key_Control || key->key() == Qt::Key_Shift || key->key() == Qt::Key_Alt
+       || key->key() == Qt::Key_Meta)
+        return false;
+
+    const bool pending = !m_pendingConfigSequence.isEmpty();
+    const bool normal  = mode() == Mode::Normal;
+    if(event->type() == QEvent::ShortcutOverride) {
+        if(normal || pending || wouldHandleFromConfig(key, mode())) {
+            key->accept();
+            return true;
+        }
+        return false;
+    }
+
+    const bool handled = dispatchFromConfig(key, mode());
+    if(m_pendingConfigSequence.isEmpty()) {
+        m_dispatchCount    = 0;
+        m_hadExplicitCount = false;
+    }
+    return handled || normal;
+}
+
+void VimHandler::playlistPickerMove(int delta)
+{
+    if(m_playlistPicker)
+        m_playlistPicker->moveSelection(static_cast<qint64>(delta) * qMax(1, currentCount()));
+}
+
+void VimHandler::playlistPickerAccept()
+{
+    if(m_playlistPicker)
+        m_playlistPicker->accept();
+}
+
+void VimHandler::playlistPickerCancel()
+{
+    if(m_playlistPicker)
+        m_playlistPicker->reject();
+}
+
 void VimHandler::findPlaylist()
 {
     if(m_playlistPicker) {
@@ -1532,8 +1615,14 @@ void VimHandler::findPlaylist()
     ++m_playlistRestoreGeneration;
     m_pendingPlaylistRestoreId = {};
 
-    auto* dialog     = new VimPlaylistPickerDialog(invokingWidget ? invokingWidget->window() : nullptr);
-    m_playlistPicker = dialog;
+    auto* dialog       = new VimPlaylistPickerDialog(invokingWidget ? invokingWidget->window() : nullptr);
+    m_playlistPicker   = dialog;
+    const auto session = ++m_playlistPickerSession;
+    setPlaylistPickerMode(Mode::Insert);
+    connect(dialog, &QObject::destroyed, this, [this, session]() {
+        if(session == m_playlistPickerSession && m_playlistPickerMode)
+            finishPlaylistPickerInput();
+    });
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     refreshPlaylistPicker();
     const auto refresh = [this]() {
@@ -1580,12 +1669,9 @@ void VimHandler::findPlaylist()
                 storePlaylistCursorState(target, state);
                 if(switching)
                     m_currentPlaylistController->changeCurrentPlaylist(id);
-                const auto previousMode = m_mode;
-                m_mode                  = Mode::Normal;
+                m_mode         = Mode::Normal;
                 m_visualAnchor = m_visualCursor = -1;
-                if(previousMode != m_mode)
-                    emit modeChanged(m_mode);
-                m_playlistPicker = nullptr;
+                finishPlaylistPickerInput();
                 auto* view = playlistView && playlistView->isVisible() ? playlistView.data() : playlistViewForState();
                 if(view) {
                     view->window()->activateWindow();
@@ -1595,7 +1681,7 @@ void VimHandler::findPlaylist()
                 return;
             }
         }
-        m_playlistPicker = nullptr;
+        finishPlaylistPickerInput();
         if(invokingWidget && invokingWidget->isVisible()) {
             invokingWidget->window()->activateWindow();
             invokingWidget->setFocus(Qt::OtherFocusReason);
@@ -3664,7 +3750,7 @@ void VimHandler::applyPlaylistCursorState(QAbstractItemView* view, Fooyin::Playl
         view->selectionModel()->clearSelection();
         view->selectionModel()->setCurrentIndex({}, QItemSelectionModel::NoUpdate);
 
-        if(prevMode != m_mode)
+        if(prevMode != m_mode && !m_playlistPicker)
             emit modeChanged(m_mode);
 
         m_applyingPlaylistCursorState = false;
@@ -3707,7 +3793,7 @@ void VimHandler::applyPlaylistCursorState(QAbstractItemView* view, Fooyin::Playl
         }
     }
 
-    if(prevMode != m_mode)
+    if(prevMode != m_mode && !m_playlistPicker)
         emit modeChanged(m_mode);
 
     m_applyingPlaylistCursorState = false;
@@ -4335,6 +4421,8 @@ void VimHandler::applyBackendBindings()
         return;
 
     m_configBindings = convertBindings(m_settingsBackend->effectiveBindings());
+    if(m_playlistPicker)
+        clearPlaylistPickerInput();
 
     const auto bindingCountForMode = [this](Mode mode) {
         int count                 = 0;
@@ -4354,6 +4442,31 @@ void VimHandler::applyBackendBindings()
 
 void VimHandler::executeAction(const BindingEntry& entry)
 {
+    const bool pickerAction = entry.actionName == u"playlistPickerMove" || entry.actionName == u"playlistPickerAccept"
+                           || entry.actionName == u"playlistPickerCancel";
+    if(m_playlistPicker) {
+        if(entry.actionName == u"enterInsert")
+            setPlaylistPickerMode(Mode::Insert);
+        else if(entry.actionName == u"leaveInsertMode")
+            setPlaylistPickerMode(Mode::Normal);
+        else if(entry.actionName == u"clearPending")
+            clearPlaylistPickerInput();
+        else if(pickerAction) {
+            const auto handler = m_actions.find(entry.actionName);
+            if(handler)
+                handler(*this, QStringView{entry.args});
+        }
+        else
+            qCWarning(VIM_LOG) << "Unsupported playlist picker action:" << entry.actionName;
+        m_hadExplicitCount = false;
+        m_dispatchCount    = 0;
+        return;
+    }
+    if(pickerAction) {
+        m_hadExplicitCount = false;
+        m_dispatchCount    = 0;
+        return;
+    }
     if(entry.actionName != u"jumpOlder" && entry.actionName != u"jumpNewer") {
         tryRestoreJump();
         cancelJumpRestore();
@@ -4380,6 +4493,8 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     const int qtKey                  = ev->key();
     const QString text               = ev->text();
     const QChar ch                   = text.isEmpty() ? QChar{} : text.front();
+    const BindingScope activeScope   = activeBindingScope();
+    const bool picker                = activeScope == BindingScope::PlaylistPicker;
 
     // Ignore bare modifier key presses (Alt, Ctrl, Shift, Meta) so
     // they don't consume the accumulated count.  They will be claimed
@@ -4395,7 +4510,7 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     }
 
     if(mode == Mode::Normal || mode == Mode::Visual) {
-        if(qtKey == Qt::Key_Escape && mods == Qt::NoModifier) {
+        if(!picker && qtKey == Qt::Key_Escape && mods == Qt::NoModifier) {
             qCDebug(VIM_LOG) << "ConfigDispatch: Esc → clear";
             clearPendingInputState();
             m_count = 0;
@@ -4404,26 +4519,29 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
             return true;
         }
 
-        if((mode == Mode::Normal || mode == Mode::Visual) && handlePendingMarkOp(ev))
+        if(!picker && handlePendingMarkOp(ev))
             return true;
 
-        if(!ch.isNull() && ch.isDigit() && !(mods & ~Qt::KeypadModifier)) {
+        if((!picker || m_pendingConfigSequence.isEmpty()) && !ch.isNull() && ch.isDigit()
+           && !(mods & ~Qt::KeypadModifier)) {
             const int digit = ch.digitValue();
             if(m_count > 0 || digit != 0) {
-                m_count = m_count * 10 + digit;
+                const auto value = static_cast<qint64>(m_count) * 10 + digit;
+                m_count          = static_cast<int>(qMin(value, static_cast<qint64>(std::numeric_limits<int>::max())));
                 qCDebug(VIM_LOG) << "ConfigDispatch: digit" << digit << "→ count=" << m_count;
             }
             return true;
         }
     }
 
-    m_hadExplicitCount = m_count > 0;
-    m_dispatchCount    = m_count > 0 ? m_count : 1;
-    m_count            = 0;
+    if(!picker || !m_pendingConfigScope) {
+        m_hadExplicitCount = m_count > 0;
+        m_dispatchCount    = m_count > 0 ? m_count : 1;
+        m_count            = 0;
+    }
 
-    const BindingScope activeScope = activeBindingScope();
-    const auto scopedBindings      = m_configBindings.value(mode).value(activeScope);
-    const auto globalBindings      = m_configBindings.value(mode).value(BindingScope::Global);
+    const auto scopedBindings = m_configBindings.value(mode).value(activeScope);
+    const auto globalBindings = m_configBindings.value(mode).value(BindingScope::Global);
 
     const auto bestSingleBinding = [ev](const QList<BindingEntry>& bindings) -> const BindingEntry* {
         const BindingEntry* best = nullptr;
@@ -4593,130 +4711,14 @@ bool VimHandler::dispatchFromConfig(QKeyEvent* ev, Mode mode)
     return false;
 }
 
-bool VimHandler::dispatchFromBindings(QKeyEvent* ev, const BindingScope scope, const QList<BindingEntry>& bindings)
-{
-    const QString text = ev->text();
-    const QChar ch     = text.isEmpty() ? QChar{} : text.front();
-
-    if(!m_pendingConfigSequence.isEmpty()) {
-        const BindingEntry* completeMatch = nullptr;
-        QList<KeyCombo> nextPrefix;
-
-        for(const auto& b : bindings) {
-            if(!pendingConfigPrefixMatches(b))
-                continue;
-            if(b.keys.size() <= m_pendingConfigSequence.size())
-                continue;
-            if(!b.keys[m_pendingConfigSequence.size()].matches(ev))
-                continue;
-
-            nextPrefix = b.keys.mid(0, m_pendingConfigSequence.size() + 1);
-            if(b.keys.size() == nextPrefix.size()) {
-                completeMatch = &b;
-            }
-            else {
-                m_pendingConfigSequence = nextPrefix;
-                m_pendingConfigScope    = scope;
-                refreshPendingTimeout();
-                qCDebug(VIM_LOG) << "ConfigDispatch: sequence pending length" << m_pendingConfigSequence.size();
-                return true;
-            }
-        }
-
-        if(completeMatch) {
-            qCDebug(VIM_LOG) << "ConfigDispatch: sequence complete" << completeMatch->actionName;
-            clearPendingInputState();
-            executeAction(*completeMatch);
-            return true;
-        }
-
-        if(m_pendingConfigFallback.has_value()) {
-            const auto fallback = *m_pendingConfigFallback;
-            qCDebug(VIM_LOG) << "ConfigDispatch: sequence mismatch, using fallback" << fallback.actionName;
-            clearPendingInputState();
-            executeAction(fallback);
-            return true;
-        }
-
-        clearPendingInputState();
-    }
-
-    if(!m_pendingKey.isNull()) {
-        QChar pending = m_pendingKey;
-        clearPendingInputState();
-
-        for(const auto& b : bindings) {
-            if(b.keys.size() == 2 && b.keys[0].ch == pending && b.keys[1].matches(ev)) {
-                qCDebug(VIM_LOG) << "ConfigDispatch: two-key complete '" << pending << ch << "'";
-                executeAction(b);
-                return true;
-            }
-        }
-    }
-
-    const BindingEntry* best = nullptr;
-    int bestModCount         = -1;
-
-    for(const auto& b : bindings) {
-        if(b.keys.size() != 1)
-            continue;
-        if(b.keys.front().matches(ev)) {
-            int mc = 0;
-            auto m = b.keys.front().modifiers;
-            if(m & Qt::ControlModifier)
-                ++mc;
-            if(m & Qt::AltModifier)
-                ++mc;
-            if(m & Qt::ShiftModifier)
-                ++mc;
-            if(m & Qt::MetaModifier)
-                ++mc;
-            if(mc > bestModCount) {
-                bestModCount = mc;
-                best         = &b;
-            }
-        }
-    }
-
-    const BindingEntry* sequencePrefix = nullptr;
-    for(const auto& b : bindings) {
-        if(b.keys.size() < 2)
-            continue;
-        if(b.keys.front().matches(ev)) {
-            sequencePrefix = &b;
-            break;
-        }
-    }
-
-    if(sequencePrefix) {
-        m_pendingConfigSequence = {sequencePrefix->keys.front()};
-        m_pendingConfigFallback.reset();
-        m_pendingConfigScope = scope;
-        if(best)
-            m_pendingConfigFallback = *best;
-        refreshPendingTimeout();
-        qCDebug(VIM_LOG) << "ConfigDispatch: sequence start length" << m_pendingConfigSequence.size()
-                         << "fallback=" << (m_pendingConfigFallback ? m_pendingConfigFallback->actionName : QString{});
-        return true;
-    }
-
-    if(!best) {
-        qCDebug(VIM_LOG) << "ConfigDispatch: no binding for key=" << ev->key() << "text=" << text;
-        return false;
-    }
-
-    qCDebug(VIM_LOG) << "ConfigDispatch: action" << best->actionName << "args=" << best->args;
-    executeAction(*best);
-    return true;
-}
-
 // ---------------------------------------------------------------------------
 // Config-driven wouldHandle (ShortcutOverride predicate)
 // ---------------------------------------------------------------------------
 
 bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
 {
-    if(mode == Mode::Normal || mode == Mode::Visual) {
+    const BindingScope activeScope = activeBindingScope();
+    if(activeScope != BindingScope::PlaylistPicker && (mode == Mode::Normal || mode == Mode::Visual)) {
         const int qtKey = ev->key();
         const auto mods = ev->modifiers();
         if(qtKey == Qt::Key_Escape && mods == Qt::NoModifier)
@@ -4736,7 +4738,6 @@ bool VimHandler::wouldHandleFromConfig(QKeyEvent* ev, Mode mode) const
             return true;
     }
 
-    const BindingScope activeScope = activeBindingScope();
     if(wouldHandleFromBindings(ev, m_configBindings.value(mode).value(activeScope)))
         return true;
 
@@ -4792,6 +4793,8 @@ BindingScope VimHandler::bindingScopeForView(QAbstractItemView* view) const
 
 BindingScope VimHandler::activeBindingScope() const
 {
+    if(m_playlistPicker)
+        return BindingScope::PlaylistPicker;
     if(isSearchLibraryDialogWidget(QApplication::focusWidget()))
         return BindingScope::SearchLibraryDialog;
 

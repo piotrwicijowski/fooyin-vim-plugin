@@ -96,6 +96,10 @@ void VimActions::registerAll()
     registerAction(u"nextPlaylist"_s, [](VimHandler& h, const QStringView&) { h.nextPlaylist(); });
     registerAction(u"previousPlaylist"_s, [](VimHandler& h, const QStringView&) { h.previousPlaylist(); });
     registerAction(u"findPlaylist"_s, [](VimHandler& h, const QStringView&) { h.findPlaylist(); });
+    registerAction(u"playlistPickerMove"_s,
+                   [](VimHandler& h, const QStringView& a) { h.playlistPickerMove(a.toInt()); });
+    registerAction(u"playlistPickerAccept"_s, [](VimHandler& h, const QStringView&) { h.playlistPickerAccept(); });
+    registerAction(u"playlistPickerCancel"_s, [](VimHandler& h, const QStringView&) { h.playlistPickerCancel(); });
     registerAction(u"jumpOlder"_s, [](VimHandler& h, const QStringView&) { h.jumpOlder(); });
     registerAction(u"jumpNewer"_s, [](VimHandler& h, const QStringView&) { h.jumpNewer(); });
     registerAction(u"fooyinAction"_s, [](VimHandler& h, const QStringView& a) { h.triggerFooyinAction(a); });

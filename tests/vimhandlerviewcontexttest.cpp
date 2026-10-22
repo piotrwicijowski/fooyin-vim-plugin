@@ -29,11 +29,13 @@
 #include <QDialog>
 #include <QFocusEvent>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QMimeData>
 #include <QShortcut>
+#include <QSignalSpy>
 #include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QTest>
@@ -1007,6 +1009,31 @@ struct JumpHarness
         return handled;
     }
 
+    bool binding(Fooyin::VimMotions::BindingMode mode, const QString& keys, const QString& value,
+                 Fooyin::VimMotions::BindingScope scope = Fooyin::VimMotions::BindingScope::PlaylistPicker)
+    {
+        auto definitions = backend.bindingDefinitions();
+        bool changed;
+        if(value.isEmpty())
+            changed = backend.unmapBinding(definitions, scope, mode, keys)
+                   || backend.removeCustomBinding(definitions, scope, mode, keys);
+        else {
+            const auto parsed = Fooyin::VimMotions::parseBindingString(keys, value);
+            changed           = backend.addCustomBinding(definitions, scope, mode, keys, parsed.actionName, parsed.args)
+                   || backend.updateCustomBinding(definitions, scope, mode, keys, scope, mode, keys, parsed.actionName,
+                                                  parsed.args);
+        }
+        return changed && backend.saveBindingDefinitions(definitions);
+    }
+
+    Fooyin::VimMotions::VimPlaylistPickerDialog* openPicker()
+    {
+        qApp->installEventFilter(&handler);
+        handler.findPlaylist();
+        pumpEvents();
+        return qobject_cast<Fooyin::VimMotions::VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    }
+
     QTemporaryDir tempDir;
     Fooyin::SettingsManager settings;
     PlaylistHandlerHarness playlists;
@@ -1130,7 +1157,364 @@ private Q_SLOTS:
     void playlistPickerHandlesExternalSourceChange();
     void playlistPickerCleansUpWithHandler();
     void playlistPickerHandlesDestroyedWidgets();
+    void playlistPickerConfigurableMappings();
+    void playlistPickerLocalModesPreserveVisualSelection();
+    void playlistPickerGlobalFallbackAndScopedPrecedence();
+    void playlistPickerUnmappedDialogKeys_data();
+    void playlistPickerUnmappedDialogKeys();
+    void playlistPickerDefaultAliases_data();
+    void playlistPickerDefaultAliases();
+    void playlistPickerIsolatesActionsAndNestedDialogs();
+    void playlistPickerReloadPreservesInput();
+    void playlistPickerExternalChangesKeepLocalModeIndicator();
+    void playlistPickerSequencesAndTimeouts();
+    void playlistPickerPendingStateEndsWithSession_data();
+    void playlistPickerPendingStateEndsWithSession();
 };
+
+void TestVimHandlerViewContext::playlistPickerConfigurableMappings()
+{
+    JumpHarness h;
+    QVERIFY(h.settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false));
+    h.backend.reloadBindings();
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+F"_s, u"playlistPickerMove:+1"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+B"_s, u"playlistPickerMove:-1"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+Y"_s, u"playlistPickerAccept"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+Q"_s, u"playlistPickerCancel"_s));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
+    QTest::keyClick(input, Qt::Key_Escape);
+    QTest::keyClick(input, Qt::Key_Return);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    QVERIFY(picker->isVisible());
+    QTest::keyClick(input, Qt::Key_F, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QTest::keyClick(input, Qt::Key_B, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    QTest::keyClick(input, Qt::Key_Q, Qt::ControlModifier);
+    QTRY_COMPARE(QApplication::focusWidget(), &h.view);
+    picker = h.openPicker();
+    QVERIFY(picker);
+    input = picker->findChild<QLineEdit*>();
+    QTest::keyClick(input, Qt::Key_F, Qt::ControlModifier);
+    QTest::keyClick(input, Qt::Key_Y, Qt::ControlModifier);
+    QTRY_COMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QTRY_COMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerViewContext::playlistPickerLocalModesPreserveVisualSelection()
+{
+    JumpHarness h;
+    QVERIFY(h.binding(BindingMode::Normal, u"zz"_s, u"playlistPickerAccept"_s));
+    h.select(2, 1);
+    h.handler.enterVisual();
+    h.handler.extendVisualCursor(2);
+    const auto selection = h.view.selectionModel()->selection();
+    const auto cursor    = h.view.currentIndex();
+    QSignalSpy modes{&h.handler, &VimHandler::modeChanged};
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Insert);
+    QTest::keyClicks(input, "pl");
+    QTest::keyClick(input, Qt::Key_Escape);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(input->isReadOnly());
+    QTest::keyClicks(input, "2j");
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[2]->id());
+    QTest::keyClicks(input, "kx");
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QCOMPARE(input->text(), u"pl"_s);
+    QCOMPARE(QApplication::focusWidget(), input);
+    QCOMPARE(h.view.selectionModel()->selection(), selection);
+    QTest::keyClick(input, Qt::Key_I);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Insert);
+    QTest::keyClicks(input, "1");
+    QCOMPARE(input->text(), u"pl1"_s);
+    QTest::keyClick(input, Qt::Key_Escape);
+    QTest::keyClick(input, Qt::Key_Escape);
+    QTRY_COMPARE(h.handler.mode(), VimHandler::Mode::Visual);
+    QCOMPARE(h.view.selectionModel()->selection(), selection);
+    QCOMPARE(h.view.currentIndex(), cursor);
+    QCOMPARE(modes.count(), 5);
+    QCOMPARE(modes.last().front().value<VimHandler::Mode>(), VimHandler::Mode::Visual);
+
+    picker = h.openPicker();
+    QVERIFY(picker);
+    input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl1");
+    QTest::keyClick(input, Qt::Key_Escape);
+    QTest::keyClicks(input, "zz");
+    QTRY_COMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerViewContext::playlistPickerUnmappedDialogKeys_data()
+{
+    QTest::addColumn<QString>("keys");
+    QTest::addColumn<int>("key");
+    QTest::addColumn<bool>("normal");
+    QTest::addColumn<bool>("globalFallback");
+    for(const bool normal : {false, true}) {
+        for(const bool globalFallback : {false, true}) {
+            const auto suffix
+                = u"-%1-%2"_s.arg(normal ? u"normal"_s : u"insert"_s, globalFallback ? u"fallback"_s : u"unmapped"_s);
+            QTest::newRow(qPrintable(u"escape"_s + suffix))
+                << u"<Esc>"_s << int(Qt::Key_Escape) << normal << globalFallback;
+            QTest::newRow(qPrintable(u"return"_s + suffix))
+                << u"<CR>"_s << int(Qt::Key_Return) << normal << globalFallback;
+            QTest::newRow(qPrintable(u"enter"_s + suffix))
+                << u"<Enter>"_s << int(Qt::Key_Enter) << normal << globalFallback;
+        }
+    }
+}
+
+void TestVimHandlerViewContext::playlistPickerUnmappedDialogKeys()
+{
+    QFETCH(QString, keys);
+    QFETCH(int, key);
+    QFETCH(bool, normal);
+    QFETCH(bool, globalFallback);
+    JumpHarness h;
+    const auto mode = normal ? BindingMode::Normal : BindingMode::Insert;
+    QVERIFY(h.binding(mode, keys, {}));
+    QVERIFY(h.binding(mode, keys, u"playlistPickerAccept"_s, BindingScope::Global));
+    if(!globalFallback)
+        QVERIFY(h.binding(mode, keys, {}, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+G"_s, u"leaveInsertMode"_s));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QSignalSpy requested{picker, &VimPlaylistPickerDialog::playlistRequested};
+    if(normal)
+        QTest::keyClick(input, Qt::Key_G, Qt::ControlModifier);
+    QTest::keyClick(input, static_cast<Qt::Key>(key), key == Qt::Key_Enter ? Qt::KeypadModifier : Qt::NoModifier);
+    QCOMPARE(requested.count(), globalFallback ? 1 : 0);
+    QCOMPARE(picker->isVisible(), !globalFallback);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    picker->close();
+}
+
+void TestVimHandlerViewContext::playlistPickerGlobalFallbackAndScopedPrecedence()
+{
+    JumpHarness h;
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+F"_s, u"playlistPickerMove:+1"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+F"_s, u"playlistPickerMove:-1"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"x"_s, u"playlistPickerMove:+1"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Insert, u"xc"_s, u"playlistPickerMove:-1"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"xg"_s, u"playlistPickerMove:+2"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Normal, u"e"_s, u"enterInsert"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Normal, u"zz"_s, u"playlistPickerMove:+1"_s, BindingScope::Global));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl");
+    QTest::keyClick(input, Qt::Key_F, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[3]->id());
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+F"_s, {}));
+    QTest::keyClick(input, Qt::Key_F, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    QTest::keyClicks(input, "xc");
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[3]->id());
+    QTest::keyClicks(input, "xg");
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QCOMPARE(input->text(), u"pl"_s);
+    QTest::keyClick(input, Qt::Key_Escape);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QTest::keyClicks(input, "2zz");
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[3]->id());
+    QTest::keyClick(input, Qt::Key_E);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Insert);
+    QTest::keyClick(input, Qt::Key_J); // Global Normal j does not consume Insert text.
+    QCOMPARE(input->text(), u"plj"_s);
+    picker->close();
+}
+
+void TestVimHandlerViewContext::playlistPickerDefaultAliases_data()
+{
+    QTest::addColumn<int>("key");
+    QTest::addColumn<Qt::KeyboardModifiers>("mods");
+    QTest::addColumn<int>("destination");
+    QTest::newRow("ctrl-n") << int(Qt::Key_N) << Qt::KeyboardModifiers(Qt::ControlModifier) << 1;
+    QTest::newRow("down") << int(Qt::Key_Down) << Qt::KeyboardModifiers{} << 1;
+    QTest::newRow("ctrl-p") << int(Qt::Key_P) << Qt::KeyboardModifiers(Qt::ControlModifier) << 3;
+    QTest::newRow("up") << int(Qt::Key_Up) << Qt::KeyboardModifiers{} << 3;
+}
+
+void TestVimHandlerViewContext::playlistPickerDefaultAliases()
+{
+    QFETCH(int, key);
+    QFETCH(Qt::KeyboardModifiers, mods);
+    QFETCH(int, destination);
+    JumpHarness h;
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl");
+    input->setSelection(0, 2);
+    const auto caret = input->cursorPosition();
+    QTest::keyClick(input, static_cast<Qt::Key>(key), mods);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[destination]->id());
+    QCOMPARE(input->text(), u"pl"_s);
+    QCOMPARE(input->selectedText(), u"pl"_s);
+    QCOMPARE(input->cursorPosition(), caret);
+    QCOMPARE(QApplication::focusWidget(), input);
+    QKeyEvent repeat{QEvent::KeyPress, key, mods, QString{}, true, 1};
+    QApplication::sendEvent(input, &repeat);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[2]->id());
+    QTest::keyClicks(input, "pl1");
+    QCOMPARE(input->text(), u"pl1"_s);
+    picker->close();
+}
+
+void TestVimHandlerViewContext::playlistPickerIsolatesActionsAndNestedDialogs()
+{
+    JumpHarness h;
+    QVERIFY(h.binding(BindingMode::Insert, u"x"_s, u"deleteRows"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"z"_s, u"nextPlaylist"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Visual, u"q"_s, u"playlistPickerAccept"_s));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input       = picker->findChild<QLineEdit*>();
+    const auto tracks = h.lists[0]->trackCount();
+    QTest::keyClicks(input, "xzq");
+    QCOMPARE(input->text(), u"q"_s);
+    QCOMPARE(h.lists[0]->trackCount(), tracks);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QDialog nested{picker};
+    QLineEdit nestedInput{&nested};
+    nested.open();
+    nestedInput.setFocus();
+    pumpEvents();
+    QTest::keyClicks(&nestedInput, "x");
+    QCOMPARE(nestedInput.text(), u"x"_s);
+    nested.reject();
+    picker->close();
+}
+
+void TestVimHandlerViewContext::playlistPickerReloadPreservesInput()
+{
+    JumpHarness h;
+    h.settings.set(u"VimMotions/PendingSequenceTimeout"_s, 30);
+    QVERIFY(h.binding(BindingMode::Insert, u"x"_s, u"playlistPickerMove:+1"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Insert, u"xc"_s, u"playlistPickerCancel"_s));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl");
+    input->setSelection(0, 2);
+    QTest::keyClick(input, Qt::Key_X);
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+N"_s, {}));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+F"_s, u"playlistPickerMove:+1"_s));
+    QTest::qWait(60);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    QCOMPARE(input->text(), u"pl"_s);
+    QCOMPARE(input->selectedText(), u"pl"_s);
+    QCOMPARE(QApplication::focusWidget(), input);
+    QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    QTest::keyClick(input, Qt::Key_F, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    picker->close();
+}
+
+void TestVimHandlerViewContext::playlistPickerExternalChangesKeepLocalModeIndicator()
+{
+    JumpHarness h;
+    h.handler.enterVisual();
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    QSignalSpy modes{&h.handler, &VimHandler::modeChanged};
+    h.observer.changeCurrentPlaylist(h.lists[1]);
+    pumpEvents();
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Insert);
+    QCOMPARE(modes.count(), 0);
+    QCOMPARE(picker->findChild<QLabel*>(u"playlistPickerMode"_s)->text(), u"INSERT"_s);
+    picker->reject();
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(modes.count(), 1);
+    QCOMPARE(modes.front().front().value<VimHandler::Mode>(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerViewContext::playlistPickerSequencesAndTimeouts()
+{
+    JumpHarness h;
+    h.settings.set(u"VimMotions/PendingSequenceTimeout"_s, 30);
+    QVERIFY(h.binding(BindingMode::Insert, u"x"_s, u"playlistPickerMove:+1"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"xc"_s, u"playlistPickerMove:-1"_s));
+    QVERIFY(h.binding(BindingMode::Insert, u"zz"_s, u"playlistPickerMove:+1"_s));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl");
+    QCOMPARE(picker->findChild<QListWidget*>()->currentRow(), 0);
+    QTest::keyClicks(input, "xc");
+    QCOMPARE(picker->findChild<QListWidget*>()->currentRow(), 3);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[3]->id());
+    QTest::keyClick(input, Qt::Key_X);
+    QTRY_COMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    int applicationCommands = 0;
+    QShortcut shortcut{QKeySequence(Qt::Key_B), picker};
+    shortcut.setContext(Qt::ApplicationShortcut);
+    connect(&shortcut, &QShortcut::activated, picker, [&]() { ++applicationCommands; });
+    QTest::keyClicks(input, "xb"); // Mismatch executes x's fallback, consumes b.
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QCOMPARE(applicationCommands, 0);
+    QTest::keyClicks(input, "zb"); // No fallback: consume both command keys.
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QCOMPARE(input->text(), u"pl"_s);
+    h.settings.set(u"VimMotions/PendingSequenceTimeout"_s, 0);
+    QTest::keyClick(input, Qt::Key_X);
+    QTest::qWait(60);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QTest::keyClick(input, Qt::Key_C);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    picker->close();
+}
+
+void TestVimHandlerViewContext::playlistPickerPendingStateEndsWithSession_data()
+{
+    QTest::addColumn<QString>("boundary");
+    for(const auto* boundary : {"cancel", "accept", "mode", "destroy", "reload"})
+        QTest::newRow(boundary) << QString::fromLatin1(boundary);
+}
+
+void TestVimHandlerViewContext::playlistPickerPendingStateEndsWithSession()
+{
+    QFETCH(QString, boundary);
+    JumpHarness h;
+    h.settings.set(u"VimMotions/PendingSequenceTimeout"_s, 30);
+    QVERIFY(h.binding(BindingMode::Insert, u"x"_s, u"playlistPickerCancel"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Insert, u"xc"_s,
+                      boundary == u"mode" ? u"leaveInsertMode"_s : u"playlistPickerAccept"_s, BindingScope::Global));
+    QVERIFY(h.binding(BindingMode::Insert, u"Ctrl+G"_s, u"leaveInsertMode"_s));
+    auto* picker = h.openPicker();
+    QVERIFY(picker);
+    QTest::keyClick(picker->findChild<QLineEdit*>(), Qt::Key_X);
+    if(boundary == u"cancel")
+        picker->reject();
+    else if(boundary == u"accept")
+        picker->accept();
+    else if(boundary == u"destroy")
+        delete picker;
+    else if(boundary == u"reload")
+        h.backend.reloadBindings();
+    else {
+        QTest::keyClick(picker->findChild<QLineEdit*>(), Qt::Key_C);
+        QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    }
+    if(boundary == u"cancel" || boundary == u"accept" || boundary == u"destroy") {
+        pumpEvents();
+        picker = h.openPicker();
+        QVERIFY(picker);
+    }
+    QTest::qWait(60);
+    QVERIFY(picker->isVisible());
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    picker->close();
+}
 
 void TestVimHandlerViewContext::playlistPickerKeepsFocusAndCancels_data()
 {
@@ -1200,7 +1584,10 @@ void TestVimHandlerViewContext::playlistPickerKeepsFocusAndCancels()
     QCOMPARE(h.playlists.handler.activePlaylist(), playing);
     QCOMPARE(h.view.currentIndex(), cursor);
     QCOMPARE(h.view.selectionModel()->selection(), selection);
-    QCOMPARE(h.handler.mode(), visual ? VimHandler::Mode::Visual : VimHandler::Mode::Normal);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Insert);
+    QTest::keyClick(input, Qt::Key_Escape);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(picker->isVisible());
     QTest::keyClick(input, Qt::Key_Escape);
     QTRY_COMPARE(QApplication::focusWidget(), invoking);
     QCOMPARE(h.view.currentIndex(), cursor);
@@ -1255,6 +1642,7 @@ void TestVimHandlerViewContext::playlistPickerAcceptRestoresCursorAndHistory()
 void TestVimHandlerViewContext::playlistPickerWaitsForPopulation()
 {
     JumpHarness h;
+    qApp->installEventFilter(&h.handler);
     h.observer.changeCurrentPlaylist(h.lists[1]);
     pumpEvents();
     h.select(4);

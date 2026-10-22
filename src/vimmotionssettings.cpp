@@ -87,6 +87,25 @@ const std::vector<BindingDefault>& VimMotionsSettings::defaultBindings()
         {"VimMotions/Bindings/Global/Insert/<Esc>", "leaveInsertMode"},
         {"VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+J", "spatialMoveFocus:down"},
         {"VimMotions/Bindings/SearchLibraryDialog/Insert/Ctrl+K", "spatialMoveFocus:up"},
+
+        // -- Playlist picker (local modes) --
+        {"VimMotions/Bindings/PlaylistPicker/Insert/Ctrl+N", "playlistPickerMove:+1"},
+        {"VimMotions/Bindings/PlaylistPicker/Insert/<Down>", "playlistPickerMove:+1"},
+        {"VimMotions/Bindings/PlaylistPicker/Insert/Ctrl+P", "playlistPickerMove:-1"},
+        {"VimMotions/Bindings/PlaylistPicker/Insert/<Up>", "playlistPickerMove:-1"},
+        {"VimMotions/Bindings/PlaylistPicker/Insert/<CR>", "playlistPickerAccept"},
+        {"VimMotions/Bindings/PlaylistPicker/Insert/<Enter>", "playlistPickerAccept"},
+        {"VimMotions/Bindings/PlaylistPicker/Insert/<Esc>", "leaveInsertMode"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/Ctrl+N", "playlistPickerMove:+1"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/<Down>", "playlistPickerMove:+1"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/Ctrl+P", "playlistPickerMove:-1"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/<Up>", "playlistPickerMove:-1"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/<CR>", "playlistPickerAccept"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/<Enter>", "playlistPickerAccept"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/<Esc>", "playlistPickerCancel"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/j", "playlistPickerMove:+1"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/k", "playlistPickerMove:-1"},
+        {"VimMotions/Bindings/PlaylistPicker/Normal/i", "enterInsert"},
     };
     return bindings;
 }

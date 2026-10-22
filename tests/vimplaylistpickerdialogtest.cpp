@@ -1,6 +1,5 @@
 #include "vimplaylistpickerdialog.h"
 
-#include <QAction>
 #include <QApplication>
 #include <QClipboard>
 #include <QKeyEvent>
@@ -9,7 +8,6 @@
 #include <QListWidget>
 #include <QProxyStyle>
 #include <QScrollBar>
-#include <QShortcut>
 #include <QSignalSpy>
 #include <QStyleOption>
 #include <QTest>
@@ -56,21 +54,13 @@ class TestPlaylistPickerDialog : public QObject
 private slots:
     void navigationKeepsInputFocus_data()
     {
-        QTest::addColumn<int>("key");
-        QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
         QTest::addColumn<int>("direction");
-        QTest::newRow("ctrl-n") << int(Qt::Key_N) << Qt::KeyboardModifiers(Qt::ControlModifier) << 1;
-        QTest::newRow("ctrl-p") << int(Qt::Key_P) << Qt::KeyboardModifiers(Qt::ControlModifier) << -1;
-        QTest::newRow("down") << int(Qt::Key_Down) << Qt::KeyboardModifiers{} << 1;
-        QTest::newRow("up") << int(Qt::Key_Up) << Qt::KeyboardModifiers{} << -1;
-        QTest::newRow("ctrl-j") << int(Qt::Key_J) << Qt::KeyboardModifiers(Qt::ControlModifier) << 1;
-        QTest::newRow("ctrl-k") << int(Qt::Key_K) << Qt::KeyboardModifiers(Qt::ControlModifier) << -1;
+        QTest::newRow("next") << 1;
+        QTest::newRow("previous") << -1;
     }
 
     void navigationKeepsInputFocus()
     {
-        QFETCH(int, key);
-        QFETCH(Qt::KeyboardModifiers, modifiers);
         QFETCH(int, direction);
         VimPlaylistPickerDialog dialog;
         dialog.setPlaylists(entries(), rock);
@@ -82,7 +72,7 @@ private slots:
         const int caret  = input->cursorPosition();
         auto* list       = dialog.findChild<QListWidget*>();
         const int before = list->currentRow();
-        QTest::keyClick(input, static_cast<Qt::Key>(key), modifiers);
+        dialog.moveSelection(direction);
         QCOMPARE(list->currentRow(), (before + direction + list->count()) % list->count());
         QCOMPARE(QApplication::focusWidget(), input);
         QCOMPARE(input->text(), u"a"_s);
@@ -93,35 +83,24 @@ private slots:
         QCOMPARE(input->text(), u"rckcl"_s);
         QCOMPARE(dialog.selectedPlaylistId(), rock);
         QCOMPARE(list->count(), 1);
-        QTest::keyClick(input, static_cast<Qt::Key>(key), modifiers);
+        dialog.moveSelection(direction);
         QCOMPARE(dialog.selectedPlaylistId(), rock);
         QCOMPARE(QApplication::focusWidget(), input);
     }
 
-    void wrapsAndOverridesApplicationShortcuts()
+    void wrapsAndKeepsInputFocus()
     {
         VimPlaylistPickerDialog dialog;
         dialog.setPlaylists(entries(), jazz);
-        int activated = 0;
-        QAction action{&dialog};
-        action.setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
-        action.setShortcutContext(Qt::ApplicationShortcut);
-        dialog.addAction(&action);
-        connect(&action, &QAction::triggered, &dialog, [&]() { ++activated; });
-        QShortcut shortcut{QKeySequence(Qt::CTRL | Qt::Key_P), &dialog};
-        shortcut.setContext(Qt::ApplicationShortcut);
-        connect(&shortcut, &QShortcut::activated, &dialog, [&]() { ++activated; });
         auto* input = open(dialog);
-        QTest::keyClick(input, Qt::Key_P, Qt::ControlModifier);
+        dialog.moveSelection(-1);
         QCOMPARE(dialog.selectedPlaylistId(), classical);
-        QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
+        dialog.moveSelection(1);
         QCOMPARE(dialog.selectedPlaylistId(), jazz);
-        QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
+        dialog.moveSelection(1);
         QCOMPARE(dialog.selectedPlaylistId(), rock);
-        QCOMPARE(activated, 0);
         QCOMPARE(QApplication::focusWidget(), input);
-        QKeyEvent repeat{QEvent::KeyPress, Qt::Key_N, Qt::ControlModifier, QString{}, true, 1};
-        QApplication::sendEvent(input, &repeat);
+        dialog.moveSelection(1);
         QCOMPARE(dialog.selectedPlaylistId(), classical);
         QCOMPARE(QApplication::focusWidget(), input);
     }
@@ -151,7 +130,7 @@ private slots:
         auto* empty = dialog.findChild<QLabel*>(u"playlistPickerEmptyState"_s);
         QCOMPARE(empty->text(), u"No playlists"_s);
         QSignalSpy requested{&dialog, &VimPlaylistPickerDialog::playlistRequested};
-        QTest::keyClick(input, Qt::Key_Return);
+        dialog.accept();
         QCOMPARE(requested.count(), 0);
         QVERIFY(dialog.isVisible());
         dialog.setPlaylists(entries(), rock);
@@ -169,22 +148,22 @@ private slots:
         dialog.setPlaylists(updated, rock);
         QVERIFY(!dialog.selectedPlaylistId().isValid());
         QCOMPARE(empty->text(), u"No matching playlists"_s);
-        QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
-        QTest::keyClick(input, Qt::Key_P, Qt::ControlModifier);
-        QTest::keyClick(input, Qt::Key_Enter, Qt::KeypadModifier);
+        dialog.moveSelection(1);
+        dialog.moveSelection(-1);
+        dialog.accept();
         QCOMPARE(requested.count(), 0);
         input->clear();
         QCOMPARE(dialog.selectedPlaylistId(), rock);
         QApplication::clipboard()->setText(u"rckcl"_s);
         QTest::keyClick(input, Qt::Key_V, Qt::ControlModifier);
         QCOMPARE(dialog.selectedPlaylistId(), rock);
-        QTest::keyClick(input, Qt::Key_Return);
+        dialog.accept();
         QCOMPARE(requested.count(), 1);
         QCOMPARE(requested.front().front().value<Fooyin::UId>(), rock);
-        QTest::keyClick(input, Qt::Key_Enter, Qt::KeypadModifier);
+        dialog.accept();
         QCOMPARE(requested.count(), 2);
         QSignalSpy finished{&dialog, &QDialog::finished};
-        QTest::keyClick(input, Qt::Key_Escape);
+        dialog.reject();
         QCOMPARE(finished.count(), 1);
         QCOMPARE(finished.front().front().toInt(), int(QDialog::Rejected));
     }
@@ -201,7 +180,7 @@ private slots:
         auto* input = open(dialog);
         auto* list  = dialog.findChild<QListWidget*>();
         QCOMPARE(dialog.selectedPlaylistId(), first);
-        QTest::keyClick(input, Qt::Key_P, Qt::ControlModifier);
+        dialog.moveSelection(-1);
         QCOMPARE(dialog.selectedPlaylistId(), last);
         QVERIFY(list->verticalScrollBar()->value() > 0);
         QCOMPARE(QApplication::focusWidget(), input);
@@ -223,8 +202,43 @@ private slots:
         QCOMPARE(dialog.selectedPlaylistId(), a);
         dialog.setPlaylists({{a, u"Same name"_s, 0, 0}, {b, u"Same name"_s, 0, 0}}, {});
         QCOMPARE(dialog.selectedPlaylistId(), a);
-        QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
+        dialog.moveSelection(1);
         QCOMPARE(dialog.selectedPlaylistId(), b);
+    }
+
+    void unmappedDialogKeysAreInert()
+    {
+        VimPlaylistPickerDialog dialog;
+        dialog.setPlaylists(entries(), jazz);
+        auto* input = open(dialog);
+        QSignalSpy requested{&dialog, &VimPlaylistPickerDialog::playlistRequested};
+        QSignalSpy finished{&dialog, &QDialog::finished};
+        for(auto* target : {static_cast<QWidget*>(input), static_cast<QWidget*>(&dialog)}) {
+            QTest::keyClick(target, Qt::Key_Return);
+            QTest::keyClick(target, Qt::Key_Enter, Qt::KeypadModifier);
+            QTest::keyClick(target, Qt::Key_Escape);
+        }
+        QCOMPARE(requested.count(), 0);
+        QCOMPARE(finished.count(), 0);
+        QVERIFY(dialog.isVisible());
+        dialog.close();
+        QCOMPARE(finished.count(), 1);
+    }
+
+    void localModeControlsEditing()
+    {
+        VimPlaylistPickerDialog dialog;
+        auto* input = open(dialog);
+        QTest::keyClicks(input, "jazz");
+        dialog.setInputMode(false);
+        QVERIFY(input->isReadOnly());
+        QTest::keyClicks(input, "rock");
+        QCOMPARE(input->text(), u"jazz"_s);
+        QCOMPARE(dialog.findChild<QLabel*>(u"playlistPickerMode"_s)->text(), u"NORMAL"_s);
+        dialog.setInputMode(true);
+        QTest::keyClicks(input, "y");
+        QCOMPARE(input->text(), u"jazzy"_s);
+        QCOMPARE(QApplication::focusWidget(), input);
     }
 };
 

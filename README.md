@@ -33,7 +33,7 @@ Press **`Space` then `p`** in Normal or Visual mode to find a playlist by name:
 
 1. Type a case insensitive, fuzzy query, for example `rckcl` for **Rock Classics**.
 2. Use **`Ctrl+n` / `Ctrl+p`** to highlight the next / previous result retaining focus on input field.
-3. Press **Enter** to open the highlighted playlist and focus its track view, or **Esc** to cancel.
+3. Press **Enter** to open the highlighted playlist and focus its track view, or **Esc** twice to cancel (Insert → Normal → close).
 
 The opening action is `findPlaylist`. To use a different key, configure it through the plugin settings or `fooyin.conf`:
 
@@ -42,7 +42,25 @@ The opening action is `findPlaylist`. To use a different key, configure it throu
 Bindings\Global\Normal\Ctrl+P=findPlaylist
 ```
 
-The picker's internal navigation keys are dialog-local controls, independent of ordinary vim bindings.
+The picker uses the `PlaylistPicker` scope in the same binding editor and configuration format as other vim bindings. Each invocation starts in a picker-local **Insert** mode for typing.
+
+| Picker mode | Default keys | Action |
+|---|---|---|
+| Insert, Normal | `Ctrl+n`, Down | Next result, keeping query focus |
+| Insert, Normal | `Ctrl+p`, Up | Previous result, keeping query focus |
+| Insert, Normal | Return, keypad Enter | Open highlighted playlist |
+| Insert | `Esc` | Enter picker-local Normal mode |
+| Normal | `Esc` | Cancel |
+| Normal | `j` / `k` | Next / previous result; accepts a count |
+| Normal | `i` | Resume typing in Insert |
+
+
+To cancel with one Escape directly from Insert instead:
+
+```ini
+[VimMotions]
+Bindings\PlaylistPicker\Insert\<Esc>=playlistPickerCancel
+```
 
 ### Track-position jump history
 
@@ -89,7 +107,7 @@ and `67f2735`, or later); a custom fooyin branch is no longer required.
 
 ### Normal mode bindings
 
-Default bindings are installed per scope. `Global` bindings apply everywhere unless a narrower scope overrides them.
+Default bindings are installed per scope. `Global` bindings apply unless a narrower scope overrides them.
 
 | Key | Scope | Action |
 |---|---|---|
@@ -381,9 +399,11 @@ Bindings\Global\Insert\<Esc>=leaveInsertMode
 
 The key path is `Bindings\{Scope}\{Mode}\{KeyCombo}` and the value is `ActionName[:args]`.
 
-Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchLibraryDialog`.
+Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, `SearchLibraryDialog`, and `PlaylistPicker`.
 
 `SearchLibraryDialog` applies only inside fooyin's `Search Library` dialog. It lets dialog-specific bindings override ordinary playlist-view bindings without leaking into normal playlist tabs. When the Search Library line edit gains focus, the plugin temporarily switches to Insert mode and restores the previous Normal or Visual mode when focus leaves that line edit.
+
+`PlaylistPicker` applies only inside the fuzzy playlist picker, in its local Insert or Normal mode, with the usual Global fallback. Its local mode is independent of the invoking view's mode. See [Fuzzy playlist picker](#fuzzy-playlist-picker) for configuration examples.
 
 **Key combo syntax:**
 - Single character: `j`, `k`, `G`, `;`, `'`, `` ` ``
@@ -438,6 +458,9 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `nextPlaylist` | — | Normal, Visual | Switch the selected playlist forward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `previousPlaylist` | — | Normal, Visual | Switch the selected playlist backward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `findPlaylist` | — | Normal, Visual | Open the fuzzy playlist-name picker; `Ctrl+n/p` navigate while input keeps focus; accepting returns to Normal |
+| `playlistPickerMove` | signed delta | Picker Insert, Normal | Move the picker highlight by N results, wrapping; Normal counts multiply the delta |
+| `playlistPickerAccept` | — | Picker Insert, Normal | Open the highlighted playlist; no match keeps the picker open |
+| `playlistPickerCancel` | — | Picker Insert, Normal | Cancel and restore invoking focus |
 | `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
 | `beginSetMark` | — | Normal, Visual | Begin setting a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
 | `beginJumpToMark` | — | Normal, Visual | Begin jumping to a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
@@ -456,6 +479,8 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `enterSearchAndExit` | — | Visual | Open search, return to Normal |
 | `spatialMoveFocus` | `up`/`down`/`left`/`right` | Normal, Visual | Move focus between panes; from Visual, keep the old selection and return to Normal |
 | `clearPending` | — | Normal | Clear count / pending two-key key |
+
+Inside `PlaylistPicker`, `enterInsert`, `leaveInsertMode`, and `clearPending` affect only local picker input, not the invoking playlist's mode or selection.
 
 ### Runtime changes
 
@@ -520,7 +545,7 @@ Bindings\Global\Normal\j=
 Bindings\Global\Visual\<Esc>=
 ```
 
-This prevents the key from triggering any action in that mode. The key will fall through to fooyin's normal shortcut handling.
+This removes the binding in that scope/mode; a matching Global binding can still apply. Ordinary unhandled input falls through to fooyin. In the playlist picker, Escape/Enter without an effective binding cannot trigger implicit dialog actions, and unmapped Normal-mode command keys are consumed.
 
 ### Explicit default configuration
 
@@ -620,13 +645,34 @@ Bindings\Global\Insert\<Esc>=leaveInsertMode
 ; -- Search Library Dialog / Insert mode --
 Bindings\SearchLibraryDialog\Insert\Ctrl+J=spatialMoveFocus:down
 Bindings\SearchLibraryDialog\Insert\Ctrl+K=spatialMoveFocus:up
+
+; -- Playlist Picker / Insert mode --
+Bindings\PlaylistPicker\Insert\Ctrl+N=playlistPickerMove:+1
+Bindings\PlaylistPicker\Insert\<Down>=playlistPickerMove:+1
+Bindings\PlaylistPicker\Insert\Ctrl+P=playlistPickerMove:-1
+Bindings\PlaylistPicker\Insert\<Up>=playlistPickerMove:-1
+Bindings\PlaylistPicker\Insert\<CR>=playlistPickerAccept
+Bindings\PlaylistPicker\Insert\<Enter>=playlistPickerAccept
+Bindings\PlaylistPicker\Insert\<Esc>=leaveInsertMode
+
+; -- Playlist Picker / Normal mode --
+Bindings\PlaylistPicker\Normal\Ctrl+N=playlistPickerMove:+1
+Bindings\PlaylistPicker\Normal\<Down>=playlistPickerMove:+1
+Bindings\PlaylistPicker\Normal\Ctrl+P=playlistPickerMove:-1
+Bindings\PlaylistPicker\Normal\<Up>=playlistPickerMove:-1
+Bindings\PlaylistPicker\Normal\<CR>=playlistPickerAccept
+Bindings\PlaylistPicker\Normal\<Enter>=playlistPickerAccept
+Bindings\PlaylistPicker\Normal\<Esc>=playlistPickerCancel
+Bindings\PlaylistPicker\Normal\j=playlistPickerMove:+1
+Bindings\PlaylistPicker\Normal\k=playlistPickerMove:-1
+Bindings\PlaylistPicker\Normal\i=enterInsert
 ```
 
 ## Notes
 
 - Default bindings are scoped where actions are view-specific. For example, mark, yank, paste, and playlist undo/redo defaults are playlist-view-only, while organiser creation and sibling-move defaults are organiser-only.
 - Yank/delete/paste (`dd`, `yy`, `p`, `P`) are not all scoped identically: `yy` is available in playlist views and `Search Library`, `p` and `P` remain playlist-view-only, while `dd` remains active in both playlist view and playlist organiser because it deletes playlist rows in the former and routes to organiser remove in the latter.
-- Bindings are stored under explicit scopes: `Bindings\<Scope>\<Mode>\<Keys>`. `Global` applies everywhere unless a narrower scope, such as `PlaylistView`, `PlaylistOrganiser`, or `SearchLibraryDialog`, defines the same key sequence for that mode.
+- Bindings are stored under explicit scopes: `Bindings\<Scope>\<Mode>\<Keys>`. `Global` applies unless a narrower scope, such as `PlaylistView`, `PlaylistOrganiser`, `SearchLibraryDialog`, or `PlaylistPicker`, defines the same key sequence for that mode.
 - In `Search Library`, the search field temporarily puts vim into Insert mode while it has focus. `Ctrl+j` can move focus from the search field to results and `Ctrl+k` can move focus back to the search field when those bindings resolve to `spatialMoveFocus:down` / `spatialMoveFocus:up`.
 - In `Search Library`, `yy` and visual `y` yank detached result tracks into the plugin clipboard so they can be pasted into a regular playlist later with `p` or `P`.
 - In `Search Library`, `copyAfterCurrentPlaying` copies the detached result selection into the currently playing playlist. `moveAfterCurrentPlaying` is unsupported there and intentionally does nothing except log a warning.

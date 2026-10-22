@@ -28,6 +28,8 @@ public:
 
     void setPlaylists(QList<PlaylistPickerEntry> entries, const Fooyin::UId& currentId);
     [[nodiscard]] Fooyin::UId selectedPlaylistId() const;
+    void moveSelection(qint64 delta);
+    void setInputMode(bool insert);
     void accept() override;
 
 signals:
@@ -36,14 +38,15 @@ signals:
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void rebuildResults(bool preserveSelection);
-    void moveSelection(int delta);
 
     QLineEdit* m_input;
     QListWidget* m_results;
     QLabel* m_emptyState;
+    QLabel* m_modeLabel;
     QList<PlaylistPickerEntry> m_entries;
     QList<QString> m_foldedNames;
     Fooyin::UId m_currentId;
