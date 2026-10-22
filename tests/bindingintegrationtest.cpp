@@ -194,6 +194,78 @@ private:
     }
 
 private Q_SLOTS:
+    void testSettingsDialogEditsPlaylistPickerBinding()
+    {
+        const auto path = m_tempDir.filePath(QStringLiteral("picker_dialog.ini"));
+        Fooyin::SettingsManager settings{path};
+        VimMotionsSettings defaults{&settings};
+        VimMotionsBindingBackend backend{&settings, path};
+        VimMotionsSettingsDialog dialog{&settings, &backend};
+        auto* tree = dialog.findChild<QTreeView*>(QStringLiteral("effectiveBindingsTree"));
+        QVERIFY(tree);
+        QVERIFY(hasTreeRow(tree->model(), QStringLiteral("Global"), QStringLiteral("Normal"),
+                           QStringLiteral("<Space>p"), QStringLiteral("findPlaylist")));
+        auto* add     = dialog.findChild<QPushButton*>(QStringLiteral("addBinding"));
+        auto* edit    = dialog.findChild<QPushButton*>(QStringLiteral("editBinding"));
+        auto* buttons = dialog.findChild<QDialogButtonBox*>();
+        QVERIFY(add);
+        QVERIFY(edit);
+        QVERIFY(buttons);
+        acceptBindingEditor(BindingScope::Global, BindingMode::Normal, QStringLiteral("Ctrl+P"),
+                            QStringLiteral("findPlaylist"));
+        add->click();
+        selectTreeRow(tree, tree->model(), QStringLiteral("Global"), QStringLiteral("Normal"),
+                      QStringLiteral("Ctrl+P"));
+        acceptBindingEditor(BindingScope::Global, BindingMode::Normal, QStringLiteral("<Space>z"),
+                            QStringLiteral("findPlaylist"));
+        edit->click();
+        QVERIFY(hasTreeRow(tree->model(), QStringLiteral("Global"), QStringLiteral("Normal"),
+                           QStringLiteral("<Space>z"), QStringLiteral("findPlaylist")));
+        buttons->button(QDialogButtonBox::Apply)->click();
+        VimMotionsBindingBackend reloaded{&settings, path};
+        const auto bindings = scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+        QVERIFY(std::ranges::any_of(bindings, [](const auto& binding) {
+            return binding.actionName == QStringLiteral("findPlaylist") && binding.keys.size() == 2
+                && binding.keys.back().ch == u'z';
+        }));
+    }
+
+    void testPlaylistPickerDefaultsAndCustomBindings()
+    {
+        const auto path = m_tempDir.filePath(QStringLiteral("picker.ini"));
+        Fooyin::SettingsManager settings{path};
+        VimMotionsSettings defaults{&settings};
+        VimMotionsBindingBackend backend{&settings, path};
+        const auto hasPicker = [](const QList<BindingEntry>& bindings) {
+            return std::ranges::any_of(bindings, [](const auto& binding) {
+                return binding.actionName == QStringLiteral("findPlaylist") && binding.keys.size() == 2
+                    && binding.keys.front().key == Qt::Key_Space && binding.keys.back().ch == u'p';
+            });
+        };
+        for(const auto mode : {BindingMode::Normal, BindingMode::Visual})
+            QVERIFY(hasPicker(scopedBindings(backend.effectiveBindings(), mode, BindingScope::Global)));
+
+        auto definitions = backend.bindingDefinitions();
+        QVERIFY(
+            backend.unmapBinding(definitions, BindingScope::Global, BindingMode::Normal, QStringLiteral("<Space>p")));
+        QVERIFY(backend.updateCustomBinding(definitions, BindingScope::Global, BindingMode::Visual,
+                                            QStringLiteral("<Space>p"), BindingScope::Global, BindingMode::Visual,
+                                            QStringLiteral("<Space>p"), QStringLiteral("enterSearchAndExit"), {}));
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal,
+                                         QStringLiteral("Ctrl+P"), QStringLiteral("findPlaylist"), {}));
+        QVERIFY(backend.saveBindingDefinitions(definitions));
+        VimMotionsBindingBackend reloaded{&settings, path};
+        QVERIFY(!hasPicker(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global)));
+        QVERIFY(!hasPicker(scopedBindings(reloaded.effectiveBindings(), BindingMode::Visual, BindingScope::Global)));
+        QVERIFY(hasBinding(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
+                           u'P', QStringLiteral("findPlaylist")));
+        QVERIFY(settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false));
+        reloaded.reloadBindings();
+        QVERIFY(hasBinding(scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global),
+                           u'P', QStringLiteral("findPlaylist")));
+        QVERIFY(!hasPicker(scopedBindings(reloaded.effectiveBindings(), BindingMode::Visual, BindingScope::Global)));
+    }
+
     void testJumpDefaultsAndOverrides()
     {
         Fooyin::SettingsManager settings{m_tempDir.filePath(QStringLiteral("jump_bindings.ini"))};

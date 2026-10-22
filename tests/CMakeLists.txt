@@ -59,6 +59,23 @@ target_link_libraries(test_searchnavigation PRIVATE
 )
 add_test(NAME test_searchnavigation COMMAND test_searchnavigation)
 
+add_executable(test_playlistfuzzymatcher
+    playlistfuzzymatchertest.cpp
+    ${CMAKE_SOURCE_DIR}/src/playlistfuzzymatcher.cpp
+)
+target_include_directories(test_playlistfuzzymatcher PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_playlistfuzzymatcher PRIVATE Qt6::Test)
+add_test(NAME test_playlistfuzzymatcher COMMAND test_playlistfuzzymatcher)
+
+add_executable(test_playlistpicker
+    vimplaylistpickerdialogtest.cpp
+    ${CMAKE_SOURCE_DIR}/src/playlistfuzzymatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimplaylistpickerdialog.cpp
+)
+target_include_directories(test_playlistpicker PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_playlistpicker PRIVATE Fooyin::Utils Qt6::Test Qt6::Widgets)
+add_test(NAME test_playlistpicker COMMAND test_playlistpicker)
+
 add_executable(test_vimhandler_viewcontext
     vimhandlerviewcontexttest.cpp
     ${FOOYIN_SRC_DIR}/data/data.qrc
@@ -66,6 +83,8 @@ add_executable(test_vimhandler_viewcontext
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
     ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/playlistfuzzymatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimplaylistpickerdialog.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmarkvariableprovider.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
@@ -91,6 +110,8 @@ add_executable(test_vimhandler_timeout
     ${CMAKE_SOURCE_DIR}/src/vimbindingparser.cpp
     ${CMAKE_SOURCE_DIR}/src/vimclipboard.cpp
     ${CMAKE_SOURCE_DIR}/src/vimhandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/playlistfuzzymatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/vimplaylistpickerdialog.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionsbindingbackend.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettings.cpp
     ${CMAKE_SOURCE_DIR}/src/vimmotionssettingsdialog.cpp

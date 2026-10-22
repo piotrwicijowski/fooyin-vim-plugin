@@ -142,6 +142,7 @@ void VimMotionsPlugin::shutdown()
     // The host drains ScriptRegistry callbacks before shutting down plugins.
     if(m_vimHandler) {
         qApp->removeEventFilter(m_vimHandler);
+        delete m_vimHandler;
         m_vimHandler = nullptr;
     }
 }

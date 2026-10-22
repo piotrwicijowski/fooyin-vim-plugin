@@ -27,6 +27,23 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
 - If the playlist shrank while you were away, the restored cursor and selection are clamped to the remaining rows.
 - If the playlist is now empty, the plugin restores Normal mode without an invalid selection.
 
+### Fuzzy playlist picker
+
+Press **`Space` then `p`** in Normal or Visual mode to find a playlist by name:
+
+1. Type a case insensitive, fuzzy query, for example `rckcl` for **Rock Classics**.
+2. Use **`Ctrl+n` / `Ctrl+p`** to highlight the next / previous result retaining focus on input field.
+3. Press **Enter** to open the highlighted playlist and focus its track view, or **Esc** to cancel.
+
+The opening action is `findPlaylist`. To use a different key, configure it through the plugin settings or `fooyin.conf`:
+
+```ini
+[VimMotions]
+Bindings\Global\Normal\Ctrl+P=findPlaylist
+```
+
+The picker's internal navigation keys are dialog-local controls, independent of ordinary vim bindings.
+
 ### Track-position jump history
 
 `Ctrl+o` goes to an older playlist track position; `Ctrl+i` goes forward again. Both accept a count
@@ -38,7 +55,7 @@ When you switch between main playlist tabs, the plugin remembers the last vim cu
   but changing columns alone does not create another history stop.
 - The position **before** a successful jump is recorded: `gg`, `G`, `[count]G`, custom `jumpToRow` actions,
   accepted `/` searches, `n`/`N` search jumps, local/global mark jumps, `o`/`g;`, and the plugin's
-  `nextPlaylist`/`previousPlaylist` actions. Their Visual-mode equivalents also record departures.
+  `nextPlaylist`/`previousPlaylist` actions and accepted `findPlaylist` switches. Their Visual-mode equivalents also record departures.
 - Each next/previous-playlist action is a separate jump: after visiting playlists 1 → 2 → 3 → 4,
   `Ctrl+o` returns to the track left in playlist 3, then 2, then 1. One counted playlist-switch action records one departure.
 - The first backward traversal preserves the current track position so `Ctrl+i` can return to it.
@@ -102,6 +119,7 @@ Default bindings are installed per scope. `Global` bindings apply everywhere unl
 | `/` | Global | Enter Search mode |
 | `n` / `N` | Global | Next / previous search match (+/-1 row if filter active) |
 | `gi` | Global | Enter Filter mode |
+| `<Space>p` | Global | Open fuzzy playlist picker |
 | `[count]Ctrl+o` / `[count]Ctrl+i` | Global | Older / newer playlist track position |
 | `h` | Global | Collapse node / ascend to parent (tree views) |
 | `l` | Global | Expand node / descend to first child (tree views) |
@@ -136,6 +154,7 @@ Default bindings are installed per scope. `Global` bindings apply everywhere unl
 | `` ` `` + `a-z` | Playlist view | Jump to a local mark, extending the selection |
 | `` ` `` + `A-Z` | Playlist view | Jump to a global mark, switching playlists if needed |
 | `g;` | Global | Focus currently playing item, then return to Normal |
+| `<Space>p` | Global | Open fuzzy playlist picker; cancel preserves the selection |
 | `Alt+j` / `Alt+k` | Playlist view | Move entire selection down / up in the playlist |
 | `[count]Alt+j` / `[count]Alt+k` | Playlist view | Move entire selection N positions down / up |
 | `Esc` | Global | Cancel selection, return to Normal |
@@ -418,6 +437,7 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, and `SearchL
 | `focusNowPlayingAndExit` | — | Visual | Return to Normal, then focus the currently playing track |
 | `nextPlaylist` | — | Normal, Visual | Switch the selected playlist forward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
 | `previousPlaylist` | — | Normal, Visual | Switch the selected playlist backward by one, or by `[count]` playlists; if a playlist organiser tree is open, follow its grouped tree order |
+| `findPlaylist` | — | Normal, Visual | Open the fuzzy playlist-name picker; `Ctrl+n/p` navigate while input keeps focus; accepting returns to Normal |
 | `fooyinAction` | fooyin action ID | Normal, Visual, Insert | Trigger any registered fooyin action by ID via `ActionManager` |
 | `beginSetMark` | — | Normal, Visual | Begin setting a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
 | `beginJumpToMark` | — | Normal, Visual | Begin jumping to a mark; the next lowercase letter chooses a local mark and the next uppercase letter chooses a global mark |
@@ -533,6 +553,7 @@ Bindings\Global\Normal\Ctrl+L=spatialMoveFocus:right
 Bindings\Global\Normal\Ctrl+D=moveCursorHalfPage:+1
 Bindings\Global\Normal\Ctrl+U=moveCursorHalfPage:-1
 Bindings\Global\Normal\gi=enterFilter
+Bindings\Global\Normal\<Space>p=findPlaylist
 Bindings\Global\Normal\Ctrl+O=jumpOlder
 Bindings\Global\Normal\Ctrl+I=jumpNewer
 Bindings\Global\Normal\Alt+J=moveRows:+1
@@ -564,6 +585,7 @@ Bindings\Global\Visual\gg=extendToFirst
 Bindings\Global\Visual\G=extendToEnd
 Bindings\Global\Visual\o=swapAnchor
 Bindings\Global\Visual\v=leaveVisualMode
+Bindings\Global\Visual\<Space>p=findPlaylist
 Bindings\Global\Visual\<Esc>=leaveVisualMode
 Bindings\Global\Visual\n=nextMatchAndExit
 Bindings\Global\Visual\N=prevMatchAndExit

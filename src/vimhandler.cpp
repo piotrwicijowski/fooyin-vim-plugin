@@ -5,6 +5,7 @@
 #include "vimlog.h"
 #include "vimmotionsbindingbackend.h"
 #include "vimmotionssettings.h"
+#include "vimplaylistpickerdialog.h"
 #include "vimsearchbar.h"
 
 #include <core/playlist/playlist.h>
@@ -401,6 +402,8 @@ VimHandler::VimHandler(QObject* parent)
 
     if(qApp) {
         QObject::connect(qApp, &QApplication::focusChanged, this, [this](QWidget* old, QWidget* now) {
+            if(m_playlistPicker)
+                return;
             const QPointer<QLineEdit> previousAutoInsertEdit = m_autoInsertSearchLibraryEdit;
             auto* previousView                               = enclosingView(old);
             auto* nextView                                   = enclosingView(now);
@@ -550,6 +553,10 @@ VimHandler::VimHandler(QObject* parent)
 
 VimHandler::~VimHandler()
 {
+    if(m_playlistPicker) {
+        m_playlistPicker->disconnect(this);
+        delete m_playlistPicker;
+    }
     delete m_filterBar;
     delete m_searchBar;
 }
@@ -561,6 +568,10 @@ VimHandler::Mode VimHandler::mode() const
 
 bool VimHandler::eventFilter(QObject* watched, QEvent* event)
 {
+    // The picker owns input, including ShortcutOverride. Do this before view
+    // tracking can discover its list or activate a background playlist view.
+    if(m_playlistPicker)
+        return false;
     auto* focusView = enclosingView(QApplication::focusWidget());
     if(event->type() == QEvent::FocusIn) {
         if(auto* widget = qobject_cast<QWidget*>(watched)) {
@@ -1480,6 +1491,119 @@ void VimHandler::nextPlaylist()
 void VimHandler::previousPlaylist()
 {
     changePlaylistByOffset(-((m_count > 0 || m_dispatchCount > 0) ? currentCount() : 1));
+}
+
+void VimHandler::refreshPlaylistPicker()
+{
+    if(!m_playlistPicker)
+        return;
+    QList<PlaylistPickerEntry> entries;
+    if(m_playlistHandler) {
+        for(const auto* playlist : m_playlistHandler->playlists())
+            entries.append({playlist->id(), playlist->name(), playlist->index(), playlist->trackCount()});
+    }
+    m_playlistPicker->setPlaylists(std::move(entries), m_currentPlaylistController
+                                                           ? m_currentPlaylistController->currentPlaylistId()
+                                                           : Fooyin::UId{});
+}
+
+void VimHandler::findPlaylist()
+{
+    if(m_playlistPicker) {
+        m_playlistPicker->raise();
+        m_playlistPicker->activateWindow();
+        m_playlistPicker->setFocus();
+        return;
+    }
+    if(!m_playlistHandler || !m_currentPlaylistController) {
+        qCWarning(VIM_LOG) << "findPlaylist: missing playlist services";
+        return;
+    }
+    if(m_mode != Mode::Normal && m_mode != Mode::Visual)
+        return;
+
+    const QPointer<QWidget> invokingWidget         = QApplication::focusWidget();
+    const QPointer<QAbstractItemView> playlistView = playlistViewForState();
+    const auto sourceId                            = m_currentPlaylistController->currentPlaylistId();
+    savePlaylistCursorState(m_currentPlaylistController->currentPlaylist());
+    clearPendingInputState();
+    m_count = 0;
+    cancelJumpRestore();
+    ++m_playlistRestoreGeneration;
+    m_pendingPlaylistRestoreId = {};
+
+    auto* dialog     = new VimPlaylistPickerDialog(invokingWidget ? invokingWidget->window() : nullptr);
+    m_playlistPicker = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    refreshPlaylistPicker();
+    const auto refresh = [this]() {
+        refreshPlaylistPicker();
+    };
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::playlistsPopulated, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::playlistAdded, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::playlistRemoved, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::playlistRenamed, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::playlistIndexChanged, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::playlistUpdated, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::tracksAdded, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::tracksRemoved, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::tracksChanged, dialog, refresh);
+    connect(m_playlistHandler, &Fooyin::PlaylistHandler::tracksPatched, dialog, refresh);
+    connect(m_currentPlaylistController, &Fooyin::CurrentPlaylistController::currentPlaylistChanged, dialog, refresh);
+    connect(dialog, &VimPlaylistPickerDialog::playlistRequested, this, [this, dialog](const Fooyin::UId& id) {
+        if(!m_playlistHandler || !m_currentPlaylistController || !m_playlistHandler->playlistById(id)) {
+            refreshPlaylistPicker();
+            return;
+        }
+        dialog->done(QDialog::Accepted);
+    });
+    connect(dialog, &QDialog::finished, this, [this, dialog, invokingWidget, playlistView, sourceId](int result) {
+        const auto id = dialog->selectedPlaylistId();
+        if(result == QDialog::Accepted && m_playlistHandler && m_currentPlaylistController) {
+            if(auto* target = m_playlistHandler->playlistById(id)) {
+                const bool switching = m_currentPlaylistController->currentPlaylistId() != id;
+                if(switching && m_currentPlaylistController->currentPlaylistId() == sourceId) {
+                    // Playback-following or external edits may have moved
+                    // the source cursor while the picker was open.
+                    const auto departure = currentJumpPosition();
+                    if(departure && departure->playlistId == sourceId)
+                        recordJump(departure, JumpPosition{id, {}, 0});
+                }
+                // Prime the existing asynchronous restoration with a Normal
+                // destination. The selection-change callback still saves the
+                // source's Visual state before restoring the destination.
+                auto state = m_playlistCursorStates.value(id);
+                if(!switching && playlistView)
+                    state = currentPlaylistCursorState(playlistView);
+                state.mode         = Mode::Normal;
+                state.visualAnchor = state.visualCursor = -1;
+                storePlaylistCursorState(target, state);
+                if(switching)
+                    m_currentPlaylistController->changeCurrentPlaylist(id);
+                const auto previousMode = m_mode;
+                m_mode                  = Mode::Normal;
+                m_visualAnchor = m_visualCursor = -1;
+                if(previousMode != m_mode)
+                    emit modeChanged(m_mode);
+                m_playlistPicker = nullptr;
+                auto* view = playlistView && playlistView->isVisible() ? playlistView.data() : playlistViewForState();
+                if(view) {
+                    view->window()->activateWindow();
+                    view->setFocus(Qt::OtherFocusReason);
+                    restorePlaylistCursorState(target);
+                }
+                return;
+            }
+        }
+        m_playlistPicker = nullptr;
+        if(invokingWidget && invokingWidget->isVisible()) {
+            invokingWidget->window()->activateWindow();
+            invokingWidget->setFocus(Qt::OtherFocusReason);
+        }
+    });
+    dialog->open();
+    dialog->activateWindow();
+    dialog->setFocus();
 }
 
 void VimHandler::copyAfterCurrentPlaying()

@@ -2,6 +2,7 @@
 #include "vimhandler.h"
 #include "vimmarkvariableprovider.h"
 #include "vimmotionssettings.h"
+#include "vimplaylistpickerdialog.h"
 
 #include <core/engine/audioloader.h>
 #include <core/library/musiclibrary.h>
@@ -22,14 +23,17 @@
 #include <utils/settings/settingsmanager.h>
 
 #include <QAbstractItemModel>
+#include <QAction>
 #include <QApplication>
 #include <QDataStream>
 #include <QDialog>
 #include <QFocusEvent>
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMainWindow>
 #include <QMimeData>
+#include <QShortcut>
 #include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QTest>
@@ -1117,7 +1121,320 @@ private Q_SLOTS:
     void jumpHistoryRestoresGroupedTracksAndSkipsHiddenRows();
     void jumpHistoryIsBounded();
     void filterUsesGiInsteadOfCtrlI();
+    void playlistPickerKeepsFocusAndCancels_data();
+    void playlistPickerKeepsFocusAndCancels();
+    void playlistPickerAcceptRestoresCursorAndHistory();
+    void playlistPickerWaitsForPopulation();
+    void playlistPickerRefreshesPublicPlaylists();
+    void playlistPickerSameAndEmptyDestinations();
+    void playlistPickerHandlesExternalSourceChange();
+    void playlistPickerCleansUpWithHandler();
+    void playlistPickerHandlesDestroyedWidgets();
 };
+
+void TestVimHandlerViewContext::playlistPickerKeepsFocusAndCancels_data()
+{
+    QTest::addColumn<bool>("visual");
+    QTest::addColumn<bool>("organiser");
+    QTest::newRow("normal-playlist") << false << false;
+    QTest::newRow("visual-playlist") << true << false;
+    QTest::newRow("normal-organiser") << false << true;
+    QTest::newRow("visual-organiser") << true << true;
+}
+
+void TestVimHandlerViewContext::playlistPickerKeepsFocusAndCancels()
+{
+    QFETCH(bool, visual);
+    QFETCH(bool, organiser);
+    JumpHarness h;
+    h.select(2, 1);
+    if(visual) {
+        h.handler.enterVisual();
+        h.handler.extendVisualCursor(2);
+    }
+    const auto selection = h.view.selectionModel()->selection();
+    const auto cursor    = h.view.currentIndex();
+    const auto playing   = h.playlists.handler.activePlaylist();
+    FakeOrganiserWidget organiserWidget;
+    QStandardItemModel organiserModel;
+    auto* group = makeGroupItem(u"Collapsed"_s);
+    group->appendRow(makeOrganiserPlaylistItem(u"Hidden playlist"_s, h.lists[1]));
+    organiserModel.appendRow(group);
+    organiserWidget.view()->setModel(&organiserModel);
+    QWidget* invoking = &h.view;
+    if(organiser) {
+        focusTree(organiserWidget.view());
+        invoking = organiserWidget.view();
+    }
+    qApp->installEventFilter(&h.handler);
+    QTest::keyClick(invoking, Qt::Key_Space);
+    QTest::keyClick(invoking, Qt::Key_P);
+    auto* picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    QPointer<VimPlaylistPickerDialog> guard = picker;
+    auto* input                             = picker->findChild<QLineEdit*>();
+    QTRY_COMPARE(QApplication::focusWidget(), input);
+    int applicationCommands = 0;
+    auto* nextAction        = new QAction(picker);
+    nextAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
+    nextAction->setShortcutContext(Qt::ApplicationShortcut);
+    picker->addAction(nextAction);
+    connect(nextAction, &QAction::triggered, picker, [&]() { ++applicationCommands; });
+    auto* previousShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_P), picker);
+    previousShortcut->setContext(Qt::ApplicationShortcut);
+    connect(previousShortcut, &QShortcut::activated, picker, [&]() { ++applicationCommands; });
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    h.handler.findPlaylist(); // Repeated invocations reuse the same dialog.
+    QCOMPARE(QApplication::activeModalWidget(), picker);
+    QTest::keyClick(input, Qt::Key_N, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QCOMPARE(QApplication::focusWidget(), input);
+    QTest::keyClick(input, Qt::Key_P, Qt::ControlModifier);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[0]->id());
+    QCOMPARE(QApplication::focusWidget(), input);
+    QCOMPARE(applicationCommands, 0);
+    QTest::keyClicks(input, "pl1");
+    QCOMPARE(input->text(), u"pl1"_s);
+    QCOMPARE(picker->selectedPlaylistId(), h.lists[1]->id());
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.playlists.handler.activePlaylist(), playing);
+    QCOMPARE(h.view.currentIndex(), cursor);
+    QCOMPARE(h.view.selectionModel()->selection(), selection);
+    QCOMPARE(h.handler.mode(), visual ? VimHandler::Mode::Visual : VimHandler::Mode::Normal);
+    QTest::keyClick(input, Qt::Key_Escape);
+    QTRY_COMPARE(QApplication::focusWidget(), invoking);
+    QCOMPARE(h.view.currentIndex(), cursor);
+    QCOMPARE(h.view.selectionModel()->selection(), selection);
+    QCOMPARE(h.handler.mode(), visual ? VimHandler::Mode::Visual : VimHandler::Mode::Normal);
+    QTRY_VERIFY(guard.isNull());
+    qApp->removeEventFilter(&h.handler);
+    h.view.activateWindow();
+    focusTree(&h.view);
+    h.ctrl(Qt::Key_O);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex(), cursor);
+}
+
+void TestVimHandlerViewContext::playlistPickerAcceptRestoresCursorAndHistory()
+{
+    JumpHarness h;
+    // Remember a Visual cursor on the destination, then return to the source.
+    h.observer.changeCurrentPlaylist(h.lists[1]);
+    pumpEvents();
+    h.select(3, 1);
+    h.handler.enterVisual();
+    h.handler.extendVisualCursor(1);
+    h.observer.changeCurrentPlaylist(h.lists[0]);
+    pumpEvents();
+    h.select(2, 1);
+    h.handler.enterVisual();
+    h.handler.extendVisualCursor(1);
+    qApp->installEventFilter(&h.handler);
+    h.handler.findPlaylist();
+    auto* picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl1");
+    QTest::keyClick(input, Qt::Key_Return);
+    QTRY_COMPARE(QApplication::focusWidget(), &h.view);
+    QTRY_COMPARE(h.view.currentIndex().row(), 4);
+    QCOMPARE(h.view.currentIndex().column(), 1);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(h.view.selectionModel()->selectedRows().size(), 1);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    qApp->removeEventFilter(&h.handler);
+    QVERIFY(h.ctrl(Qt::Key_O));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex().row(), 3);
+    QCOMPARE(h.view.currentIndex().column(), 1);
+    QVERIFY(h.ctrl(Qt::Key_I));
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QCOMPARE(h.view.currentIndex().row(), 4);
+}
+
+void TestVimHandlerViewContext::playlistPickerWaitsForPopulation()
+{
+    JumpHarness h;
+    h.observer.changeCurrentPlaylist(h.lists[1]);
+    pumpEvents();
+    h.select(4);
+    h.observer.changeCurrentPlaylist(h.lists[0]);
+    pumpEvents();
+    h.select(2);
+    h.autoPopulate = false;
+    h.handler.findPlaylist();
+    auto* picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl1");
+    QTest::keyClick(input, Qt::Key_Enter, Qt::KeypadModifier);
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QVERIFY(!h.view.currentIndex().isValid());
+    h.populate(h.lists[1]);
+    QTRY_COMPARE(h.view.currentIndex().row(), 4);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+}
+
+void TestVimHandlerViewContext::playlistPickerRefreshesPublicPlaylists()
+{
+    JumpHarness h;
+    qApp->installEventFilter(&h.handler);
+    h.handler.findPlaylist();
+    auto* picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    auto* input = picker->findChild<QLineEdit*>();
+    auto* list  = picker->findChild<QListWidget*>();
+    QTRY_COMPARE(QApplication::focusWidget(), input);
+    const int count = list->count();
+    h.playlists.handler.createNewTempPlaylist(u"Temporary"_s);
+    QCOMPARE(list->count(), count);
+    auto* added = h.playlists.handler.createNewPlaylist(u"Jazz"_s);
+    QCOMPARE(list->count(), count + 1);
+    QTest::keyClicks(input, "jzz");
+    QCOMPARE(picker->selectedPlaylistId(), added->id());
+    h.playlists.handler.renamePlaylist(added->id(), u"Jazzy"_s);
+    QCOMPARE(picker->selectedPlaylistId(), added->id());
+    h.playlists.handler.changePlaylistIndex(added->id(), 0);
+    QCOMPARE(picker->selectedPlaylistId(), added->id());
+    h.playlists.handler.appendToPlaylist(added->id(), {markTestTrack()});
+    QVERIFY(list->currentItem()->text().contains(u"1 track"_s));
+    h.playlists.handler.removePlaylist(added->id());
+    QVERIFY(!picker->selectedPlaylistId().isValid());
+    QTest::keyClick(input, Qt::Key_Return);
+    QVERIFY(picker->isVisible());
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(input->text(), u"jzz"_s);
+    QCOMPARE(QApplication::focusWidget(), input);
+    picker->close();
+    pumpEvents();
+}
+
+void TestVimHandlerViewContext::playlistPickerSameAndEmptyDestinations()
+{
+    JumpHarness h;
+    h.select(3);
+    h.handler.enterVisual();
+    h.handler.extendVisualCursor(1);
+    h.handler.findPlaylist();
+    auto* picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    picker->accept();
+    pumpEvents();
+    QCOMPARE(h.view.currentIndex().row(), 4);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QCOMPARE(h.view.selectionModel()->selectedRows().size(), 1);
+    h.ctrl(Qt::Key_O);
+    QCOMPARE(h.view.currentIndex().row(), 4);
+
+    auto* empty = h.playlists.handler.createNewPlaylist(u"Empty destination"_s);
+    h.handler.findPlaylist();
+    picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    QTest::keyClicks(picker->findChild<QLineEdit*>(), "empty");
+    picker->accept();
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), empty);
+    QCOMPARE(h.handler.mode(), VimHandler::Mode::Normal);
+    QVERIFY(!h.view.currentIndex().isValid());
+    h.handler.findPlaylist();
+    picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    QTest::keyClicks(picker->findChild<QLineEdit*>(), "pl1");
+    picker->accept();
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    // Empty source creates no new stop; the older valid departure remains.
+    h.ctrl(Qt::Key_O);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[0]);
+    QCOMPARE(h.view.currentIndex().row(), 4);
+}
+
+void TestVimHandlerViewContext::playlistPickerHandlesExternalSourceChange()
+{
+    JumpHarness h;
+    h.select(2);
+    h.handler.findPlaylist();
+    auto* picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    h.observer.changeCurrentPlaylist(h.lists[2]);
+    pumpEvents();
+    auto* input = picker->findChild<QLineEdit*>();
+    QTest::keyClicks(input, "pl1");
+    picker->accept();
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    h.ctrl(Qt::Key_O);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+
+    h.select(1);
+    h.handler.findPlaylist();
+    picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    // Simulate playback-following moving the source cursor while the dialog is open.
+    h.select(3);
+    QTest::keyClicks(picker->findChild<QLineEdit*>(), "pl2");
+    picker->accept();
+    pumpEvents();
+    h.ctrl(Qt::Key_O);
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QCOMPARE(h.view.currentIndex().row(), 3);
+}
+
+void TestVimHandlerViewContext::playlistPickerCleansUpWithHandler()
+{
+    JumpHarness h;
+    auto handler = std::make_unique<VimHandler>();
+    handler->setPlaylistHandler(&h.playlists.handler);
+    handler->setCurrentPlaylistController(&h.observer);
+    handler->findPlaylist();
+    QPointer<VimPlaylistPickerDialog> picker
+        = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    handler.reset();
+    QVERIFY(picker.isNull());
+    VimHandler missingServices;
+    missingServices.findPlaylist();
+    QVERIFY(!qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget()));
+}
+
+void TestVimHandlerViewContext::playlistPickerHandlesDestroyedWidgets()
+{
+    JumpHarness h;
+    auto organiser = std::make_unique<FakeOrganiserWidget>();
+    focusTree(organiser->view());
+    h.handler.findPlaylist();
+    QPointer<VimPlaylistPickerDialog> picker
+        = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    organiser.reset(); // Destroying the invoking window also destroys its dialog.
+    QVERIFY(picker.isNull());
+    h.view.activateWindow();
+    focusTree(&h.view);
+    h.handler.findPlaylist();
+    picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    picker->reject();
+    pumpEvents();
+
+    // The remembered track view may disappear while the picker is open. Use a
+    // different invoking window so that the picker itself survives its deletion.
+    auto destination = std::make_unique<Fooyin::PlaylistView>();
+    destination->setModel(&h.model);
+    focusTree(destination.get());
+    dispatchFocusIn(h.handler, destination.get());
+    organiser = std::make_unique<FakeOrganiserWidget>();
+    focusTree(organiser->view());
+    h.handler.findPlaylist();
+    picker = qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget());
+    QVERIFY(picker);
+    destination.reset();
+    QTest::keyClicks(picker->findChild<QLineEdit*>(), "pl1");
+    picker->accept();
+    pumpEvents();
+    QCOMPARE(h.observer.currentPlaylist(), h.lists[1]);
+    QTRY_COMPARE(QApplication::focusWidget(), &h.view);
+}
 
 void TestVimHandlerViewContext::jumpHistoryRoundTripAndCounts()
 {

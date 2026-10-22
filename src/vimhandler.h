@@ -50,6 +50,7 @@ enum class Direction : int;
 class ViewLocator;
 class SpatialNavigator;
 class VimSearchBar;
+class VimPlaylistPickerDialog;
 
 class VimHandler : public QObject
 {
@@ -134,6 +135,7 @@ public:
     void focusNowPlaying();
     void nextPlaylist();
     void previousPlaylist();
+    void findPlaylist();
     void jumpOlder();
     void jumpNewer();
     void triggerFooyinAction(const QStringView& actionId);
@@ -302,6 +304,7 @@ private:
     void scheduleEntryRestore(QAbstractItemView* view, const Fooyin::UId& playlistId, const Fooyin::UId& entryId,
                               int fallbackRow, int col, int expectedRowCount);
     void changePlaylistByOffset(int delta);
+    void refreshPlaylistPicker();
     void restoreAutoInsertedMode();
 
     Mode m_mode{Mode::Normal};
@@ -332,7 +335,7 @@ private:
 
     VimClipboard m_clipboard;
     Fooyin::ActionManager* m_actionManager{nullptr};
-    Fooyin::PlaylistHandler* m_playlistHandler{nullptr};
+    QPointer<Fooyin::PlaylistHandler> m_playlistHandler;
     Fooyin::SettingsManager* m_settingsManager{nullptr};
     VimMotionsBindingBackend* m_settingsBackend{nullptr};
     std::unique_ptr<VimMotionsBindingBackend> m_ownedSettingsBackend;
@@ -358,6 +361,7 @@ private:
     QPointer<QAbstractItemView> m_jumpRestoreView;
     std::vector<QMetaObject::Connection> m_jumpRestoreConnections;
     std::optional<JumpPosition> m_preSearchJumpPosition;
+    QPointer<VimPlaylistPickerDialog> m_playlistPicker;
     size_t m_playlistRestoreGeneration{0};
 
     std::vector<UndoEntry> m_undoStack;

@@ -128,7 +128,7 @@ QString actionsHelpText()
         "VimMotionsSettingsDialog",
         "Built-in actions:\n"
         "moveCursor(+/-N), jumpToFirst, jumpToLast, jumpToRow(N), jumpOlder, jumpNewer, moveCursorHalfPage(+/-1), "
-        "activateCurrentRow\n"
+        "activateCurrentRow, findPlaylist\n"
         "treeMoveSibling(+/-1), treeOpenOrDescend, treeCloseOrAscend, organiserCreatePlaylist, organiserCreateGroup\n"
         "enterInsert, leaveInsertMode, enterVisual, selectAll, leaveVisualMode\n"
         "deleteRows, yankRows, pasteAfter, pasteBefore, copyAfterCurrentPlaying, moveAfterCurrentPlaying\n"

@@ -109,6 +109,10 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
 configure_file(vimmotions.json.in ${CMAKE_CURRENT_BINARY_DIR}/vimmotions.json)
 
 set(PLUGIN_SOURCES
+    src/playlistfuzzymatcher.cpp
+    src/playlistfuzzymatcher.h
+    src/vimplaylistpickerdialog.cpp
+    src/vimplaylistpickerdialog.h
     src/vimactions.cpp
     src/vimactions.h
     src/vimbindingparser.cpp

@@ -34,6 +34,7 @@ private Q_SLOTS:
     void testJumpBindings_data();
     void testJumpBindings();
     void testFilterSequence();
+    void testPlaylistPicker();
 };
 
 void TestParseBinding::testSimpleKey()
@@ -45,6 +46,20 @@ void TestParseBinding::testSimpleKey()
     QVERIFY(!e.keys[0].ch.isNull());
     QCOMPARE(e.keys[0].ch, QChar(u'j'));
     QCOMPARE(e.keys[0].modifiers, Qt::NoModifier);
+}
+
+void TestParseBinding::testPlaylistPicker()
+{
+    const auto binding = parseBindingString(QStringLiteral("<Space>p"), QStringLiteral("findPlaylist"));
+    QCOMPARE(binding.actionName, QStringLiteral("findPlaylist"));
+    QVERIFY(binding.args.isEmpty());
+    QCOMPARE(binding.keys.size(), 2);
+    QCOMPARE(binding.keys.front().key, int(Qt::Key_Space));
+    QCOMPARE(binding.keys.back().ch, QChar(u'p'));
+    const auto custom = parseBindingString(QStringLiteral("Ctrl+P"), QStringLiteral("findPlaylist"));
+    QCOMPARE(custom.keys.size(), 1);
+    QCOMPARE(custom.keys.front().modifiers, Qt::ControlModifier);
+    QCOMPARE(custom.actionName, binding.actionName);
 }
 
 void TestParseBinding::testJumpBindings_data()

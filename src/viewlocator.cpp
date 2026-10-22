@@ -1,5 +1,6 @@
 #include "viewlocator.h"
 #include "vimlog.h"
+#include "vimplaylistpickerdialog.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -40,6 +41,8 @@ void ViewLocator::onFocusChanged(QWidget* old, QWidget* now)
 
 QAbstractItemView* ViewLocator::activeView() const
 {
+    if(qobject_cast<VimPlaylistPickerDialog*>(QApplication::activeModalWidget()))
+        return nullptr;
     if(m_cached) {
         qCDebug(VIM_LOG) << "ViewLocator::activeView: cache hit →" << m_cached.data()->metaObject()->className();
         return m_cached.data();
@@ -88,6 +91,8 @@ QAbstractItemView* ViewLocator::activeView() const
 QAbstractItemView* ViewLocator::findViewUnder(QWidget* root)
 {
     if(!root || !root->isVisible())
+        return nullptr;
+    if(qobject_cast<VimPlaylistPickerDialog*>(root))
         return nullptr;
     if(auto* view = qobject_cast<QAbstractItemView*>(root))
         return view;
