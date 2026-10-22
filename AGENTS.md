@@ -17,9 +17,9 @@ Configuration lives in `.devcontainer/`. The container is launched with devpod-c
 
 Builds performed inside the devcontainer must use separate build directories from any host-side builds, because the same mounted repository appears at different absolute paths inside and outside the container. Use `build-agent/` and `build-test-agent/` for in-container configure/build/test work, and leave `build/` and `build-test/` available for host-side runs.
 
-## README maintenance
+## Documentation maintenance
 
-When making changes to features, key bindings, or modes, update `README.md` to match. The README documents all modes, bindings, and behaviour — keep it in sync with the code.
+When making changes to features, key bindings, or modes, update `README.md` and the relevant guides in `docs/` to match. The README is user-facing: document everyday usage and configuration through the settings dialog there. Keep manual configuration and the action reference in `docs/CONFIGURATION.md`, build and installation details in `docs/BUILDING.md`, and logging details in `docs/DEBUGGING.md`.
 
 ## Formatting
 
@@ -31,7 +31,7 @@ Do not add dependencies on fooyin internal or private headers from `src/` that a
 
 ### Default binding documentation
 
-When adding a new default configurable binding (in `VimMotionsSettings::defaultBindings()` in `vimmotionssettings.cpp`), the binding MUST also be added to the **Explicit default configuration** section in `README.md`. This section lists all default bindings in INI format for users who set `UseDefaultBindings=false`. Failure to add the entry there means the binding will be effectively invisible to users in that mode.
+When adding a new default configurable binding (in `VimMotionsSettings::defaultBindings()` in `vimmotionssettings.cpp`), the binding MUST also be added to the **Explicit default configuration** section in `docs/CONFIGURATION.md` and the relevant user-facing binding table in `README.md`. The configuration reference lists all default bindings in INI format for users who set `UseDefaultBindings=false`. Failure to add the entry there means the binding will be effectively invisible to users in that mode.
 
 ## Build and test verification
 
