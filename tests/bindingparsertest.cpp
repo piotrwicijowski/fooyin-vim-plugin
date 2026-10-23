@@ -1,5 +1,6 @@
 #include "vimbindingparser.h"
 
+#include <QKeyEvent>
 #include <QTest>
 #include <Qt>
 
@@ -14,6 +15,10 @@ private Q_SLOTS:
     void testKeyWithArgs();
     void testTwoKeySequence();
     void testModifierCombo();
+    void testModifierMatching_data();
+    void testModifierMatching();
+    void testCharacterMatching_data();
+    void testCharacterMatching();
     void testCtrlR();
     void testCtrlShiftJ();
     void testAltJ();
@@ -155,6 +160,87 @@ void TestParseBinding::testModifierCombo()
     QCOMPARE(e.keys.size(), 1);
     QCOMPARE(e.keys[0].modifiers, Qt::ControlModifier);
     QCOMPARE(e.keys[0].ch, QChar(u'J'));
+}
+
+void TestParseBinding::testModifierMatching_data()
+{
+    QTest::addColumn<QString>("keys");
+    QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
+    QTest::addColumn<bool>("expected");
+
+    const auto ctrl  = Qt::KeyboardModifiers{Qt::ControlModifier};
+    const auto alt   = Qt::KeyboardModifiers{Qt::AltModifier};
+    const auto meta  = Qt::KeyboardModifiers{Qt::MetaModifier};
+    const auto shift = Qt::KeyboardModifiers{Qt::ShiftModifier};
+    QTest::newRow("ctrl-exact") << QStringLiteral("Ctrl+L") << ctrl << true;
+    QTest::newRow("ctrl-extra-shift") << QStringLiteral("Ctrl+L") << (ctrl | shift) << false;
+    QTest::newRow("ctrl-extra-alt") << QStringLiteral("Ctrl+L") << (ctrl | alt) << false;
+    QTest::newRow("ctrl-extra-meta") << QStringLiteral("Ctrl+L") << (ctrl | meta) << false;
+    QTest::newRow("ctrl-missing") << QStringLiteral("Ctrl+L") << Qt::KeyboardModifiers{} << false;
+    QTest::newRow("ctrl-keypad-ignored") << QStringLiteral("Ctrl+L") << (ctrl | Qt::KeypadModifier) << true;
+    QTest::newRow("ctrl-shift-exact") << QStringLiteral("Ctrl+Shift+L") << (ctrl | shift) << true;
+    QTest::newRow("ctrl-shift-missing-shift") << QStringLiteral("Ctrl+Shift+L") << ctrl << false;
+    QTest::newRow("ctrl-shift-missing-ctrl") << QStringLiteral("Ctrl+Shift+L") << shift << false;
+    QTest::newRow("ctrl-shift-extra-alt") << QStringLiteral("Ctrl+Shift+L") << (ctrl | shift | alt) << false;
+    QTest::newRow("ctrl-shift-extra-meta") << QStringLiteral("Ctrl+Shift+L") << (ctrl | shift | meta) << false;
+    QTest::newRow("alt-exact") << QStringLiteral("Alt+L") << alt << true;
+    QTest::newRow("alt-extra-ctrl") << QStringLiteral("Alt+L") << (alt | ctrl) << false;
+    QTest::newRow("meta-exact") << QStringLiteral("Meta+L") << meta << true;
+    QTest::newRow("meta-extra-shift") << QStringLiteral("Meta+L") << (meta | shift) << false;
+    QTest::newRow("shift-exact") << QStringLiteral("Shift+L") << shift << true;
+    QTest::newRow("shift-extra-ctrl") << QStringLiteral("Shift+L") << (shift | ctrl) << false;
+}
+
+void TestParseBinding::testModifierMatching()
+{
+    QFETCH(QString, keys);
+    QFETCH(Qt::KeyboardModifiers, modifiers);
+    QFETCH(bool, expected);
+
+    const auto binding = parseBindingString(keys, QStringLiteral("jumpToLast"));
+    QCOMPARE(binding.keys.size(), 1);
+    QKeyEvent event{QEvent::KeyPress, Qt::Key_L, modifiers};
+    QCOMPARE(binding.keys.front().matches(&event), expected);
+}
+
+void TestParseBinding::testCharacterMatching_data()
+{
+    QTest::addColumn<QString>("keys");
+    QTest::addColumn<int>("key");
+    QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<bool>("expected");
+
+    const auto shift = Qt::KeyboardModifiers{Qt::ShiftModifier};
+    QTest::newRow("uppercase") << QStringLiteral("G") << int(Qt::Key_G) << shift << QStringLiteral("G") << true;
+    QTest::newRow("uppercase-without-shift")
+        << QStringLiteral("G") << int(Qt::Key_G) << Qt::KeyboardModifiers{} << QStringLiteral("G") << true;
+    QTest::newRow("lowercase-does-not-match-uppercase")
+        << QStringLiteral("g") << int(Qt::Key_G) << shift << QStringLiteral("G") << false;
+    QTest::newRow("question-mark") << QStringLiteral("?") << int(Qt::Key_Question) << shift << QStringLiteral("?")
+                                   << true;
+    QTest::newRow("colon") << QStringLiteral(":") << int(Qt::Key_Colon) << shift << QStringLiteral(":") << true;
+    QTest::newRow("uppercase-extra-ctrl")
+        << QStringLiteral("G") << int(Qt::Key_G) << (shift | Qt::ControlModifier) << QStringLiteral("G") << false;
+    QTest::newRow("modified-symbol-needs-explicit-shift")
+        << QStringLiteral("Ctrl+?") << int(Qt::Key_Question) << (shift | Qt::ControlModifier) << QStringLiteral("?")
+        << false;
+    QTest::newRow("modified-symbol-explicit-shift") << QStringLiteral("Ctrl+Shift+?") << int(Qt::Key_Question)
+                                                    << (shift | Qt::ControlModifier) << QStringLiteral("?") << true;
+}
+
+void TestParseBinding::testCharacterMatching()
+{
+    QFETCH(QString, keys);
+    QFETCH(int, key);
+    QFETCH(Qt::KeyboardModifiers, modifiers);
+    QFETCH(QString, text);
+    QFETCH(bool, expected);
+
+    const auto binding = parseBindingString(keys, QStringLiteral("jumpToLast"));
+    QCOMPARE(binding.keys.size(), 1);
+    QKeyEvent event{QEvent::KeyPress, key, modifiers, text};
+    QCOMPARE(binding.keys.front().matches(&event), expected);
 }
 
 void TestParseBinding::testCtrlR()

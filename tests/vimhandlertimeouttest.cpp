@@ -157,6 +157,8 @@ private Q_SLOTS:
     void twoKeyTimeoutClearsPendingSequence();
     void markTimeoutClearsPendingMark();
     void configBindingTriggersFooyinAction();
+    void configBindingMatchesExplicitModifiers_data();
+    void configBindingMatchesExplicitModifiers();
     void configNormalAmbiguousPrefixPrefersLongerSequence();
     void configNormalAmbiguousPrefixFallsBackAfterTimeout();
     void scopedSequenceOverridesGlobalSingleKey();
@@ -254,6 +256,54 @@ void TestVimHandlerTimeout::configBindingTriggersFooyinAction()
 
     QVERIFY(dispatchKey(handler, &view, u'x'));
     QCOMPARE(triggeredSpy.count(), 1);
+}
+
+void TestVimHandlerTimeout::configBindingMatchesExplicitModifiers_data()
+{
+    QTest::addColumn<QString>("keys");
+    QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
+    QTest::addColumn<bool>("expected");
+
+    const auto ctrl = Qt::KeyboardModifiers{Qt::ControlModifier};
+    QTest::newRow("ctrl") << QStringLiteral("Ctrl+L") << ctrl << true;
+    QTest::newRow("extra-shift") << QStringLiteral("Ctrl+L") << (ctrl | Qt::ShiftModifier) << false;
+    QTest::newRow("extra-alt") << QStringLiteral("Ctrl+L") << (ctrl | Qt::AltModifier) << false;
+    QTest::newRow("extra-meta") << QStringLiteral("Ctrl+L") << (ctrl | Qt::MetaModifier) << false;
+    QTest::newRow("ctrl-shift") << QStringLiteral("Ctrl+Shift+L") << (ctrl | Qt::ShiftModifier) << true;
+    QTest::newRow("missing-shift") << QStringLiteral("Ctrl+Shift+L") << ctrl << false;
+}
+
+void TestVimHandlerTimeout::configBindingMatchesExplicitModifiers()
+{
+    QFETCH(QString, keys);
+    QFETCH(Qt::KeyboardModifiers, modifiers);
+    QFETCH(bool, expected);
+
+    SettingsManager settings{m_configDir.filePath(QStringLiteral("explicit_modifiers.ini"))};
+    VimMotionsSettings defaults{&settings};
+    QVERIFY(settings.set<Settings::VimMotions::UseDefaultBindings>(false));
+    writeFooyinConfig([&keys](QSettings& fileSettings) {
+        fileSettings.setValue(QStringLiteral("VimMotions/Bindings/Global/Normal/") + keys,
+                              QStringLiteral("enterVisual"));
+    });
+
+    VimHandler handler;
+    handler.setSettingsManager(&settings);
+    PlaylistView view;
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem(QStringLiteral("A")));
+    view.setModel(&model);
+    view.setCurrentIndex(model.index(0, 0));
+    focusView(&view);
+
+    QKeyEvent shortcut{QEvent::ShortcutOverride, Qt::Key_L, modifiers};
+    QCOMPARE(handler.eventFilter(&view, &shortcut), expected);
+    QCOMPARE(shortcut.isAccepted(), expected);
+    QCOMPARE(handler.mode(), VimHandler::Mode::Normal);
+
+    QKeyEvent keyPress{QEvent::KeyPress, Qt::Key_L, modifiers};
+    QCOMPARE(handler.eventFilter(&view, &keyPress), expected);
+    QCOMPARE(handler.mode(), expected ? VimHandler::Mode::Visual : VimHandler::Mode::Normal);
 }
 
 void TestVimHandlerTimeout::configNormalAmbiguousPrefixPrefersLongerSequence()

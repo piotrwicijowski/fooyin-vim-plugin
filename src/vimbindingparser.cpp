@@ -219,7 +219,7 @@ bool KeyCombo::matches(QKeyEvent* ev) const
     const auto evMods = ev->modifiers() & kRelevantMods;
 
     if(modifiers != Qt::NoModifier) {
-        if((evMods & modifiers) != modifiers)
+        if(evMods != modifiers)
             return false;
         if(ev->key() == key)
             return true;

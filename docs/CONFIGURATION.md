@@ -90,6 +90,8 @@ Supported scopes are `Global`, `PlaylistView`, `PlaylistOrganiser`, `SearchLibra
 - Multi-key sequences: `gg`, `dd`, `yy`, `g;`, `g<Space>`, `<Space><Space>`
 - Operator-pending prefixes: `m`, `'`, `` ` `` can be bound to mark actions that consume the next letter; lowercase uses local marks and uppercase uses global marks
 
+Modifier combos require exactly the configured Ctrl, Alt, Shift, and Meta modifiers. For example, `Ctrl+L` does not match `Ctrl+Shift+L`; bind both explicitly if both should run the same action. Keypad status is ignored. Plain character bindings such as `G`, `?`, and `:` match the typed character, including when Shift is needed to produce it. For modifier combos involving shifted symbols, include Shift explicitly when your keyboard layout requires it (for example, `Ctrl+Shift+?`).
+
 **Action name + args:**
 - No args: `undo`, `enterInsert`, `jumpToFirst`
 - With args: `moveCursor:+1`, `spatialMoveFocus:down`, `treeMoveSibling:-1`

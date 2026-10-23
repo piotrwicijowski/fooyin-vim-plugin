@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -719,6 +720,41 @@ private Q_SLOTS:
             = scopedBindings(backend.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
         QVERIFY(hasBinding(reloadedBindings, QChar(u'z'), QStringLiteral("focusNowPlaying")));
         QVERIFY(!hasBinding(reloadedBindings, QChar(u'j'), QStringLiteral("moveCursor")));
+    }
+
+    void testBindingBackendMatchesExplicitModifiers()
+    {
+        const auto path = m_tempDir.filePath(QStringLiteral("explicit_modifiers.ini"));
+        Fooyin::SettingsManager settings{path};
+        VimMotionsSettings defaults{&settings};
+        QVERIFY(settings.set<Fooyin::Settings::VimMotions::UseDefaultBindings>(false));
+
+        VimMotionsBindingBackend backend{&settings, path};
+        auto definitions = backend.bindingDefinitions();
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal,
+                                         QStringLiteral("Ctrl+L"), QStringLiteral("jumpToFirst"), {}));
+        QVERIFY(backend.addCustomBinding(definitions, BindingScope::Global, BindingMode::Normal,
+                                         QStringLiteral("Ctrl+Shift+L"), QStringLiteral("jumpToLast"), {}));
+        QVERIFY(backend.saveBindingDefinitions(definitions));
+
+        VimMotionsBindingBackend reloaded{&settings, path};
+        const auto bindings = scopedBindings(reloaded.effectiveBindings(), BindingMode::Normal, BindingScope::Global);
+        QCOMPARE(bindings.size(), 2);
+
+        const auto matchingActions = [&bindings](Qt::KeyboardModifiers modifiers) {
+            QKeyEvent event{QEvent::KeyPress, Qt::Key_L, modifiers};
+            QStringList actions;
+            for(const auto& binding : bindings) {
+                if(binding.keys.front().matches(&event))
+                    actions.push_back(binding.actionName);
+            }
+            return actions;
+        };
+        QCOMPARE(matchingActions(Qt::ControlModifier), QStringList{QStringLiteral("jumpToFirst")});
+        QCOMPARE(matchingActions(Qt::ControlModifier | Qt::ShiftModifier), QStringList{QStringLiteral("jumpToLast")});
+        QVERIFY(matchingActions(Qt::ControlModifier | Qt::AltModifier).isEmpty());
+        QVERIFY(matchingActions(Qt::ControlModifier | Qt::ShiftModifier | Qt::MetaModifier).isEmpty());
+        QVERIFY(matchingActions(Qt::NoModifier).isEmpty());
     }
 
     void testBindingBackendLoadsSearchLibraryDialogScope()
