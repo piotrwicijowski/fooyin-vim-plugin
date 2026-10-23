@@ -1,0 +1,146 @@
+name: Build version tag
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CC: gcc-13
+  CXX: g++-13
+  # Upstream fooyin v0.14.0 release commit.
+  FOOYIN_REF: 4cb697bd19cfde409afca420b84d15bccc1ffb1e
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  linux:
+    name: Linux x86-64 (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out plugin at the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: plugin
+          persist-credentials: false
+
+      - name: Validate version tag
+        id: version
+        run: python3 plugin/.github/scripts/release.py validate --source plugin --ref "$GITHUB_REF"
+
+      - name: Test release helpers
+        run: python3 -m unittest discover -s plugin/.github/scripts -p 'test_*.py' -v
+
+      - name: Check out matching fooyin sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fooyin/fooyin
+          ref: ${{ env.FOOYIN_REF }}
+          path: fooyin
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Inspect APT configuration
+        run: sudo apt-config dump
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git python3 binutils \
+            qt6-base-dev libqt6svg6-dev libqt6sql6-sqlite \
+            libtag1-dev libicu-dev zlib1g-dev libarchive-dev \
+            libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswresample-dev
+
+      - name: Build fooyin shared libraries
+        run: |
+          cmake -S fooyin -B build-fooyin -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_PLUGINS=OFF \
+            -DBUILD_ALSA=OFF \
+            -DBUILD_TRANSLATIONS=OFF \
+            -DBUILD_CCACHE=OFF
+          cmake --build build-fooyin --target fooyin_utils fooyin_core fooyin_gui --parallel 2
+
+      - name: Build plugin and tests
+        run: |
+          cmake -S plugin -B build-vim -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DFOOYIN_FORCE_DEV_TREE=ON \
+            -DFOOYIN_SRC_DIR="$GITHUB_WORKSPACE/fooyin" \
+            -DFOOYIN_BUILD_DIR="$GITHUB_WORKSPACE/build-fooyin" \
+            -DFOOYIN_PLUGIN_INSTALL_DIR:STRING=lib/fooyin/plugins
+          cmake --build build-vim --parallel 2
+
+      - name: Run headless tests
+        run: |
+          ctest --test-dir build-vim --output-on-failure --no-tests=error \
+            --output-junit test-results.xml
+
+      - name: Stage, check, and package plugin
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          python3 plugin/.github/scripts/release.py package \
+            --source plugin --build build-vim \
+            --fooyin-source fooyin --fooyin-build build-fooyin \
+            --tag "$RELEASE_TAG" --output dist
+
+      - name: Publish GitHub Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          python3 plugin/.github/scripts/release.py publish \
+            --source plugin --tag "$RELEASE_TAG" --output dist --repo "$GITHUB_REPOSITORY"
+
+      - name: Summarize build
+        env:
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata = json.loads(Path('dist/build-metadata.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(
+                  f"## Vim Motions {metadata['tag']}\n\n"
+                  f"- Build: Ubuntu 24.04 / {metadata['architecture']} / Release\n"
+                  f"- fooyin: `{metadata['fooyin_commit']}` ({metadata['fooyin_version']})\n"
+                  f"- Qt: {metadata['libraries']['Qt6Core']}\n"
+                  f"- Tests: CTest passed; packaged plugin load check passed\n"
+                  f"- [Download release]({os.environ['RELEASE_URL']})\n"
+              )
+          PY
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: diagnostics-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build-vim/Testing/Temporary/
+            build-vim/test-results.xml
+            build-vim/CMakeFiles/CMakeConfigureLog.yaml
+            build-fooyin/CMakeFiles/CMakeConfigureLog.yaml
+          retention-days: 14
+          if-no-files-found: warn

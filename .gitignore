@@ -34,3 +34,7 @@ ui_*.h
 *.user
 *.pro.user
 *.qbs.user
+
+# Release tooling
+__pycache__/
+dist/

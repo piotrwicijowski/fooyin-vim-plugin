@@ -123,3 +123,64 @@ After copying, restart fooyin. The plugin will appear in **Settings → Plugins*
 Rebuild the plugin after upgrading fooyin across a plugin API version change; older plugin binaries are rejected by fooyin.
 
 For diagnostic output during development, see [Debug logging](DEBUGGING.md).
+
+## GitHub version-tag releases
+
+`.github/workflows/build-tag.yml` builds and publishes Linux x86-64 release
+archives on Ubuntu 24.04. It uses GCC 13 and pins fooyin v0.14.0 to commit
+`4cb697bd19cfde409afca420b84d15bccc1ffb1e`.
+
+The workflow validates the tag, prints the runner's APT configuration, installs
+dependencies, builds fooyin's shared Core/Gui/Utils libraries, and builds the
+plugin and all tests in Release mode. It runs CTest offscreen, stages the plugin,
+checks its shared-library dependencies and install library paths, then loads the
+packaged plugin after an archive extraction using `test_pluginload`. The job has
+a 90-minute timeout and uploads available CMake/CTest diagnostics on failure.
+
+### Publish a release
+
+1. Set `project(FooyinVimMotions VERSION ...)` in `CMakeLists.txt` to the intended
+   numeric version. The plugin metadata is generated from this version.
+2. Commit and push the release changes, including the workflow and its helpers.
+3. Validate, create, and push a version tag. For the current version:
+
+   ```bash
+   python3 .github/scripts/release.py validate --source . --ref refs/tags/v0.1.0
+   git tag -a v0.1.0 -m "Vim Motions 0.1.0"
+   git push origin v0.1.0
+   ```
+
+Tags use `vMAJOR.MINOR.PATCH`, with optional SemVer prerelease/build suffixes.
+The short form `vMAJOR.MINOR` is also accepted and means patch zero, so `v0.1`
+matches CMake version `0.1.0`. Prerelease tags such as `v0.1.0-rc.1` create GitHub
+prereleases. Invalid tags and CMake version mismatches fail before building fooyin.
+
+Successful runs create a GitHub Release with a `.tar.gz` and `.sha256` checksum.
+The archive includes `lib/fooyin/plugins/fyplugin_vimmotions.so`, installation
+instructions, the license, build metadata (including both commit SHAs and
+dependency versions), and ELF dependency/library-path reports. It contains the
+plugin only; use it with a matching fooyin build and compatible system libraries.
+Follow the archive's `INSTALL.txt` to verify the checksum and install the plugin.
+
+Publishing uses the workflow's `GITHUB_TOKEN` with `contents: write` permission.
+Reruns replace assets with matching filenames on an existing release. Available
+failure diagnostics are retained for 14 days.
+
+### Rerun a tagged build
+
+Use **Actions → Build version tag → Re-run jobs**, or dispatch an existing tag
+with GitHub CLI:
+
+```bash
+gh workflow run build-tag.yml --ref v0.1.0
+```
+
+Manual dispatch requires the workflow on the default branch and at the selected
+tag. Branch dispatches are rejected by version validation. Runs use the source,
+workflow, and helpers stored at the selected tag: pushing a fix to the default
+branch does not update an existing tag or its reruns. Runner images and APT
+package updates can change the rebuilt binary; check its build metadata.
+
+To change the fooyin baseline, update `FOOYIN_REF` in the workflow and the
+compatibility information here, then verify the build, full CTest suite, and
+packaged plugin load check against that revision.

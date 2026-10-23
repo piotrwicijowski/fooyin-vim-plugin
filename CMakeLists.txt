@@ -95,7 +95,7 @@ else()
             "${FOOYIN_SRC_DIR}/include;${_fooyin_gen_dirs}"
         INTERFACE_LINK_LIBRARIES Fooyin::Core)
 
-    set(FOOYIN_PLUGIN_INSTALL_DIR "lib/fooyin/plugins")
+    set(FOOYIN_PLUGIN_INSTALL_DIR "lib/fooyin/plugins" CACHE STRING "fooyin plugin install directory")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -159,6 +159,10 @@ else()
         OUTPUT_NAME "fyplugin_vimmotions"
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN YES)
+
+    if(UNIX AND NOT APPLE)
+        set_property(TARGET fyplugin_vimmotions PROPERTY INSTALL_RPATH "$ORIGIN/..")
+    endif()
 
     target_include_directories(fyplugin_vimmotions PRIVATE
         src
