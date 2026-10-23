@@ -2,7 +2,9 @@
 
 [Back to the README](../README.md)
 
-This guide covers building the plugin from source and installing the resulting library. For everyday use and configuration through the settings dialog, see the [README](../README.md).
+For release ZIP installation through fooyin's settings dialog, follow the
+[README installation steps](../README.md#installation). This guide covers source
+builds, manual installation, and the release pipeline.
 
 ## Requirements
 
@@ -103,6 +105,9 @@ cmake --build build
 
 ## Installation
 
+For downloaded release ZIPs, use **Settings → Plugins → Install** as described in
+the [README](../README.md#installation). The commands below apply to source builds.
+
 Copy the built `.so` into fooyin's plugin directory. The exact path depends on your system:
 
 ```bash
@@ -126,16 +131,55 @@ For diagnostic output during development, see [Debug logging](DEBUGGING.md).
 
 ## GitHub version-tag releases
 
-`.github/workflows/build-tag.yml` builds and publishes Linux x86-64 release
-archives on Ubuntu 24.04. It uses GCC 13 and pins fooyin v0.14.0 to commit
-`4cb697bd19cfde409afca420b84d15bccc1ffb1e`.
+`.github/workflows/build-tag.yml` builds Linux x86-64 releases for:
 
-The workflow validates the tag, prints the runner's APT configuration, installs
-dependencies, builds fooyin's shared Core/Gui/Utils libraries, and builds the
-plugin and all tests in Release mode. It runs CTest offscreen, stages the plugin,
-checks its shared-library dependencies and install library paths, then loads the
-packaged plugin after an archive extraction using `test_pluginload`. The job has
-a 90-minute timeout and uploads available CMake/CTest diagnostics on failure.
+| Distribution | Build environment | Archive identifier |
+| --- | --- | --- |
+| Ubuntu 24.04 | Native `ubuntu-24.04` runner | `ubuntu24.04` |
+| Ubuntu 26.04 | Native `ubuntu-26.04` runner | `ubuntu26.04` |
+| Arch Linux | Official `archlinux:base-devel` container on `ubuntu-24.04` | `archlinux` |
+
+Each target uses its distribution's default GCC toolchain and library packages.
+Arch performs a full `pacman -Syu` update before installing build dependencies.
+The workflow pins fooyin v0.14.0 to commit
+`4cb697bd19cfde409afca420b84d15bccc1ffb1e` for every target.
+
+Each matrix job validates the tag, installs dependencies, builds fooyin's shared
+Core/Gui/Utils libraries, and builds the plugin and all tests in Release mode.
+It runs CTest offscreen, stages the plugin, checks shared-library dependencies and
+install library paths, then verifies embedded installer metadata and loads the
+ZIP payload using `test_pluginload`. These checks use public fooyin and Qt APIs.
+Each build has a 90-minute timeout. Matrix failures do not cancel the other builds.
+
+A separate publishing job waits for all targets to pass and publishes their
+archives together, avoiding parallel release-creation races. Release files and
+distribution-specific failure diagnostics are retained as workflow artifacts for
+14 days.
+
+### ZIP bundle format
+
+The ZIP contains these paths directly, without an outer release-name directory:
+
+```text
+linux-x64/fyplugin_vimmotions.so
+LICENSE
+INSTALL.txt
+build-metadata.json
+dependencies.txt
+elf-dynamic.txt
+```
+
+fooyin selects `linux-x64/` and strips that prefix when installing. An outer
+archive-name directory or the CMake install-prefix layout `lib/fooyin/plugins/`
+is rejected. Root-level documentation is allowed. The bundle uses standard
+Deflate ZIP compression and regular files.
+
+The installer reads the Qt metadata embedded in the binary; no separate manifest
+is needed. It requires a compatible plugin IID, a nonempty version, and an
+identifier derived from `Author.Name` that matches `^[a-z0-9][a-z0-9._-]*$` after
+lowercasing and removing spaces. Vim Motions supplies its author and uses
+`PROJECT_VERSION` for the embedded version. The module-load test checks these
+requirements before loading the plugin.
 
 ### Publish a release
 
@@ -155,12 +199,13 @@ The short form `vMAJOR.MINOR` is also accepted and means patch zero, so `v0.1`
 matches CMake version `0.1.0`. Prerelease tags such as `v0.1.0-rc.1` create GitHub
 prereleases. Invalid tags and CMake version mismatches fail before building fooyin.
 
-Successful runs create a GitHub Release with a `.tar.gz` and `.sha256` checksum.
-The archive includes `lib/fooyin/plugins/fyplugin_vimmotions.so`, installation
-instructions, the license, build metadata (including both commit SHAs and
-dependency versions), and ELF dependency/library-path reports. It contains the
-plugin only; use it with a matching fooyin build and compatible system libraries.
-Follow the archive's `INSTALL.txt` to verify the checksum and install the plugin.
+Successful runs create a GitHub Release with one distribution-labelled `.zip`
+and `.zip.sha256` checksum per target. Archives contain the plugin, installation
+instructions, license, build metadata (both commit SHAs, UTC build time, and
+dependency versions), and ELF dependency/library-path reports. Choose the ZIP
+for your distribution and matching fooyin version, then install it directly
+through **Settings → Plugins → Install** without extracting it. For manual
+installation, the binary is under `linux-x64/` inside the ZIP.
 
 Publishing uses the workflow's `GITHUB_TOKEN` with `contents: write` permission.
 Reruns replace assets with matching filenames on an existing release. Available
@@ -178,9 +223,11 @@ gh workflow run build-tag.yml --ref v0.1.0
 Manual dispatch requires the workflow on the default branch and at the selected
 tag. Branch dispatches are rejected by version validation. Runs use the source,
 workflow, and helpers stored at the selected tag: pushing a fix to the default
-branch does not update an existing tag or its reruns. Runner images and APT
-package updates can change the rebuilt binary; check its build metadata.
+branch does not update an existing tag or its reruns. Runner/container images and
+distribution package updates can change the rebuilt binary; check its build
+metadata. Arch archives target a fully updated rolling system at the recorded
+build time rather than a fixed distribution release.
 
 To change the fooyin baseline, update `FOOYIN_REF` in the workflow and the
 compatibility information here, then verify the build, full CTest suite, and
-packaged plugin load check against that revision.
+packaged plugin load check against that revision on every distribution.

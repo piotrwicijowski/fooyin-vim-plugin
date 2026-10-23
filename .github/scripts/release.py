@@ -2,6 +2,7 @@
 """Validate version tags, package Linux builds, and publish them with the GitHub CLI."""
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -10,8 +11,8 @@ import platform
 import re
 import shutil
 import subprocess
-import tarfile
 import tempfile
+import zipfile
 
 
 NUMBER = r"(?:0|[1-9][0-9]*)"
@@ -72,6 +73,15 @@ def cache_value(build, name):
     return match[1]
 
 
+def distribution_target(os_release, architecture):
+    if architecture == "x86_64":
+        if os_release["ID"] == "ubuntu" and os_release.get("VERSION_ID") in ("24.04", "26.04"):
+            return f"ubuntu{os_release['VERSION_ID']}"
+        if os_release["ID"] == "arch":
+            return "archlinux"
+    raise ValueError("Package targets require Ubuntu 24.04, Ubuntu 26.04, or Arch Linux on x86_64.")
+
+
 def package(args):
     source, build = args.source.resolve(), args.build.resolve()
     fooyin_source, fooyin_build = args.fooyin_source.resolve(), args.fooyin_build.resolve()
@@ -82,10 +92,9 @@ def package(args):
         raise ValueError("Release artifacts require CMAKE_BUILD_TYPE=Release.")
 
     fooyin_commit = run("git", "-C", str(fooyin_source), "rev-parse", "HEAD")
-    artifact = f"fooyin-vim-{tag}-linux-x86_64-ubuntu24.04-fooyin-{fooyin_commit[:12]}"
     os_release = platform.freedesktop_os_release()
-    if (os_release["ID"], os_release["VERSION_ID"], platform.machine()) != ("ubuntu", "24.04", "x86_64"):
-        raise ValueError("This package target requires Ubuntu 24.04 on x86_64.")
+    target = distribution_target(os_release, platform.machine())
+    artifact = f"fooyin-vim-{tag}-linux-x86_64-{target}-fooyin-{fooyin_commit[:12]}"
     metadata = {
         "artifact": artifact,
         "tag": tag,
@@ -94,6 +103,8 @@ def package(args):
         "fooyin_commit": fooyin_commit,
         "fooyin_version": cache_value(fooyin_build, "CMAKE_PROJECT_VERSION"),
         "os": os_release["PRETTY_NAME"],
+        "distribution": target,
+        "built_at": datetime.now(timezone.utc).isoformat(),
         "architecture": platform.machine(),
         "build_type": cache_value(build, "CMAKE_BUILD_TYPE"),
         "compiler": run(cache_value(build, "CMAKE_CXX_COMPILER"), "--version").splitlines()[0],
@@ -110,7 +121,7 @@ def package(args):
     runtime["LD_LIBRARY_PATH"] = str(fooyin_build / "run/lib/fooyin")
 
     args.output.mkdir(parents=True, exist_ok=True)
-    archive = args.output / f"{artifact}.tar.gz"
+    archive = args.output / f"{artifact}.zip"
     with tempfile.TemporaryDirectory(prefix="vim-package-", dir=build.parent) as temporary:
         temporary = Path(temporary)
         stage = temporary / artifact
@@ -126,34 +137,44 @@ def package(args):
             if "(RPATH)" in line or "(RUNPATH)" in line:
                 if str(build.parent) in line or str(fooyin_build) in line or str(source) in line:
                     raise ValueError(f"Installed plugin leaks a workspace library path: {line}")
-        shutil.copy2(source / "LICENSE", stage / "LICENSE")
-        (stage / "build-metadata.json").write_text(metadata_text)
-        (stage / "dependencies.txt").write_text(dependencies + "\n")
-        (stage / "elf-dynamic.txt").write_text(dynamic + "\n")
-        (stage / "INSTALL.txt").write_text(
+        # fooyin selects and strips this platform prefix during ZIP installation.
+        bundle = temporary / "bundle"
+        (bundle / "linux-x64").mkdir(parents=True)
+        shutil.copy2(plugin, bundle / "linux-x64/fyplugin_vimmotions.so")
+        shutil.copy2(source / "LICENSE", bundle / "LICENSE")
+        (bundle / "build-metadata.json").write_text(metadata_text)
+        (bundle / "dependencies.txt").write_text(dependencies + "\n")
+        (bundle / "elf-dynamic.txt").write_text(dynamic + "\n")
+        (bundle / "INSTALL.txt").write_text(
             f"Vim Motions {tag}\n\n"
-            f"Built for Ubuntu 24.04 x86-64, fooyin commit {fooyin_commit}\n"
+            f"Built for {metadata['os']} x86-64, fooyin commit {fooyin_commit}\n"
             f"(fooyin project version {metadata['fooyin_version']}), Qt {metadata['libraries']['Qt6Core']}.\n"
             "Use a fooyin build from this revision and a compatible compiler/runtime,\n"
             "Qt, and FFmpeg installation. Exact build versions are in build-metadata.json;\n"
             "the required shared libraries are listed in dependencies.txt.\n\n"
-            f"1. Verify: sha256sum -c {artifact}.tar.gz.sha256\n"
-            f"2. Extract: tar -xzf {artifact}.tar.gz\n"
-            "3. Close fooyin and copy lib/fooyin/plugins/fyplugin_vimmotions.so from\n"
-            "   the extracted directory to <fooyin-prefix>/lib/fooyin/plugins/.\n"
-            "   Alternatively, set FOOYIN_PLUGIN_PATH to the extracted lib/fooyin/plugins\n"
-            "   directory when launching the matching fooyin executable.\n"
-            "4. Restart fooyin. Vim Motions appears in Settings > Plugins; configure\n"
-            "   bindings in Settings > Plugins > Vim Motions > Settings.\n"
+            "Choose the archive for your distribution. Arch Linux builds target the\n"
+            "fully updated rolling distribution at the recorded build time.\n\n"
+            f"1. Verify: sha256sum -c {artifact}.zip.sha256\n"
+            "2. In fooyin, open Settings > Plugins > Install and select the ZIP file\n"
+            "   directly, without extracting it.\n"
+            "3. Restart fooyin when prompted. Configure bindings in\n"
+            "   Settings > Plugins > Vim Motions > Configure.\n\n"
+            "If you previously copied the plugin manually, close fooyin and remove the\n"
+            "old loose fyplugin_vimmotions.so before installing this bundle.\n\n"
+            "For manual installation, extract the ZIP and copy linux-x64/fyplugin_vimmotions.so\n"
+            "to <fooyin-prefix>/lib/fooyin/plugins/ with fooyin closed. Alternatively, set\n"
+            "FOOYIN_PLUGIN_PATH to the extracted linux-x64 directory when launching fooyin.\n"
         )
-        with tarfile.open(archive, "w:gz") as tar:
-            tar.add(stage, arcname=artifact)
-        # Exercise the installed binary after an archive round trip, not just the build-tree module.
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zipped:
+            for path in sorted(bundle.rglob("*")):
+                if path.is_file():
+                    zipped.write(path, arcname=path.relative_to(bundle).as_posix())
+        # Verify embedded installer metadata and load the actual ZIP payload.
         extracted = temporary / "extracted"
-        with tarfile.open(archive) as tar:
-            tar.extractall(extracted, filter="data")
+        with zipfile.ZipFile(archive) as zipped:
+            zipped.extractall(extracted)
         runtime["VIM_MOTIONS_PLUGIN_PATH"] = str(
-            extracted / artifact / "lib/fooyin/plugins/fyplugin_vimmotions.so"
+            extracted / "linux-x64/fyplugin_vimmotions.so"
         )
         subprocess.run([str(build / "tests/test_pluginload")], env=runtime, check=True, timeout=60)
 
@@ -166,14 +187,23 @@ def package(args):
 
 def publish(args):
     tag, _ = validate_version(args.source, f"refs/tags/{args.tag}")
-    metadata = json.loads((args.output / "build-metadata.json").read_text())
-    if metadata["tag"] != tag:
-        raise ValueError("Packaged build does not match the release tag.")
-    archive = args.output / f"{metadata['artifact']}.tar.gz"
-    files = [str(archive), str(archive) + ".sha256"]
-    for filename in files:
-        if not Path(filename).is_file() or Path(filename).stat().st_size == 0:
-            raise ValueError(f"Release asset is missing or empty: {filename}")
+    manifests = sorted(args.output.rglob("build-metadata.json"))
+    if not manifests:
+        raise ValueError("No packaged builds found in the output directory.")
+    files = []
+    asset_names = set()
+    for manifest in manifests:
+        metadata = json.loads(manifest.read_text())
+        if metadata["tag"] != tag:
+            raise ValueError("Packaged build does not match the release tag.")
+        archive = manifest.parent / f"{metadata['artifact']}.zip"
+        for filename in (archive, Path(str(archive) + ".sha256")):
+            if not filename.is_file() or filename.stat().st_size == 0:
+                raise ValueError(f"Release asset is missing or empty: {filename}")
+            if filename.name in asset_names:
+                raise ValueError(f"Duplicate release asset name: {filename.name}")
+            asset_names.add(filename.name)
+            files.append(str(filename))
 
     repo = ["--repo", args.repo]
     existing = subprocess.run(

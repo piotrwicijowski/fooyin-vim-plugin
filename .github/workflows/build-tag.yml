@@ -7,28 +7,55 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  CC: gcc-13
-  CXX: g++-13
+  CC: gcc
+  CXX: g++
   # Upstream fooyin v0.14.0 release commit.
   FOOYIN_REF: 4cb697bd19cfde409afca420b84d15bccc1ffb1e
   QT_QPA_PLATFORM: offscreen
 
 jobs:
   linux:
-    name: Linux x86-64 (Ubuntu 24.04)
-    runs-on: ubuntu-24.04
+    name: Linux x86-64 (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 24.04
+            target: ubuntu24.04
+            runner: ubuntu-24.04
+            container: ''
+            taglib_package: libtag1-dev
+          - name: Ubuntu 26.04
+            target: ubuntu26.04
+            runner: ubuntu-26.04
+            container: ''
+            taglib_package: libtag-dev
+          - name: Arch Linux
+            target: archlinux
+            runner: ubuntu-24.04
+            container: archlinux:base-devel
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
     timeout-minutes: 90
     defaults:
       run:
         shell: bash
     steps:
+      # Install git before checkout, including fooyin's recursive submodules.
+      - name: Install Arch Linux build dependencies
+        if: matrix.target == 'archlinux'
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel cmake ninja pkgconf git python binutils \
+            qt6-base qt6-svg taglib icu zlib libarchive ffmpeg
+
       - name: Check out plugin at the tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,15 +80,19 @@ jobs:
           persist-credentials: false
 
       - name: Inspect APT configuration
+        if: matrix.target != 'archlinux'
         run: sudo apt-config dump
 
-      - name: Install build dependencies
+      - name: Install Ubuntu build dependencies
+        if: matrix.target != 'archlinux'
+        env:
+          TAGLIB_PACKAGE: ${{ matrix.taglib_package }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config git python3 binutils \
             qt6-base-dev libqt6svg6-dev libqt6sql6-sqlite \
-            libtag1-dev libicu-dev zlib1g-dev libarchive-dev \
+            "$TAGLIB_PACKAGE" libicu-dev zlib1g-dev libarchive-dev \
             libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswresample-dev
 
       - name: Build fooyin shared libraries
@@ -102,18 +133,15 @@ jobs:
             --fooyin-source fooyin --fooyin-build build-fooyin \
             --tag "$RELEASE_TAG" --output dist
 
-      - name: Publish GitHub Release
-        id: release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          python3 plugin/.github/scripts/release.py publish \
-            --source plugin --tag "$RELEASE_TAG" --output dist --repo "$GITHUB_REPOSITORY"
+      - name: Upload release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux-${{ matrix.target }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Summarize build
-        env:
-          RELEASE_URL: ${{ steps.release.outputs.url }}
         run: |
           python3 - <<'PY'
           import json
@@ -124,11 +152,10 @@ jobs:
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write(
                   f"## Vim Motions {metadata['tag']}\n\n"
-                  f"- Build: Ubuntu 24.04 / {metadata['architecture']} / Release\n"
+                  f"- Build: {metadata['os']} / {metadata['architecture']} / Release\n"
                   f"- fooyin: `{metadata['fooyin_commit']}` ({metadata['fooyin_version']})\n"
                   f"- Qt: {metadata['libraries']['Qt6Core']}\n"
-                  f"- Tests: CTest passed; packaged plugin load check passed\n"
-                  f"- [Download release]({os.environ['RELEASE_URL']})\n"
+                  f"- Tests: CTest passed; ZIP metadata and packaged plugin load checks passed\n"
               )
           PY
 
@@ -136,7 +163,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: diagnostics-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          name: diagnostics-linux-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             build-vim/Testing/Temporary/
             build-vim/test-results.xml
@@ -144,3 +171,50 @@ jobs:
             build-fooyin/CMakeFiles/CMakeConfigureLog.yaml
           retention-days: 14
           if-no-files-found: warn
+
+  release:
+    name: Publish distribution builds
+    needs: linux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out plugin at the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: plugin
+          persist-credentials: false
+
+      - name: Validate version tag
+        id: version
+        run: python3 plugin/.github/scripts/release.py validate --source plugin --ref "$GITHUB_REF"
+
+      - name: Download distribution builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: release-linux-*
+          path: dist
+
+      - name: Publish GitHub Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          python3 plugin/.github/scripts/release.py publish \
+            --source plugin --tag "$RELEASE_TAG" --output dist --repo "$GITHUB_REPOSITORY"
+
+      - name: Summarize release
+        env:
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+        run: |
+          python3 - <<'PY'
+          import os
+
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"[Download all distribution builds]({os.environ['RELEASE_URL']})\n")
+          PY

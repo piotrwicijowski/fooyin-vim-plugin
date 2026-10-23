@@ -2,15 +2,31 @@
 
 Vim-style keyboard navigation for [fooyin](https://github.com/ludouzi/fooyin). Move through playlists, select and rearrange tracks, search your library, and switch between panes without reaching for the mouse. Customize the keys and behavior through fooyin's settings dialog.
 
+- [Installation](#installation)
 - [Getting started](#getting-started)
 - [Customizing Vim Motions](#customizing-vim-motions)
 - [Features](#features)
 - [Key reference](#key-reference)
 - [Further documentation](#further-documentation)
 
-## Getting started
+## Installation
 
-Once the plugin is installed, restart fooyin and look for **Vim Motions** in **Settings → Plugins**. For installation from source, see the [build and installation guide](docs/BUILDING.md).
+1. Download the Linux x86-64 **`.zip`** for **Ubuntu 24.04**, **Ubuntu 26.04**, or
+   **Arch Linux** from the [release assets](https://github.com/piotrwicijowski/fooyin-vim-plugin/releases).
+   Choose the build matching your distribution and fooyin version. Arch builds
+   target a fully updated system at build time.
+2. In fooyin, open **Settings → Plugins → Install** and select the downloaded ZIP
+   directly, **without extracting it**.
+3. Restart fooyin when prompted. Select **Vim Motions** in **Settings → Plugins**
+   and click **Configure** to customize its settings and bindings.
+
+If you previously copied `fyplugin_vimmotions.so` manually, close fooyin and
+remove that loose copy before installing the ZIP to avoid loading two versions.
+The release includes a `.zip.sha256` checksum; `build-metadata.json` and
+`dependencies.txt` inside the ZIP record the build versions and required libraries.
+For installation from source, see the [build and installation guide](docs/BUILDING.md).
+
+## Getting started
 
 1. Focus a playlist. The plugin starts in **Normal** mode: use `j` and `k` to move down and up.
 2. Press `/`, type a search, and press `Enter` to keep the result. Use `n` and `N` to jump between matches.

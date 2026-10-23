@@ -5,12 +5,12 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
-import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
-from release import package, publish, validate_version
+from release import distribution_target, package, publish, validate_version
 
 
 class VersionValidationTest(unittest.TestCase):
@@ -85,7 +85,7 @@ class ReleasePackagingTest(unittest.TestCase):
         self.install_plugin = True
         self.loader_error = False
         self.loader_paths = []
-        self.enterContext(patch("release.platform.freedesktop_os_release", return_value={
+        self.os_release = self.enterContext(patch("release.platform.freedesktop_os_release", return_value={
             "ID": "ubuntu", "VERSION_ID": "24.04", "PRETTY_NAME": "Ubuntu 24.04 LTS",
         }))
         self.enterContext(patch("release.platform.machine", return_value="x86_64"))
@@ -137,16 +137,52 @@ class ReleasePackagingTest(unittest.TestCase):
         artifact = metadata["artifact"]
         self.assertEqual(metadata["fooyin_version"], "0.14.0")
         self.assertEqual(metadata["plugin_version"], "0.1.0")
-        archive = self.args.output / f"{artifact}.tar.gz"
+        self.assertEqual(metadata["distribution"], "ubuntu24.04")
+        self.assertTrue(metadata["built_at"])
+        archive = self.args.output / f"{artifact}.zip"
         checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
         self.assertEqual(Path(str(archive) + ".sha256").read_text(), f"{checksum}  {archive.name}\n")
-        with tarfile.open(archive) as tar:
-            for name in ("lib/fooyin/plugins/fyplugin_vimmotions.so", "LICENSE", "INSTALL.txt",
-                         "build-metadata.json", "dependencies.txt", "elf-dynamic.txt"):
-                self.assertIn(f"{artifact}/{name}", tar.getnames())
+        with zipfile.ZipFile(archive) as zipped:
+            self.assertIsNone(zipped.testzip())
+            self.assertEqual(set(zipped.namelist()), {
+                "linux-x64/fyplugin_vimmotions.so", "LICENSE", "INSTALL.txt",
+                "build-metadata.json", "dependencies.txt", "elf-dynamic.txt",
+            })
+            self.assertEqual(zipped.read("linux-x64/fyplugin_vimmotions.so"), b"test plugin")
+            self.assertEqual(json.loads(zipped.read("build-metadata.json")), metadata)
+            notes = zipped.read("INSTALL.txt").decode()
+            self.assertIn("Settings > Plugins > Install", notes)
+            self.assertIn(f"{artifact}.zip.sha256", notes)
+            self.assertIn("Built for Ubuntu 24.04 LTS x86-64", notes)
         self.assertEqual(len(self.loader_paths), 1)
         self.assertFalse(self.loader_paths[0].exists())
         self.outputs.assert_called_once_with(artifact=artifact)
+
+    def test_packages_ubuntu_26_and_rolling_arch_without_version_id(self):
+        for os_release, target in (
+            ({"ID": "ubuntu", "VERSION_ID": "26.04", "PRETTY_NAME": "Ubuntu 26.04 LTS"}, "ubuntu26.04"),
+            ({"ID": "arch", "PRETTY_NAME": "Arch Linux"}, "archlinux"),
+        ):
+            with self.subTest(target=target):
+                self.os_release.return_value = os_release
+                package(self.args)
+                metadata = json.loads((self.args.output / "build-metadata.json").read_text())
+                self.assertEqual(metadata["distribution"], target)
+                self.assertIn(f"-linux-x86_64-{target}-fooyin-", metadata["artifact"])
+                with zipfile.ZipFile(self.args.output / f"{metadata['artifact']}.zip") as zipped:
+                    self.assertIn(f"Built for {os_release['PRETTY_NAME']} x86-64",
+                                  zipped.read("INSTALL.txt").decode())
+
+    def test_rejects_unsupported_distribution_or_architecture(self):
+        for os_release, architecture in (
+            ({"ID": "ubuntu", "VERSION_ID": "22.04"}, "x86_64"),
+            ({"ID": "ubuntu"}, "x86_64"),
+            ({"ID": "debian", "VERSION_ID": "13"}, "x86_64"),
+            ({"ID": "arch"}, "aarch64"),
+        ):
+            with self.subTest(os_release=os_release, architecture=architecture):
+                with self.assertRaisesRegex(ValueError, "Package targets require"):
+                    distribution_target(os_release, architecture)
 
     def test_rejects_stale_or_non_release_builds_before_installing(self):
         for version, build_type in (("0.2.0", "Release"), ("0.1.0", "Debug")):
@@ -189,7 +225,7 @@ class ReleasePublishingTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         (self.directory / "CMakeLists.txt").write_text("project(FooyinVimMotions VERSION 0.1.0)\n")
-        self.archive = self.directory / "vim-test.tar.gz"
+        self.archive = self.directory / "vim-test.zip"
         self.archive.write_bytes(b"test archive")
         Path(str(self.archive) + ".sha256").write_text("test checksum")
         self.args = argparse.Namespace(
@@ -236,6 +272,49 @@ class ReleasePublishingTest(unittest.TestCase):
         command = self.gh.call_args.args[0]
         self.assertEqual(command[:4], ["gh", "release", "upload", "v0.1.0"])
         self.assertIn("--clobber", command)
+
+    def test_publishes_all_distribution_assets_in_one_release(self):
+        self.args.output = self.directory / "dist"
+        expected = []
+        for target in ("ubuntu24.04", "ubuntu26.04", "archlinux"):
+            directory = self.args.output / f"release-linux-{target}"
+            directory.mkdir(parents=True)
+            artifact = f"vim-{target}"
+            (directory / "build-metadata.json").write_text(
+                json.dumps({"tag": self.args.tag, "artifact": artifact})
+            )
+            for suffix in (".zip", ".zip.sha256"):
+                asset = directory / f"{artifact}{suffix}"
+                asset.write_bytes(b"test asset")
+                expected.append(str(asset))
+        publish(self.args)
+        self.assertEqual(self.gh.call_count, 2)
+        command = self.gh.call_args.args[0]
+        self.assertEqual(command[:4], ["gh", "release", "create", "v0.1.0"])
+        for asset in expected:
+            self.assertEqual(command.count(asset), 1)
+
+    def test_checks_every_build_before_publishing(self):
+        directory = self.directory / "second-build"
+        directory.mkdir()
+        manifest = directory / "build-metadata.json"
+        manifest.write_text(json.dumps({"tag": "v0.1.0", "artifact": "missing"}))
+        with self.assertRaisesRegex(ValueError, "missing or empty"):
+            publish(self.args)
+        manifest.write_text(json.dumps({"tag": "v0.2.0", "artifact": "missing"}))
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            publish(self.args)
+        manifest.write_text(json.dumps({"tag": "v0.1.0", "artifact": "vim-test"}))
+        (directory / "vim-test.zip").write_bytes(b"duplicate")
+        with self.assertRaisesRegex(ValueError, "Duplicate release asset"):
+            publish(self.args)
+        self.gh.assert_not_called()
+
+    def test_rejects_empty_output_before_publishing(self):
+        self.args.output = self.directory / "empty"
+        with self.assertRaisesRegex(ValueError, "No packaged builds"):
+            publish(self.args)
+        self.gh.assert_not_called()
 
     def test_missing_assets_or_wrong_tag_fail_before_publishing(self):
         self.args.tag = "v0.1.0-rc.1"
